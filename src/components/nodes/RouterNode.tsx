@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useMemo, useEffect } from "react";
-import { Handle, Position, useUpdateNodeInternals, NodeProps } from "@xyflow/react";
+import { Handle, Position, useUpdateNodeInternals, useReactFlow, NodeProps } from "@xyflow/react";
 import { BaseNode } from "./BaseNode";
 import { useWorkflowStore } from "@/store/workflowStore";
 import type { WorkflowNode, RouterNodeData } from "@/types";
@@ -22,6 +22,7 @@ export const RouterNode = memo(({ id, data, selected }: NodeProps<WorkflowNode>)
   const edges = useWorkflowStore((state) => state.edges);
   const updateNodeData = useWorkflowStore((state) => state.updateNodeData);
   const updateNodeInternals = useUpdateNodeInternals();
+  const { setNodes } = useReactFlow();
 
   // Derive active input types from incoming edge connections
   const activeInputTypes = useMemo(() => {
@@ -39,20 +40,33 @@ export const RouterNode = memo(({ id, data, selected }: NodeProps<WorkflowNode>)
     return Array.from(typeSet).sort();
   }, [edges, id]);
 
-  // Notify React Flow when handle count changes so it can recalculate positions
-  useEffect(() => {
-    updateNodeInternals(id);
-  }, [activeInputTypes.length, id, updateNodeInternals]);
-
   // Show generic handles when not all types are connected
   const showGenericHandles = activeInputTypes.length < ALL_HANDLE_TYPES.length;
 
   // Calculate handle positioning
   const handleSpacing = 24;
-  const baseOffset = 20;
+  const baseOffset = 38; // Clear the header bar
 
-  // Dynamic height based on active handle count
-  const minHeight = 60 + activeInputTypes.length * handleSpacing;
+  // Dynamic height based on total handle count (active + placeholder)
+  const totalHandleSlots = activeInputTypes.length + (showGenericHandles ? 1 : 0);
+  const lastHandleTop = baseOffset + (Math.max(totalHandleSlots, 1) - 1) * handleSpacing;
+  const minHeight = lastHandleTop + 20;
+
+  // Resize node and notify React Flow when handle count changes
+  useEffect(() => {
+    setNodes((nodes) =>
+      nodes.map((node) => {
+        if (node.id === id) {
+          const currentHeight = (node.style?.height as number) || 0;
+          if (currentHeight < minHeight) {
+            return { ...node, style: { ...node.style, height: minHeight } };
+          }
+        }
+        return node;
+      })
+    );
+    updateNodeInternals(id);
+  }, [activeInputTypes.length, id, minHeight, setNodes, updateNodeInternals]);
 
   return (
     <BaseNode
