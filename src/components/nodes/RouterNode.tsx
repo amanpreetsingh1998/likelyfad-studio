@@ -94,7 +94,7 @@ export const RouterNode = memo(({ id, data, selected }: NodeProps<WorkflowNode>)
             backgroundColor: "#6b7280",
             width: 12,
             height: 12,
-            border: "2px dashed #9ca3af",
+            border: "2px solid #1e1e1e",
           }}
         />
       )}
@@ -116,20 +116,6 @@ export const RouterNode = memo(({ id, data, selected }: NodeProps<WorkflowNode>)
           }}
         />
       ))}
-      {showGenericHandles && (
-        <Handle
-          type="source"
-          position={Position.Right}
-          id="generic-output"
-          style={{
-            top: baseOffset + activeInputTypes.length * handleSpacing,
-            backgroundColor: "#6b7280",
-            width: 12,
-            height: 12,
-            border: "2px dashed #9ca3af",
-          }}
-        />
-      )}
 
       {/* Body content */}
       <div className="text-[10px] text-neutral-500 text-center py-1">
