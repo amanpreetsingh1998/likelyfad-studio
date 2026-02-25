@@ -251,7 +251,7 @@ const findScrollableAncestor = (target: HTMLElement, deltaX: number, deltaY: num
 };
 
 export function WorkflowCanvas() {
-  const { nodes, edges, groups, onNodesChange, onEdgesChange, onConnect, addNode, updateNodeData, loadWorkflow, getNodeById, addToGlobalHistory, setNodeGroupId, executeWorkflow, isModalOpen, showQuickstart, setShowQuickstart, navigationTarget, setNavigationTarget, captureSnapshot, applyEditOperations, setWorkflowMetadata, canvasNavigationSettings, setShortcutsDialogOpen } =
+  const { nodes, edges, groups, onNodesChange, onEdgesChange, onConnect, addNode, updateNodeData, loadWorkflow, getNodeById, addToGlobalHistory, setNodeGroupId, executeWorkflow, isModalOpen, showQuickstart, setShowQuickstart, navigationTarget, setNavigationTarget, captureSnapshot, applyEditOperations, setWorkflowMetadata, canvasNavigationSettings, setShortcutsDialogOpen, dimmedNodeIds } =
     useWorkflowStore();
   const { screenToFlowPosition, getViewport, zoomIn, zoomOut, setViewport, setCenter } = useReactFlow();
   const { show: showToast } = useToast();
@@ -286,10 +286,24 @@ export function WorkflowCanvas() {
     }
   }, [navigationTarget, nodes, setCenter, setNavigationTarget]);
 
-  // Just pass regular nodes to React Flow - groups are rendered separately
+  // Apply dimming className to nodes downstream of disabled Switch outputs
   const allNodes = useMemo(() => {
-    return nodes;
-  }, [nodes]);
+    return nodes.map((node) => {
+      // Never dim Switch nodes themselves
+      if (node.type === "switch") return node;
+
+      const isDimmed = dimmedNodeIds.has(node.id);
+      const dimClass = isDimmed ? "switch-dimmed" : "";
+
+      // Preserve existing className if any, add/remove dimmed class
+      const baseClass = (node.className || "").replace(/\bswitch-dimmed\b/g, "").trim();
+      const newClass = dimClass ? `${baseClass} ${dimClass}`.trim() : baseClass;
+
+      // Only create new node object if className changed
+      if (node.className === newClass) return node;
+      return { ...node, className: newClass };
+    });
+  }, [nodes, dimmedNodeIds]);
 
 
   // Check if a node was dropped into a group and add it to that group
