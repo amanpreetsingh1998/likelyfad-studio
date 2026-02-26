@@ -22,7 +22,8 @@ const LAYOUT_OPTIONS = [
 
 const BASE_ASPECT_RATIOS: AspectRatio[] = ["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"];
 const EXTENDED_ASPECT_RATIOS: AspectRatio[] = ["1:1", "1:4", "1:8", "2:3", "3:2", "3:4", "4:1", "4:3", "4:5", "5:4", "8:1", "9:16", "16:9", "21:9"];
-const RESOLUTIONS: Resolution[] = ["1K", "2K", "4K"];
+const RESOLUTIONS_PRO: Resolution[] = ["1K", "2K", "4K"];
+const RESOLUTIONS_NB2: Resolution[] = ["512", "1K", "2K", "4K"];
 const MODELS: { value: ModelType; label: string }[] = [
   { value: "nano-banana", label: "Nano Banana" },
   { value: "nano-banana-2", label: "Nano Banana 2" },
@@ -55,6 +56,7 @@ export function SplitGridSettingsModal({
   const targetCount = rows * cols;
   const isNanoBananaPro = model === "nano-banana-pro" || model === "nano-banana-2";
   const aspectRatios = model === "nano-banana-2" ? EXTENDED_ASPECT_RATIOS : BASE_ASPECT_RATIOS;
+  const resolutions = model === "nano-banana-2" ? RESOLUTIONS_NB2 : RESOLUTIONS_PRO;
 
   const handleCreate = useCallback(() => {
     const splitNode = getNodeById(nodeId);
@@ -267,7 +269,20 @@ export function SplitGridSettingsModal({
                 </label>
                 <select
                   value={model}
-                  onChange={(e) => setModel(e.target.value as ModelType)}
+                  onChange={(e) => {
+                    const newModel = e.target.value as ModelType;
+                    setModel(newModel);
+                    // Normalize aspect ratio for the new model's allowed set
+                    const newAspectRatios = newModel === "nano-banana-2" ? EXTENDED_ASPECT_RATIOS : BASE_ASPECT_RATIOS;
+                    if (!newAspectRatios.includes(aspectRatio)) {
+                      setAspectRatio(newAspectRatios[0]);
+                    }
+                    // Normalize resolution for the new model's allowed set
+                    const newResolutions = newModel === "nano-banana-2" ? RESOLUTIONS_NB2 : RESOLUTIONS_PRO;
+                    if (!newResolutions.includes(resolution)) {
+                      setResolution(newResolutions[0]);
+                    }
+                  }}
                   className="w-full px-3 py-2 bg-neutral-900 border border-neutral-600 rounded text-neutral-100 text-sm focus:outline-none focus:border-neutral-500"
                 >
                   {MODELS.map((m) => (
@@ -302,7 +317,7 @@ export function SplitGridSettingsModal({
                       onChange={(e) => setResolution(e.target.value as Resolution)}
                       className="w-full px-3 py-2 bg-neutral-900 border border-neutral-600 rounded text-neutral-100 text-sm focus:outline-none focus:border-neutral-500"
                     >
-                      {RESOLUTIONS.map((res) => (
+                      {resolutions.map((res) => (
                         <option key={res} value={res}>{res}</option>
                       ))}
                     </select>
