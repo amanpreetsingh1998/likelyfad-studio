@@ -92,6 +92,7 @@ export const SwitchNode = memo(({ id, data, selected }: NodeProps<WorkflowNode>)
   // Handle delete switch
   const handleDelete = useCallback(
     (switchId: string) => {
+      if (nodeData.switches.length <= 1) return;
       const updatedSwitches = nodeData.switches.filter((sw) => sw.id !== switchId);
       updateNodeData(id, { switches: updatedSwitches });
 
@@ -227,26 +228,28 @@ export const SwitchNode = memo(({ id, data, selected }: NodeProps<WorkflowNode>)
                   </span>
                 )}
 
-                {/* Delete button */}
-                <button
-                  className="opacity-0 group-hover:opacity-100 text-neutral-400 hover:text-red-400 transition-opacity"
-                  onClick={() => handleDelete(sw.id)}
-                  title="Delete switch"
-                >
-                  <svg
-                    className="w-3 h-3"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
+                {/* Delete button (hidden if only one switch) */}
+                {nodeData.switches.length > 1 && (
+                  <button
+                    className="opacity-0 group-hover:opacity-100 text-neutral-400 hover:text-red-400 transition-opacity"
+                    onClick={() => handleDelete(sw.id)}
+                    title="Delete switch"
                   >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M6 18L18 6M6 6l12 12"
-                    />
-                  </svg>
-                </button>
+                    <svg
+                      className="w-3 h-3"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                )}
               </div>
             ))}
 
