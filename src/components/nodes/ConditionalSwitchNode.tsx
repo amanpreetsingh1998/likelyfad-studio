@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useMemo, useEffect, useState, useCallback } from "react";
+import { memo, useMemo, useEffect, useLayoutEffect, useState, useCallback, useRef } from "react";
 import { Handle, Position, useUpdateNodeInternals, useReactFlow, NodeProps, useEdges } from "@xyflow/react";
 import { BaseNode } from "./BaseNode";
 import { useWorkflowStore } from "@/store/workflowStore";
@@ -80,15 +80,40 @@ export const ConditionalSwitchNode = memo(({ id, data, selected }: NodeProps<Wor
     }
   }, [incomingText, nodeData.rules, nodeData.incomingText, id, updateNodeData]);
 
-  // Calculate handle positioning
+  // Ref-based handle positioning — measure actual row DOM positions
+  const ruleRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const defaultRowRef = useRef<HTMLDivElement | null>(null);
+  const [handleTops, setHandleTops] = useState<Record<string, number>>({});
+
+  // Track rule IDs for re-measurement on add/remove/reorder
+  const ruleIds = useMemo(() => nodeData.rules.map(r => r.id).join(','), [nodeData.rules]);
+
+  // Measure actual row centers relative to the node element (before paint)
+  useLayoutEffect(() => {
+    const positions: Record<string, number> = {};
+
+    for (const [ruleId, el] of Object.entries(ruleRowRefs.current)) {
+      if (el) {
+        positions[ruleId] = el.offsetTop + el.offsetHeight / 2;
+      }
+    }
+
+    const defaultEl = defaultRowRef.current;
+    if (defaultEl) {
+      positions['default'] = defaultEl.offsetTop + defaultEl.offsetHeight / 2;
+    }
+
+    setHandleTops(positions);
+  }, [ruleIds]);
+
+  // Fallback handle positioning (used before first measurement)
   const handleSpacing = 32;
-  const textPreviewHeight = 20; // Height of the text preview (h-5 = 20px)
-  const baseOffset = 38 + textPreviewHeight; // Clear header bar + text preview
+  const fallbackBase = 70; // approximate: header + padding + text preview + half row
 
   // Dynamic height based on rule count (rules + default)
   const ruleCount = nodeData.rules.length;
   const totalOutputs = ruleCount + 1; // rules + default
-  const lastHandleTop = baseOffset + totalOutputs * handleSpacing;
+  const lastHandleTop = fallbackBase + totalOutputs * handleSpacing;
   const minHeight = lastHandleTop + 40; // Extra space for add button
 
   // Resize node and notify React Flow when rule count changes
@@ -234,7 +259,14 @@ export const ConditionalSwitchNode = memo(({ id, data, selected }: NodeProps<Wor
 
         {/* Rule rows — each 32px tall to align with output handles */}
         {nodeData.rules.map((rule, index) => (
-          <div key={rule.id} className="flex items-center gap-1 group h-8">
+          <div
+            key={rule.id}
+            ref={(el) => {
+              if (el) ruleRowRefs.current[rule.id] = el;
+              else delete ruleRowRefs.current[rule.id];
+            }}
+            className="flex items-center gap-1 group h-8"
+          >
             {/* Match status indicator */}
             <div className="w-3 h-3 flex items-center justify-center flex-shrink-0">
               {rule.isMatched ? (
@@ -333,7 +365,7 @@ export const ConditionalSwitchNode = memo(({ id, data, selected }: NodeProps<Wor
         ))}
 
         {/* Default output row — 32px tall, immediately after rules to align with handle */}
-        <div className="flex items-center gap-1 h-8 border-t border-neutral-700">
+        <div ref={defaultRowRef} className="flex items-center gap-1 h-8 border-t border-neutral-700">
           <div className="w-3 h-3 flex items-center justify-center flex-shrink-0">
             {defaultMatched ? (
               <svg className="w-3 h-3 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -368,7 +400,7 @@ export const ConditionalSwitchNode = memo(({ id, data, selected }: NodeProps<Wor
           id={rule.id}
           data-handletype="text"
           style={{
-            top: baseOffset + index * handleSpacing,
+            top: handleTops[rule.id] ?? (fallbackBase + index * handleSpacing),
             backgroundColor: "#3b82f6", // blue for text
             opacity: rule.isMatched ? 1 : 0.3,
             width: 12,
@@ -385,7 +417,7 @@ export const ConditionalSwitchNode = memo(({ id, data, selected }: NodeProps<Wor
         id="default"
         data-handletype="text"
         style={{
-          top: baseOffset + ruleCount * handleSpacing,
+          top: handleTops['default'] ?? (fallbackBase + ruleCount * handleSpacing),
           backgroundColor: "#3b82f6", // blue for text
           opacity: defaultMatched ? 1 : 0.3,
           width: 12,
