@@ -480,13 +480,21 @@ export async function POST(request: NextRequest) {
 
     // Check if this is a Veo video model request
     if (selectedModel?.modelId?.startsWith("veo-")) {
+      // Merge negative prompt from dynamic inputs (connected handle) into parameters
+      const veoParams = { ...(parameters || {}) };
+      if (dynamicInputs?.negative_prompt) {
+        const neg = Array.isArray(dynamicInputs.negative_prompt)
+          ? dynamicInputs.negative_prompt[0]
+          : dynamicInputs.negative_prompt;
+        if (neg) veoParams.negativePrompt = neg;
+      }
       const result = await generateWithGeminiVideo(
         requestId,
         geminiApiKey,
         selectedModel.modelId,
         resolvedPrompt || "",
         images || [],
-        parameters || {},
+        veoParams,
       );
 
       if (!result.success) {

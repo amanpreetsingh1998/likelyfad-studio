@@ -114,6 +114,21 @@ export function GenerateVideoNode({ id, data, selected }: NodeProps<GenerateVide
     fetchModels();
   }, [fetchModels]);
 
+  // Set inputSchema for Veo models (hardcoded, not fetched via ModelParameters)
+  const selectedModelId = nodeData.selectedModel?.modelId;
+  useEffect(() => {
+    if (!isVeoModel(selectedModelId)) return;
+    const isI2V = selectedModelId!.includes("image-to-video");
+    const inputs: ModelInputDef[] = [
+      { name: "prompt", type: "text", required: true, label: "Prompt" },
+      { name: "negative_prompt", type: "text", required: false, label: "Neg. Prompt" },
+    ];
+    if (isI2V) {
+      inputs.unshift({ name: "image", type: "image", required: true, label: "Image" });
+    }
+    updateNodeData(id, { inputSchema: inputs });
+  }, [id, selectedModelId, updateNodeData]);
+
   // Handle provider change
   const handleProviderChange = useCallback(
     (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -776,14 +791,6 @@ export function GenerateVideoNode({ id, data, selected }: NodeProps<GenerateVide
                 ))}
               </select>
             </div>
-            {/* Negative prompt */}
-            <input
-              type="text"
-              placeholder="Negative prompt..."
-              value={(nodeData.parameters?.negativePrompt as string) || ""}
-              onChange={(e) => updateVeoParam("negativePrompt", e.target.value)}
-              className="w-full text-[10px] py-1 px-1.5 border border-neutral-700 rounded bg-neutral-900/50 focus:outline-none focus:ring-1 focus:ring-neutral-600 text-neutral-300 placeholder:text-neutral-600"
-            />
             {/* Seed */}
             <input
               type="number"

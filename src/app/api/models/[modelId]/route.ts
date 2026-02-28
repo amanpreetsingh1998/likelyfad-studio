@@ -900,30 +900,34 @@ function getGeminiVideoSchema(modelId: string): ExtractedSchema | null {
     { name: "aspectRatio", type: "string", description: "Output aspect ratio", enum: ["16:9", "9:16"], default: "16:9" },
     { name: "durationSeconds", type: "string", description: "Video duration in seconds", enum: ["4", "6", "8"], default: "8" },
     { name: "resolution", type: "string", description: "Output resolution", enum: ["720p", "1080p", "4k"], default: "720p" },
-    { name: "negativePrompt", type: "string", description: "What to avoid in the generated video" },
     { name: "seed", type: "integer", description: "Random seed for reproducibility", minimum: 0 },
+  ];
+
+  const textInputs: ModelInput[] = [
+    { name: "prompt", type: "text", required: true, label: "Prompt" },
+    { name: "negative_prompt", type: "text", required: false, label: "Neg. Prompt" },
   ];
 
   const schemas: Record<string, ExtractedSchema> = {
     "veo-3.1/text-to-video": {
       parameters: commonParams,
-      inputs: [{ name: "prompt", type: "text", required: true, label: "Prompt" }],
+      inputs: textInputs,
     },
     "veo-3.1/image-to-video": {
       parameters: commonParams,
       inputs: [
-        { name: "prompt", type: "text", required: true, label: "Prompt" },
+        ...textInputs,
         { name: "image", type: "image", required: true, label: "Image" },
       ],
     },
     "veo-3.1-fast/text-to-video": {
       parameters: commonParams,
-      inputs: [{ name: "prompt", type: "text", required: true, label: "Prompt" }],
+      inputs: textInputs,
     },
     "veo-3.1-fast/image-to-video": {
       parameters: commonParams,
       inputs: [
-        { name: "prompt", type: "text", required: true, label: "Prompt" },
+        ...textInputs,
         { name: "image", type: "image", required: true, label: "Image" },
       ],
     },
