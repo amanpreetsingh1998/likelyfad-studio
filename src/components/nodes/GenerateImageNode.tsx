@@ -707,85 +707,8 @@ export function GenerateImageNode({ id, data, selected }: NodeProps<NanoBananaNo
             )}
           </div>
         )}
-
-        {/* Model-specific parameters for external providers */}
-        {!isGeminiOnly && nodeData.selectedModel?.modelId && (
-          <ModelParameters
-            modelId={nodeData.selectedModel.modelId}
-            provider={currentProvider}
-            parameters={nodeData.parameters || {}}
-            onParametersChange={handleParametersChange}
-            onExpandChange={handleParametersExpandChange}
-            onInputsLoaded={handleInputsLoaded}
-          />
-        )}
-
-        {/* Aspect ratio and resolution row - only for Gemini models */}
-        {currentProvider === "gemini" && (
-          <div className="flex gap-1.5 shrink-0">
-            <select
-              value={nodeData.aspectRatio}
-              onChange={handleAspectRatioChange}
-              className="flex-1 text-[10px] py-1 px-1.5 border border-neutral-700 rounded bg-neutral-900/50 focus:outline-none focus:ring-1 focus:ring-neutral-600 text-neutral-300"
-            >
-              {aspectRatios.map((ratio) => (
-                <option key={ratio} value={ratio}>
-                  {ratio}
-                </option>
-              ))}
-            </select>
-            {supportsResolution && (
-              <select
-                value={nodeData.resolution}
-                onChange={handleResolutionChange}
-                className="w-12 text-[10px] py-1 px-1.5 border border-neutral-700 rounded bg-neutral-900/50 focus:outline-none focus:ring-1 focus:ring-neutral-600 text-neutral-300"
-              >
-                {resolutions.map((res) => (
-                  <option key={res} value={res}>
-                    {res}
-                  </option>
-                ))}
-              </select>
-            )}
-          </div>
-        )}
-
-        {/* Google Search toggle - for Nano Banana Pro and Nano Banana 2 */}
-        {currentProvider === "gemini" && supportsResolution && (
-          <label className="flex items-center gap-1.5 text-[10px] text-neutral-300 shrink-0 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={nodeData.useGoogleSearch}
-              onChange={handleGoogleSearchToggle}
-              className="w-3 h-3 rounded border-neutral-700 bg-neutral-900/50 text-neutral-600 focus:ring-1 focus:ring-neutral-600 focus:ring-offset-0"
-            />
-            <span>Google Search</span>
-          </label>
-        )}
-        {/* Image Search toggle - only for Nano Banana 2 */}
-        {currentProvider === "gemini" && currentModelId === "nano-banana-2" && (
-          <label className="flex items-center gap-1.5 text-[10px] text-neutral-300 shrink-0 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={nodeData.useImageSearch}
-              onChange={handleImageSearchToggle}
-              className="w-3 h-3 rounded border-neutral-700 bg-neutral-900/50 text-neutral-600 focus:ring-1 focus:ring-neutral-600 focus:ring-offset-0"
-            />
-            <span>Image Search</span>
-          </label>
-        )}
       </div>
     </BaseNode>
-
-    {/* Model browser dialog for external providers */}
-    {isBrowseDialogOpen && (
-      <ModelSearchDialog
-        isOpen={isBrowseDialogOpen}
-        onClose={() => setIsBrowseDialogOpen(false)}
-        onModelSelected={handleBrowseModelSelect}
-        initialCapabilityFilter="image"
-      />
-    )}
     </>
   );
 }
