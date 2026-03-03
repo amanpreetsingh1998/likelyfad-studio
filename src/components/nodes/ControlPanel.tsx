@@ -117,6 +117,8 @@ export function ControlPanel() {
 
   return (
     <div className="fixed top-0 right-6 h-screen z-[50] flex items-center pointer-events-none">
+      {/* Shadow/gradient overlay on left edge */}
+      <div className="absolute right-full top-0 h-full w-24 bg-gradient-to-r from-transparent to-black/20 pointer-events-none" />
       <div className="w-80 bg-neutral-800 border border-neutral-700 rounded-xl shadow-xl max-h-[80vh] overflow-y-auto pointer-events-auto transition-opacity duration-200 nowheel">
         <div className="p-4">
           {/* Header */}
@@ -852,6 +854,13 @@ function LLMControls({ node }: { node: Node }) {
     [node.id, updateNodeData]
   );
 
+  const handleMaxTokensChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      updateNodeData(node.id, { maxTokens: parseInt(e.target.value, 10) });
+    },
+    [node.id, updateNodeData]
+  );
+
   const provider = nodeData.provider || "google";
   const availableModels = LLM_MODELS[provider] || LLM_MODELS.google;
 
@@ -894,6 +903,21 @@ function LLMControls({ node }: { node: Node }) {
           step="0.01"
           value={nodeData.temperature || 0.7}
           onChange={handleTemperatureChange}
+          className="nodrag nopan w-full h-1 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+        />
+      </div>
+
+      <div>
+        <label className="block text-xs font-medium text-neutral-300 mb-1">
+          Max Tokens: {(nodeData.maxTokens || 2048).toLocaleString()}
+        </label>
+        <input
+          type="range"
+          min="256"
+          max="16384"
+          step="256"
+          value={nodeData.maxTokens || 2048}
+          onChange={handleMaxTokensChange}
           className="nodrag nopan w-full h-1 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
         />
       </div>

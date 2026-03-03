@@ -352,13 +352,13 @@ export function WorkflowCanvas() {
   const getNodeTitle = useCallback((node: Node) => {
     // For generate nodes, check for selectedModel display name
     if (node.type === "nanoBanana" || node.type === "generateVideo" || node.type === "generate3d" || node.type === "generateAudio") {
-      const model = node.data?.selectedModel;
+      const model = (node.data as any)?.selectedModel;
       if (model?.displayName) return model.displayName;
     }
 
     // For LLM nodes, check for selectedLLMModel or selectedModel
     if (node.type === "llmGenerate") {
-      const model = node.data?.selectedLLMModel || node.data?.selectedModel;
+      const model = (node.data as any)?.selectedLLMModel || (node.data as any)?.selectedModel;
       if (model?.displayName) return model.displayName;
       if (model?.name) return model.name;
     }
@@ -368,7 +368,7 @@ export function WorkflowCanvas() {
 
   // Helper to get title prefix (provider badge for generate/LLM nodes)
   const getNodeTitlePrefix = useCallback((node: Node): React.ReactNode => {
-    const provider = node.data?.selectedModel?.provider;
+    const provider = (node.data as any)?.selectedModel?.provider;
     if (provider) {
       return <ProviderBadge provider={provider} />;
     }
@@ -400,9 +400,9 @@ export function WorkflowCanvas() {
       return () => {
         const node = getNodeById(nodeId);
         if (!node) return;
-        const imageToEdit = node.data?.outputImage || node.data?.image;
+        const imageToEdit = (node.data as any)?.outputImage || (node.data as any)?.image;
         if (!imageToEdit) return;
-        openAnnotationModal(nodeId, imageToEdit, node.data?.annotations);
+        openAnnotationModal(nodeId, imageToEdit, (node.data as any)?.annotations);
       };
     }
 
@@ -2058,7 +2058,7 @@ export function WorkflowCanvas() {
         <ViewportPortal>
           {allNodes.map((node) => {
             // Groups don't get floating headers
-            if (node.type === "group") return null;
+            if (node.type === "group" as any) return null;
 
             const defaultWidth = defaultNodeDimensions[node.type as NodeType]?.width ?? 250;
             const headerWidth = node.measured?.width || (node.style?.width as number) || defaultWidth;
@@ -2129,7 +2129,7 @@ export function WorkflowCanvas() {
         return createPortal(
           <PromptEditorModal
             isOpen={true}
-            initialPrompt={node.data?.prompt || ''}
+            initialPrompt={(node.data as any)?.prompt || ''}
             onSubmit={(prompt) => {
               updateNodeData(expandingNode.id, { prompt });
               setExpandingNode(null);
@@ -2146,7 +2146,7 @@ export function WorkflowCanvas() {
         return createPortal(
           <PromptEditorModal
             isOpen={true}
-            initialPrompt={node.data?.template || ''}
+            initialPrompt={(node.data as any)?.template || ''}
             onSubmit={(template) => {
               updateNodeData(expandingNode.id, { template });
               setExpandingNode(null);
@@ -2163,7 +2163,7 @@ export function WorkflowCanvas() {
         return (
           <SplitGridSettingsModal
             nodeId={expandingNode.id}
-            nodeData={node.data}
+            nodeData={node.data as any}
             onClose={() => setExpandingNode(null)}
           />
         );
