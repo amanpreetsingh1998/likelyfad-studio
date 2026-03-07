@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, useCallback, useEffect, useRef } from "react";
+import { ReactNode, useCallback } from "react";
 import { NodeResizer, OnResize, useReactFlow } from "@xyflow/react";
 import { useWorkflowStore } from "@/store/workflowStore";
 import { getMediaDimensions, calculateAspectFitSize } from "@/utils/nodeDimensions";
@@ -68,22 +68,13 @@ export function BaseNode({
   );
 
   // Double-click resize handle → aspect-fit to media
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!aspectFitMedia || !selected) return;
-
-    const el = containerRef.current;
-    if (!el) return;
-
-    // Attach to the stable .react-flow__node wrapper (not resize controls directly,
-    // which get recreated by React Flow on re-render after manual resize)
-    const nodeWrapper = el.closest(".react-flow__node");
-    if (!nodeWrapper) return;
-
-    const handler = async (e: Event) => {
+  // Uses React synthetic event on a `display: contents` wrapper so it stays
+  // in sync across React Flow re-renders (imperative DOM listeners break after manual resize).
+  const handleResizeHandleDblClick = useCallback(
+    async (e: React.MouseEvent) => {
       const target = e.target as HTMLElement;
       if (!target.closest(".react-flow__resize-control")) return;
+      if (!aspectFitMedia) return;
 
       e.stopPropagation();
       const dims = await getMediaDimensions(aspectFitMedia);
@@ -123,14 +114,12 @@ export function BaseNode({
           return n;
         })
       );
-    };
-
-    nodeWrapper.addEventListener("dblclick", handler);
-    return () => nodeWrapper.removeEventListener("dblclick", handler);
-  }, [aspectFitMedia, selected, id, fullBleed, getNodes, setNodes]);
+    },
+    [aspectFitMedia, id, fullBleed, getNodes, setNodes]
+  );
 
   return (
-    <>
+    <div className="contents" onDoubleClick={handleResizeHandleDblClick}>
       <NodeResizer
         isVisible={selected}
         minWidth={minWidth}
@@ -140,7 +129,6 @@ export function BaseNode({
         onResize={handleResize}
       />
       <div
-        ref={containerRef}
         className={`
           h-full w-full flex flex-col overflow-visible
           ${fullBleed ? "rounded-lg bg-neutral-800/50 border border-neutral-700/40" : "bg-neutral-800 rounded-lg shadow-lg border"}
@@ -155,6 +143,6 @@ export function BaseNode({
       >
         <div className={contentClassName ?? (fullBleed ? "flex-1 min-h-0 relative" : "px-3 pb-4 flex-1 min-h-0 overflow-hidden flex flex-col")}>{children}</div>
       </div>
-    </>
+    </div>
   );
 }
