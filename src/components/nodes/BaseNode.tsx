@@ -76,14 +76,15 @@ export function BaseNode({
     const el = containerRef.current;
     if (!el) return;
 
-    // Walk up to .react-flow__node wrapper
+    // Attach to the stable .react-flow__node wrapper (not resize controls directly,
+    // which get recreated by React Flow on re-render after manual resize)
     const nodeWrapper = el.closest(".react-flow__node");
     if (!nodeWrapper) return;
 
-    const handles = nodeWrapper.querySelectorAll(".react-flow__resize-control");
-    if (handles.length === 0) return;
-
     const handler = async (e: Event) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest(".react-flow__resize-control")) return;
+
       e.stopPropagation();
       const dims = await getMediaDimensions(aspectFitMedia);
       if (!dims) return;
@@ -124,10 +125,8 @@ export function BaseNode({
       );
     };
 
-    handles.forEach((h) => h.addEventListener("dblclick", handler));
-    return () => {
-      handles.forEach((h) => h.removeEventListener("dblclick", handler));
-    };
+    nodeWrapper.addEventListener("dblclick", handler);
+    return () => nodeWrapper.removeEventListener("dblclick", handler);
   }, [aspectFitMedia, selected, id, fullBleed, getNodes, setNodes]);
 
   return (
