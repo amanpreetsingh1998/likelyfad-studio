@@ -8,6 +8,7 @@ import { EnvStatusResponse } from "@/app/api/env-status/route";
 import { loadNodeDefaults, saveNodeDefaults } from "@/store/utils/localStorage";
 import { ProviderModel } from "@/lib/providers/types";
 import { ModelSearchDialog } from "@/components/modals/ModelSearchDialog";
+import { useInlineParameters } from "@/hooks/useInlineParameters";
 
 // LLM provider and model options (mirrored from LLMGenerateNode)
 const LLM_PROVIDERS: { value: LLMProvider; label: string }[] = [
@@ -139,6 +140,9 @@ export function ProjectSetupModal({
     canvasNavigationSettings,
     updateCanvasNavigationSettings,
   } = useWorkflowStore();
+
+  // Inline parameters hook
+  const { inlineParametersEnabled, setInlineParameters } = useInlineParameters();
 
   // Tab state
   const [activeTab, setActiveTab] = useState<"project" | "providers" | "nodeDefaults" | "canvas">("project");
@@ -474,6 +478,23 @@ export function ProjectSetupModal({
                   <span className="text-sm text-neutral-200">Embed images as base64</span>
                   <p className="text-xs text-neutral-500">
                     Embeds all images in workflow, larger workflow files. Can hit memory limits on very large workflows.
+                  </p>
+                </div>
+              </label>
+            </div>
+
+            <div className="pt-2 border-t border-neutral-700">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={inlineParametersEnabled}
+                  onChange={(e) => setInlineParameters(e.target.checked)}
+                  className="w-4 h-4 rounded border-neutral-600 bg-neutral-900 text-blue-500 focus:ring-blue-500 focus:ring-offset-neutral-800"
+                />
+                <div>
+                  <span className="text-sm text-neutral-200">Inline Parameters</span>
+                  <p className="text-xs text-neutral-500">
+                    Show model parameters inside generation nodes instead of the side panel
                   </p>
                 </div>
               </label>

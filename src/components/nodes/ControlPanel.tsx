@@ -14,6 +14,7 @@ import { evaluateRule } from "@/store/utils/ruleEvaluation";
 import { EASING_PRESETS, getPresetBezier, getEasingBezier } from "@/lib/easing-presets";
 import { getAllEasingNames, getEasingFunction } from "@/lib/easing-functions";
 import { getModelPageUrl, getProviderDisplayName } from "@/utils/providerUrls";
+import { useInlineParameters } from "@/hooks/useInlineParameters";
 
 // List of node types that have configurable parameters
 const CONFIGURABLE_NODE_TYPES: NodeType[] = [
@@ -24,6 +25,15 @@ const CONFIGURABLE_NODE_TYPES: NodeType[] = [
   "llmGenerate",
   "easeCurve",
   "conditionalSwitch",
+];
+
+// Generation node types that can use inline parameters
+const GENERATION_NODE_TYPES: NodeType[] = [
+  "nanoBanana",
+  "generateVideo",
+  "generate3d",
+  "generateAudio",
+  "llmGenerate",
 ];
 
 // Base 10 aspect ratios (all Gemini image models)
@@ -99,6 +109,7 @@ function generateEasingPolyline(
  */
 export function ControlPanel() {
   const nodes = useWorkflowStore((state) => state.nodes);
+  const { inlineParametersEnabled } = useInlineParameters();
 
   // Get the single selected node
   const selectedNode = useMemo(() => {
@@ -112,6 +123,15 @@ export function ControlPanel() {
 
   // If no single node selected or not configurable, hide panel
   if (!selectedNode || !isConfigurable) {
+    return null;
+  }
+
+  // Check if this is a generation node
+  const isGenerationNode = selectedNode &&
+    GENERATION_NODE_TYPES.includes(selectedNode.type as NodeType);
+
+  // Hide for generation nodes when inline parameters enabled
+  if (isGenerationNode && inlineParametersEnabled) {
     return null;
   }
 
