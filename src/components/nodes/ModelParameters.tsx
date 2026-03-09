@@ -228,9 +228,9 @@ function ParameterInput({ param, value, onChange }: ParameterInputProps) {
   if (param.enum && param.enum.length > 0) {
     // Enum: render as select
     return (
-      <div className="flex flex-col gap-0.5">
+      <div className="flex items-center gap-2">
         <label
-          className="text-[9px] text-neutral-400"
+          className="text-[11px] text-neutral-400 shrink-0"
           title={param.description || undefined}
         >
           {displayName}
@@ -251,7 +251,7 @@ function ParameterInput({ param, value, onChange }: ParameterInputProps) {
               onChange(val);
             }
           }}
-          className="nodrag nopan w-full text-[9px] py-0.5 px-1 border border-neutral-700 rounded bg-neutral-900/50 focus:outline-none focus:ring-1 focus:ring-neutral-600 text-neutral-300"
+          className="nodrag nopan flex-1 min-w-0 text-[11px] py-1 px-2 border border-neutral-700 rounded-md bg-neutral-800 focus:outline-none focus:ring-1 focus:ring-neutral-600 text-white"
         >
           <option value="">Default</option>
           {param.enum.map((opt) => (
@@ -271,14 +271,14 @@ function ParameterInput({ param, value, onChange }: ParameterInputProps) {
     // Boolean: render as checkbox
     return (
       <label
-        className="flex items-center gap-1.5 text-[9px] text-neutral-400 cursor-pointer"
+        className="flex items-center gap-1.5 text-[11px] text-neutral-300 cursor-pointer"
         title={param.description || undefined}
       >
         <input
           type="checkbox"
           checked={effectiveValue}
           onChange={(e) => onChange(e.target.checked)}
-          className="nodrag nopan w-2.5 h-2.5 rounded border-neutral-700 bg-neutral-900/50 text-neutral-600 focus:ring-1 focus:ring-neutral-600 focus:ring-offset-0"
+          className="nodrag nopan w-3 h-3 rounded border-neutral-700 bg-neutral-800 text-neutral-600 focus:ring-1 focus:ring-neutral-600 focus:ring-offset-0"
         />
         <span>{displayName}</span>
       </label>
@@ -304,45 +304,47 @@ function ParameterInput({ param, value, onChange }: ParameterInputProps) {
 
     return (
       <div className="flex flex-col gap-0.5">
-        <label
-          className="text-[9px] text-neutral-400 flex items-center gap-1"
-          title={param.description || undefined}
-        >
-          {displayName}
-          {hasMin && hasMax && (
-            <span className="text-neutral-500">
-              ({param.minimum}-{param.maximum})
-            </span>
-          )}
-        </label>
-        <input
-          type="number"
-          value={localValue}
-          min={param.minimum}
-          max={param.maximum}
-          step={param.type === "integer" ? 1 : 0.1}
-          onFocus={() => { isFocusedRef.current = true; }}
-          onChange={(e) => {
-            setLocalValue(e.target.value);
-          }}
-          onBlur={() => {
-            isFocusedRef.current = false;
-            if (localValue === "") {
-              onChange(undefined);
-            } else {
-              const num = param.type === "integer" ? parseInt(localValue, 10) : parseFloat(localValue);
-              onChange(isNaN(num) ? undefined : num);
-            }
-          }}
-          placeholder={param.default !== undefined ? `Default: ${param.default}` : undefined}
-          className={`nodrag nopan w-full text-[9px] py-0.5 px-1 border rounded bg-neutral-900/50 focus:outline-none focus:ring-1 text-neutral-300 placeholder:text-neutral-600 ${
-            validationError
-              ? "border-red-500 focus:ring-red-500"
-              : "border-neutral-700 focus:ring-neutral-600"
-          }`}
-        />
+        <div className="flex items-center gap-2">
+          <label
+            className="text-[11px] text-neutral-400 shrink-0 flex items-center gap-1"
+            title={param.description || undefined}
+          >
+            {displayName}
+            {hasMin && hasMax && (
+              <span className="text-neutral-500 text-[9px]">
+                ({param.minimum}-{param.maximum})
+              </span>
+            )}
+          </label>
+          <input
+            type="number"
+            value={localValue}
+            min={param.minimum}
+            max={param.maximum}
+            step={param.type === "integer" ? 1 : 0.1}
+            onFocus={() => { isFocusedRef.current = true; }}
+            onChange={(e) => {
+              setLocalValue(e.target.value);
+            }}
+            onBlur={() => {
+              isFocusedRef.current = false;
+              if (localValue === "") {
+                onChange(undefined);
+              } else {
+                const num = param.type === "integer" ? parseInt(localValue, 10) : parseFloat(localValue);
+                onChange(isNaN(num) ? undefined : num);
+              }
+            }}
+            placeholder={param.default !== undefined ? `${param.default}` : undefined}
+            className={`nodrag nopan flex-1 min-w-0 text-[11px] py-1 px-2 border rounded-md bg-neutral-800 focus:outline-none focus:ring-1 text-white placeholder:text-neutral-500 ${
+              validationError
+                ? "border-red-500 focus:ring-red-500"
+                : "border-neutral-700 focus:ring-neutral-600"
+            }`}
+          />
+        </div>
         {validationError && (
-          <span className="text-[8px] text-red-400">{validationError}</span>
+          <span className="text-[9px] text-red-400">{validationError}</span>
         )}
       </div>
     );
@@ -355,9 +357,9 @@ function ParameterInput({ param, value, onChange }: ParameterInputProps) {
 
   // Default: string input — uses local state, syncs to store on blur
   return (
-    <div className="flex flex-col gap-0.5">
+    <div className="flex items-center gap-2">
       <label
-        className="text-[9px] text-neutral-400"
+        className="text-[11px] text-neutral-400 shrink-0"
         title={param.description || undefined}
       >
         {displayName}
@@ -373,8 +375,8 @@ function ParameterInput({ param, value, onChange }: ParameterInputProps) {
           isFocusedRef.current = false;
           onChange(localValue || undefined);
         }}
-        placeholder={param.default !== undefined ? `Default: ${param.default}` : undefined}
-        className="nodrag nopan w-full text-[9px] py-0.5 px-1 border border-neutral-700 rounded bg-neutral-900/50 focus:outline-none focus:ring-1 focus:ring-neutral-600 text-neutral-300 placeholder:text-neutral-600"
+        placeholder={param.default !== undefined ? `${param.default}` : undefined}
+        className="nodrag nopan flex-1 min-w-0 text-[11px] py-1 px-2 border border-neutral-700 rounded-md bg-neutral-800 focus:outline-none focus:ring-1 focus:ring-neutral-600 text-white placeholder:text-neutral-500"
       />
     </div>
   );

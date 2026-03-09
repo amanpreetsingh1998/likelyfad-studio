@@ -20,12 +20,12 @@ export function InlineParameterPanel({
   nodeId,
 }: InlineParameterPanelProps) {
   return (
-    <div className="w-full">
-      {/* Chevron toggle button - acts as visual boundary */}
+    <div className="w-full bg-[#1a1a1a]">
+      {/* Chevron toggle button */}
       <button
         type="button"
         onClick={onToggle}
-        className="nodrag nopan w-full flex items-center justify-center py-1.5 bg-neutral-800/80 text-neutral-400 hover:text-neutral-200 transition-colors"
+        className="nodrag nopan w-full flex items-center justify-center py-1 text-neutral-500 hover:text-neutral-300 transition-colors"
         aria-label={expanded ? "Collapse parameters" : "Expand parameters"}
         aria-expanded={expanded}
         aria-controls={`params-${nodeId}`}
@@ -53,8 +53,8 @@ export function InlineParameterPanel({
           opacity: expanded ? 1 : 0,
         }}
       >
-        <div className="nodrag nopan nowheel bg-neutral-900 px-3 pt-2 pb-3 rounded-b-lg">
-          <div className="space-y-2 max-w-[280px] mx-auto">{children}</div>
+        <div className="nodrag nopan nowheel px-3 pb-3 rounded-b-lg">
+          <div className="space-y-1.5 max-w-[280px] mx-auto">{children}</div>
         </div>
       </div>
     </div>

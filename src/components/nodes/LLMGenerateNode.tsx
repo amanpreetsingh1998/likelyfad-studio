@@ -244,15 +244,15 @@ export function LLMGenerateNode({ id, data, selected }: NodeProps<LLMGenerateNod
           onToggle={handleToggleParams}
           nodeId={id}
         >
-          {/* LLM-specific controls with compact styling */}
+          {/* LLM-specific controls */}
           <div className="space-y-1.5">
             {/* Provider */}
-            <div className="flex flex-col gap-0.5">
-              <label className="text-[9px] text-neutral-400 uppercase tracking-wide">Provider</label>
+            <div className="flex items-center gap-2">
+              <label className="text-[11px] text-neutral-400 shrink-0">Provider</label>
               <select
                 value={provider}
                 onChange={handleProviderChange}
-                className="nodrag nopan w-full text-[9px] py-0.5 px-1 bg-neutral-900/50 border border-neutral-700 rounded focus:outline-none focus:ring-1 focus:ring-neutral-600 text-neutral-300"
+                className="nodrag nopan flex-1 min-w-0 text-[11px] py-1 px-2 bg-neutral-800 border border-neutral-700 rounded-md focus:outline-none focus:ring-1 focus:ring-neutral-600 text-white"
               >
                 {LLM_PROVIDERS.map(p => (
                   <option key={p.value} value={p.value}>{p.label}</option>
@@ -261,12 +261,12 @@ export function LLMGenerateNode({ id, data, selected }: NodeProps<LLMGenerateNod
             </div>
 
             {/* Model */}
-            <div className="flex flex-col gap-0.5">
-              <label className="text-[9px] text-neutral-400 uppercase tracking-wide">Model</label>
+            <div className="flex items-center gap-2">
+              <label className="text-[11px] text-neutral-400 shrink-0">Model</label>
               <select
                 value={nodeData.model || availableModels[0].value}
                 onChange={handleModelChange}
-                className="nodrag nopan w-full text-[9px] py-0.5 px-1 bg-neutral-900/50 border border-neutral-700 rounded focus:outline-none focus:ring-1 focus:ring-neutral-600 text-neutral-300"
+                className="nodrag nopan flex-1 min-w-0 text-[11px] py-1 px-2 bg-neutral-800 border border-neutral-700 rounded-md focus:outline-none focus:ring-1 focus:ring-neutral-600 text-white"
               >
                 {availableModels.map(m => (
                   <option key={m.value} value={m.value}>{m.label}</option>
@@ -276,7 +276,7 @@ export function LLMGenerateNode({ id, data, selected }: NodeProps<LLMGenerateNod
 
             {/* Temperature */}
             <div className="flex flex-col gap-0.5">
-              <label className="text-[9px] text-neutral-400 uppercase tracking-wide">
+              <label className="text-[11px] text-neutral-400">
                 Temperature: {(nodeData.temperature ?? 0.7).toFixed(2)}
               </label>
               <input
@@ -292,7 +292,7 @@ export function LLMGenerateNode({ id, data, selected }: NodeProps<LLMGenerateNod
 
             {/* Max Tokens */}
             <div className="flex flex-col gap-0.5">
-              <label className="text-[9px] text-neutral-400 uppercase tracking-wide">
+              <label className="text-[11px] text-neutral-400">
                 Max Tokens: {(nodeData.maxTokens || 2048).toLocaleString()}
               </label>
               <input
