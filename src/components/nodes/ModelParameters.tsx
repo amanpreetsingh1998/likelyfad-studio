@@ -40,6 +40,20 @@ function setCachedSchema(modelId: string, provider: string, parameters: ModelPar
   }
 }
 
+/** Reorder items so they read column-first in a row-based CSS grid.
+ *  e.g. [1,2,3,4,5,6,7,8] with 2 cols → [1,5,2,6,3,7,4,8] */
+function reorderColumnFirst<T>(items: T[], cols: number): T[] {
+  const rows = Math.ceil(items.length / cols);
+  const result: T[] = [];
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const idx = c * rows + r;
+      if (idx < items.length) result.push(items[idx]);
+    }
+  }
+  return result;
+}
+
 interface ModelParametersProps {
   modelId: string;
   provider: ProviderType;
@@ -162,6 +176,31 @@ export function ModelParameters({
     [parameters, onParametersChange]
   );
 
+  const sortedSchema = [...schema].sort((a, b) => {
+    // Sort order: dropdowns first, then numbers, then strings, then checkboxes last
+    const typeOrder = (p: ModelParameter) => {
+      if (p.enum && p.enum.length > 0) return 0; // dropdowns first
+      if (p.type === "number" || p.type === "integer") return 1;
+      if (p.type === "boolean") return 3; // checkboxes last
+      return 2; // string and other
+    };
+    return typeOrder(a) - typeOrder(b);
+  });
+  const useGrid = sortedSchema.length > 4;
+  const gridRef = useRef<HTMLDivElement>(null);
+  const [colCount, setColCount] = useState(1);
+
+  useEffect(() => {
+    const el = gridRef.current;
+    if (!el || !useGrid) { setColCount(1); return; }
+    const observer = new ResizeObserver(() => {
+      const cols = getComputedStyle(el).gridTemplateColumns.split(" ").length;
+      setColCount(cols);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [useGrid]);
+
   // Don't render anything for Gemini or if no model selected
   if (provider === "gemini" || !modelId) {
     return null;
@@ -172,8 +211,12 @@ export function ModelParameters({
     return null;
   }
 
+  const displaySchema = useGrid && colCount > 1
+    ? reorderColumnFirst(sortedSchema, colCount)
+    : sortedSchema;
+
   return (
-    <div className="shrink-0 space-y-1.5">
+    <div className="shrink-0">
       {error ? (
         <span className="text-[9px] text-red-400">{error}</span>
       ) : isLoading ? (
@@ -181,14 +224,22 @@ export function ModelParameters({
       ) : schema.length === 0 ? (
         <span className="text-[9px] text-neutral-500">No parameters available</span>
       ) : (
-        schema.map((param) => (
-          <ParameterInput
-            key={param.name}
-            param={param}
-            value={parameters[param.name]}
-            onChange={(value) => handleParameterChange(param.name, value)}
-          />
-        ))
+        <div
+          ref={gridRef}
+          className={useGrid
+            ? "grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] max-w-[640px] mx-auto gap-x-6 gap-y-1.5"
+            : "space-y-1.5 max-w-[280px]"
+          }
+        >
+          {displaySchema.map((param) => (
+            <ParameterInput
+              key={param.name}
+              param={param}
+              value={parameters[param.name]}
+              onChange={(value) => handleParameterChange(param.name, value)}
+            />
+          ))}
+        </div>
       )}
     </div>
   );

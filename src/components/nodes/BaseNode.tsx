@@ -180,7 +180,7 @@ export function BaseNode({
   return (
     <div
       className={hasExpandedSettings
-        ? `relative flex flex-col w-full h-full overflow-visible ${selected ? "ring-2 ring-blue-500/40 shadow-lg shadow-blue-500/25 rounded-lg" : ""}`
+        ? `relative flex flex-col w-full h-full overflow-visible bg-[#2a2a2a] rounded-lg ${selected ? "ring-2 ring-blue-500/40 shadow-lg shadow-blue-500/25" : ""}`
         : "contents"}
       onDoubleClick={handleResizeHandleDblClick}
     >

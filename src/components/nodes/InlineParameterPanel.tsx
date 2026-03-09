@@ -49,7 +49,7 @@ export function InlineParameterPanel({
       {expanded && (
         <div
           id={`params-${nodeId}`}
-          className="nodrag nopan nowheel bg-[#2a2a2a] px-3 pt-2 pb-3 rounded-b-lg"
+          className="nodrag nopan nowheel bg-[#2a2a2a] px-3 pt-2 pb-3 rounded-b-lg overflow-hidden"
         >
           {children}
         </div>
