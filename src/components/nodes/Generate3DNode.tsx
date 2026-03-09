@@ -430,7 +430,6 @@ export function Generate3DNode({ id, data, selected }: NodeProps<Generate3DNodeT
             expanded={isParamsExpanded}
             onToggle={handleToggleParams}
             nodeId={id}
-            selected={selected}
           >
             {/* Model selector: Browse button + current model display */}
             <div className="flex items-center justify-between gap-2">

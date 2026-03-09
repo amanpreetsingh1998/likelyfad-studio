@@ -390,7 +390,6 @@ export function GenerateAudioNode({ id, data, selected }: NodeProps<GenerateAudi
             expanded={isParamsExpanded}
             onToggle={handleToggleParams}
             nodeId={id}
-            selected={selected}
           >
             {/* Model selector: Browse button + current model display */}
             <div className="flex items-center justify-between gap-2">

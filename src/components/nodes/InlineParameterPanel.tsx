@@ -7,7 +7,6 @@ interface InlineParameterPanelProps {
   onToggle: () => void;
   children: ReactNode;
   nodeId: string;
-  selected?: boolean;
 }
 
 /**
@@ -19,10 +18,9 @@ export function InlineParameterPanel({
   onToggle,
   children,
   nodeId,
-  selected = false,
 }: InlineParameterPanelProps) {
   return (
-    <div className={`w-full ${expanded && selected ? "ring-2 ring-blue-500/40 rounded-b-lg" : ""}`}>
+    <div className="w-full">
       {/* Settings toggle button — no background when collapsed, floats below node edge */}
       <button
         type="button"

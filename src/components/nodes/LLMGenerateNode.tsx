@@ -243,7 +243,6 @@ export function LLMGenerateNode({ id, data, selected }: NodeProps<LLMGenerateNod
           expanded={isParamsExpanded}
           onToggle={handleToggleParams}
           nodeId={id}
-          selected={selected}
         >
           {/* LLM-specific controls */}
           <div className="space-y-1.5">
