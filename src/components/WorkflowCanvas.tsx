@@ -19,6 +19,7 @@ import {
 import "@xyflow/react/dist/style.css";
 
 import { useWorkflowStore, WorkflowFile } from "@/store/workflowStore";
+import { useShallow } from "zustand/shallow";
 import { useToast } from "@/components/Toast";
 import dynamic from "next/dynamic";
 import {
@@ -264,8 +265,35 @@ const findScrollableAncestor = (target: HTMLElement, deltaX: number, deltaY: num
 };
 
 export function WorkflowCanvas() {
-  const { nodes, edges, groups, onNodesChange, onEdgesChange, onConnect, addNode, updateNodeData, loadWorkflow, getNodeById, addToGlobalHistory, setNodeGroupId, executeWorkflow, isModalOpen, showQuickstart, setShowQuickstart, navigationTarget, setNavigationTarget, captureSnapshot, applyEditOperations, setWorkflowMetadata, canvasNavigationSettings, setShortcutsDialogOpen, dimmedNodeIds, regenerateNode, clearWorkflow } =
-    useWorkflowStore();
+  const { nodes, edges, groups, isModalOpen, showQuickstart, navigationTarget, canvasNavigationSettings, dimmedNodeIds } =
+    useWorkflowStore(useShallow((state) => ({
+      nodes: state.nodes,
+      edges: state.edges,
+      groups: state.groups,
+      isModalOpen: state.isModalOpen,
+      showQuickstart: state.showQuickstart,
+      navigationTarget: state.navigationTarget,
+      canvasNavigationSettings: state.canvasNavigationSettings,
+      dimmedNodeIds: state.dimmedNodeIds,
+    })));
+  const onNodesChange = useWorkflowStore((state) => state.onNodesChange);
+  const onEdgesChange = useWorkflowStore((state) => state.onEdgesChange);
+  const onConnect = useWorkflowStore((state) => state.onConnect);
+  const addNode = useWorkflowStore((state) => state.addNode);
+  const updateNodeData = useWorkflowStore((state) => state.updateNodeData);
+  const loadWorkflow = useWorkflowStore((state) => state.loadWorkflow);
+  const getNodeById = useWorkflowStore((state) => state.getNodeById);
+  const addToGlobalHistory = useWorkflowStore((state) => state.addToGlobalHistory);
+  const setNodeGroupId = useWorkflowStore((state) => state.setNodeGroupId);
+  const executeWorkflow = useWorkflowStore((state) => state.executeWorkflow);
+  const setShowQuickstart = useWorkflowStore((state) => state.setShowQuickstart);
+  const setNavigationTarget = useWorkflowStore((state) => state.setNavigationTarget);
+  const captureSnapshot = useWorkflowStore((state) => state.captureSnapshot);
+  const applyEditOperations = useWorkflowStore((state) => state.applyEditOperations);
+  const setWorkflowMetadata = useWorkflowStore((state) => state.setWorkflowMetadata);
+  const setShortcutsDialogOpen = useWorkflowStore((state) => state.setShortcutsDialogOpen);
+  const regenerateNode = useWorkflowStore((state) => state.regenerateNode);
+  const clearWorkflow = useWorkflowStore((state) => state.clearWorkflow);
   const openAnnotationModal = useAnnotationStore((state) => state.openModal);
   const { screenToFlowPosition, getViewport, zoomIn, zoomOut, setViewport, setCenter } = useReactFlow();
   const { show: showToast } = useToast();
