@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { ProviderType, ModelInputDef } from "@/types";
 import { ModelParameter } from "@/lib/providers/types";
 import { useProviderApiKeys } from "@/store/workflowStore";
@@ -68,7 +68,7 @@ interface ModelParametersProps {
  * Fetches schema from /api/models/{modelId}?provider={provider}
  * and renders appropriate inputs based on parameter types.
  */
-export function ModelParameters({
+function ModelParametersInner({
   modelId,
   provider,
   parameters,
@@ -176,16 +176,19 @@ export function ModelParameters({
     [parameters, onParametersChange]
   );
 
-  const sortedSchema = [...schema].sort((a, b) => {
-    // Sort order: dropdowns first, then numbers, then strings, then checkboxes last
-    const typeOrder = (p: ModelParameter) => {
-      if (p.enum && p.enum.length > 0) return 0; // dropdowns first
-      if (p.type === "number" || p.type === "integer") return 1;
-      if (p.type === "boolean") return 3; // checkboxes last
-      return 2; // string and other
-    };
-    return typeOrder(a) - typeOrder(b);
-  });
+  const sortedSchema = useMemo(() => {
+    return [...schema].sort((a, b) => {
+      // Sort order: dropdowns first, then numbers, then strings, then checkboxes last
+      const typeOrder = (p: ModelParameter) => {
+        if (p.enum && p.enum.length > 0) return 0; // dropdowns first
+        if (p.type === "number" || p.type === "integer") return 1;
+        if (p.type === "boolean") return 3; // checkboxes last
+        return 2; // string and other
+      };
+      return typeOrder(a) - typeOrder(b);
+    });
+  }, [schema]);
+
   const useGrid = sortedSchema.length > 4;
   const gridRef = useRef<HTMLDivElement>(null);
   const [colCount, setColCount] = useState(1);
@@ -193,12 +196,19 @@ export function ModelParameters({
   useEffect(() => {
     const el = gridRef.current;
     if (!el || !useGrid) { setColCount(1); return; }
+    let rafId: number;
     const observer = new ResizeObserver(() => {
-      const cols = getComputedStyle(el).gridTemplateColumns.split(" ").length;
-      setColCount(cols);
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        const cols = getComputedStyle(el).gridTemplateColumns.split(" ").length;
+        setColCount(prev => prev === cols ? prev : cols);
+      });
     });
     observer.observe(el);
-    return () => observer.disconnect();
+    return () => {
+      cancelAnimationFrame(rafId);
+      observer.disconnect();
+    };
   }, [useGrid]);
 
   // Don't render anything for Gemini or if no model selected
@@ -211,9 +221,11 @@ export function ModelParameters({
     return null;
   }
 
-  const displaySchema = useGrid && colCount > 1
-    ? reorderColumnFirst(sortedSchema, colCount)
-    : sortedSchema;
+  const displaySchema = useMemo(() => {
+    return useGrid && colCount > 1
+      ? reorderColumnFirst(sortedSchema, colCount)
+      : sortedSchema;
+  }, [sortedSchema, useGrid, colCount]);
 
   return (
     <div className="shrink-0">
@@ -235,8 +247,9 @@ export function ModelParameters({
             <ParameterInput
               key={param.name}
               param={param}
+              name={param.name}
               value={parameters[param.name]}
-              onChange={(value) => handleParameterChange(param.name, value)}
+              onChange={handleParameterChange}
             />
           ))}
         </div>
@@ -247,8 +260,9 @@ export function ModelParameters({
 
 interface ParameterInputProps {
   param: ModelParameter;
+  name: string;
   value: unknown;
-  onChange: (value: unknown) => void;
+  onChange: (name: string, value: unknown) => void;
 }
 
 /**
@@ -256,7 +270,11 @@ interface ParameterInputProps {
  * Text and number inputs use local state during editing to prevent
  * cursor-jump issues caused by React Flow re-renders on store updates.
  */
-function ParameterInput({ param, value, onChange }: ParameterInputProps) {
+function ParameterInputInner({ param, name, value, onChange }: ParameterInputProps) {
+  // Stable callback that passes name along with value
+  const handleChange = useCallback((value: unknown) => {
+    onChange(name, value);
+  }, [name, onChange]);
   const displayName = param.name
     .replace(/_/g, " ")
     .replace(/\b\w/g, (c) => c.toUpperCase());
@@ -291,15 +309,15 @@ function ParameterInput({ param, value, onChange }: ParameterInputProps) {
           onChange={(e) => {
             const val = e.target.value;
             if (val === "") {
-              onChange(undefined);
+              handleChange(undefined);
             } else if (param.type === "integer") {
-              onChange(parseInt(val, 10));
+              handleChange(parseInt(val, 10));
             } else if (param.type === "number") {
-              onChange(parseFloat(val));
+              handleChange(parseFloat(val));
             } else if (param.type === "boolean") {
-              onChange(val === "true");
+              handleChange(val === "true");
             } else {
-              onChange(val);
+              handleChange(val);
             }
           }}
           className="nodrag nopan flex-1 min-w-0 text-[11px] py-1 px-2 rounded-md bg-[#1a1a1a] focus:outline-none focus:ring-1 focus:ring-neutral-600 text-white"
@@ -328,7 +346,7 @@ function ParameterInput({ param, value, onChange }: ParameterInputProps) {
         <input
           type="checkbox"
           checked={effectiveValue}
-          onChange={(e) => onChange(e.target.checked)}
+          onChange={(e) => handleChange(e.target.checked)}
           className="nodrag nopan w-3 h-3 rounded bg-[#1a1a1a] text-neutral-600 focus:ring-1 focus:ring-neutral-600 focus:ring-offset-0"
         />
         <span>{displayName}</span>
@@ -380,10 +398,10 @@ function ParameterInput({ param, value, onChange }: ParameterInputProps) {
             onBlur={() => {
               isFocusedRef.current = false;
               if (localValue === "") {
-                onChange(undefined);
+                handleChange(undefined);
               } else {
                 const num = param.type === "integer" ? parseInt(localValue, 10) : parseFloat(localValue);
-                onChange(isNaN(num) ? undefined : num);
+                handleChange(isNaN(num) ? undefined : num);
               }
             }}
             placeholder={param.default !== undefined ? `${param.default}` : undefined}
@@ -424,7 +442,7 @@ function ParameterInput({ param, value, onChange }: ParameterInputProps) {
         }}
         onBlur={() => {
           isFocusedRef.current = false;
-          onChange(localValue || undefined);
+          handleChange(localValue || undefined);
         }}
         placeholder={param.default !== undefined ? `${param.default}` : undefined}
         className="nodrag nopan flex-1 min-w-0 text-[11px] py-1 px-2 rounded-md bg-[#1a1a1a] focus:outline-none focus:ring-1 focus:ring-neutral-600 text-white placeholder:text-neutral-500"
@@ -432,3 +450,7 @@ function ParameterInput({ param, value, onChange }: ParameterInputProps) {
     </div>
   );
 }
+
+// Memoized exports to prevent unnecessary re-renders
+export const ModelParameters = React.memo(ModelParametersInner);
+const ParameterInput = React.memo(ParameterInputInner);
