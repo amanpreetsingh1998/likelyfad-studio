@@ -108,15 +108,11 @@ function generateEasingPolyline(
  * Displays controls for the currently selected node
  */
 export function ControlPanel() {
-  const nodes = useWorkflowStore((state) => state.nodes);
+  const selectedNode = useWorkflowStore((state) => {
+    const selected = state.nodes.filter((n) => n.selected);
+    return selected.length === 1 ? selected[0] : null;
+  });
   const { inlineParametersEnabled } = useInlineParameters();
-
-  // Get the single selected node
-  const selectedNode = useMemo(() => {
-    const selected = nodes.filter((n) => n.selected);
-    if (selected.length !== 1) return null;
-    return selected[0];
-  }, [nodes]);
 
   // Check if the selected node is configurable
   const isConfigurable = selectedNode && CONFIGURABLE_NODE_TYPES.includes(selectedNode.type as NodeType);
