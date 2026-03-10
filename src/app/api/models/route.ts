@@ -955,7 +955,8 @@ export async function GET(
   const wavespeedKey = request.headers.get("X-WaveSpeed-Key") || process.env.WAVESPEED_API_KEY || null;
 
   // Build list of all available providers (have keys from env or client headers)
-  const availableProviders: string[] = ["gemini", "fal"]; // Always available
+  const availableProviders: string[] = ["gemini"]; // Gemini always available
+  if (falKey) availableProviders.push("fal");
   if (replicateKey) availableProviders.push("replicate");
   if (kieKey) availableProviders.push("kie");
   if (wavespeedKey) availableProviders.push("wavespeed");
