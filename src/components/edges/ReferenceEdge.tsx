@@ -22,8 +22,6 @@ export function ReferenceEdge({
   source,
   target,
 }: EdgeProps) {
-  const edgeStyle = useWorkflowStore((state) => state.edgeStyle);
-
   // Narrow selector: returns boolean, only re-renders when selection relevance changes
   const isConnectedToSelection = useWorkflowStore((state) => {
     const selected = state.nodes.filter((n) => n.selected);
