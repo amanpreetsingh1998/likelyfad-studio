@@ -95,7 +95,7 @@ export { CONCURRENCY_SETTINGS_KEY } from "./utils/executionUtils";
 async function evaluateAndExecuteConditionalSwitch(
   node: WorkflowNode,
   executionCtx: NodeExecutionContext,
-  getConnectedInputs: (nodeId: string) => { text: string | null; images: string[]; videos: string[]; audio: string[]; model3d: string | null; dynamicInputs: Record<string, string | string[]>; easeCurve: { bezierHandles: [number, number, number, number]; easingPreset: string | null } | null },
+  getConnectedInputs: (nodeId: string) => { text: string | null; images: string[]; videos: string[]; audio: string[]; model3d: string | null; dynamicInputs: Record<string, string | string[]>; easeCurve: { bezierHandles: [number, number, number, number]; easingPreset: string | null; outputDuration: number } | null },
   updateNodeData: (nodeId: string, data: Partial<WorkflowNodeData>) => void,
 ): Promise<void> {
   const condInputs = getConnectedInputs(node.id);
@@ -269,7 +269,7 @@ interface WorkflowStore {
 
   // Helpers
   getNodeById: (id: string) => WorkflowNode | undefined;
-  getConnectedInputs: (nodeId: string) => { images: string[]; videos: string[]; audio: string[]; model3d: string | null; text: string | null; dynamicInputs: Record<string, string | string[]>; easeCurve: { bezierHandles: [number, number, number, number]; easingPreset: string | null } | null };
+  getConnectedInputs: (nodeId: string) => { images: string[]; videos: string[]; audio: string[]; model3d: string | null; text: string | null; dynamicInputs: Record<string, string | string[]>; easeCurve: { bezierHandles: [number, number, number, number]; easingPreset: string | null; outputDuration: number } | null };
   validateWorkflow: () => { valid: boolean; errors: string[] };
 
   // Global Image History
