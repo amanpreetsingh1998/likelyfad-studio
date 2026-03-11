@@ -122,7 +122,7 @@ export function SplitGridNode({ id, data, selected }: NodeProps<SplitGridNodeTyp
         )}
 
         {/* Controls overlay pinned at bottom */}
-        <div className="absolute bottom-0 left-0 right-0 z-10 px-3 py-2 bg-neutral-900/80 backdrop-blur-sm rounded-b-lg space-y-1">
+        <div className="absolute bottom-0 left-0 right-0 z-10 px-3 py-2 bg-neutral-900/90 rounded-b-lg space-y-1">
           {/* Config summary */}
           <div className="flex items-center justify-between text-[10px] text-neutral-400">
             <span>{nodeData.gridRows}x{nodeData.gridCols} grid ({nodeData.targetCount} images)</span>

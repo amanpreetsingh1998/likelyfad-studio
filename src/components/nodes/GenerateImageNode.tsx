@@ -767,7 +767,7 @@ export function GenerateImageNode({ id, data, selected }: NodeProps<NanoBananaNo
 
             {/* Carousel controls - overlaid on image bottom */}
             {hasCarouselImages && (
-              <div className="absolute bottom-0 left-0 right-0 flex items-center justify-center gap-2 py-1.5 bg-neutral-900/60 backdrop-blur-sm">
+              <div className="absolute bottom-0 left-0 right-0 flex items-center justify-center gap-2 py-1.5 bg-neutral-900/80">
                 <button
                   onClick={handleCarouselPrevious}
                   disabled={isLoadingCarouselImage}
