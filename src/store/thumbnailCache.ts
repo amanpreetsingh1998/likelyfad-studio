@@ -8,9 +8,11 @@ const cache = new Map<string, string>();
 const pending = new Map<string, Promise<string>>();
 
 function cacheKey(src: string): string {
-  // Use a slice of the data URL that's unique enough to identify the image.
-  // Skip the "data:image/...;base64," prefix (~30 chars) and take the next 120 chars.
-  return src.slice(0, 200);
+  // Sample from multiple positions + length to create a collision-resistant key
+  // without hashing the entire multi-MB string.
+  const len = src.length;
+  const mid = len >>> 1;
+  return `${len}:${src.slice(30, 90)}:${src.slice(mid, mid + 60)}:${src.slice(-60)}`;
 }
 
 export function getThumbnail(src: string): string | undefined {
