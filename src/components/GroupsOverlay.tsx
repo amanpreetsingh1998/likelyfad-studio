@@ -339,11 +339,11 @@ function GroupControls({ groupId, zoom }: GroupControlsProps) {
                 <div className="relative flex items-center" ref={colorPickerRef}>
                   <button
                     onClick={(e) => { e.stopPropagation(); setShowColorPicker(!showColorPicker); }}
-                    className="w-5 h-5 rounded-md flex items-center justify-center hover:bg-white/20 transition-colors"
+                    className="w-6 h-6 rounded-md flex items-center justify-center hover:bg-white/20 transition-colors"
                     title="Change color"
                   >
                     <div
-                      className="w-3 h-3 rounded border border-white/30 hover:border-white/60 transition-colors"
+                      className="w-3.5 h-3.5 rounded border border-white/30 hover:border-white/60 transition-colors"
                       style={{ backgroundColor: bgColor }}
                     />
                   </button>
@@ -411,15 +411,15 @@ function GroupControls({ groupId, zoom }: GroupControlsProps) {
                 {/* Lock/Unlock Button */}
                 <button
                   onClick={(e) => { e.stopPropagation(); handleToggleLock(); }}
-                  className="w-5 h-5 rounded-md flex items-center justify-center hover:bg-white/20 text-white/70 hover:text-white transition-colors"
+                  className="w-6 h-6 rounded-md flex items-center justify-center hover:bg-white/20 text-white/70 hover:text-white transition-colors"
                   title={group.locked ? "Unlock group" : "Lock group"}
                 >
                   {group.locked ? (
-                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                     </svg>
                   ) : (
-                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
                     </svg>
                   )}
@@ -428,10 +428,10 @@ function GroupControls({ groupId, zoom }: GroupControlsProps) {
                 {/* Delete Button */}
                 <button
                   onClick={(e) => { e.stopPropagation(); handleDelete(); }}
-                  className="w-5 h-5 rounded-md flex items-center justify-center hover:bg-white/20 text-white/70 hover:text-white transition-colors"
+                  className="w-6 h-6 rounded-md flex items-center justify-center hover:bg-white/20 text-white/70 hover:text-white transition-colors"
                   title="Delete group"
                 >
-                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
@@ -441,12 +441,12 @@ function GroupControls({ groupId, zoom }: GroupControlsProps) {
             {/* Three-dot menu toggle */}
             <button
               onClick={(e) => { e.stopPropagation(); setShowMenu(!showMenu); if (showMenu) setShowColorPicker(false); }}
-              className="w-5 h-5 rounded-md flex flex-col items-center justify-center gap-[2px] hover:bg-white/20 transition-colors"
+              className="w-6 h-6 rounded-md flex flex-col items-center justify-center gap-[2px] hover:bg-white/20 transition-colors"
               title="Group options"
             >
-              <div className="w-[3px] h-[3px] rounded-full bg-white/70" />
-              <div className="w-[3px] h-[3px] rounded-full bg-white/70" />
-              <div className="w-[3px] h-[3px] rounded-full bg-white/70" />
+              <div className="w-1 h-1 rounded-full bg-white/70" />
+              <div className="w-1 h-1 rounded-full bg-white/70" />
+              <div className="w-1 h-1 rounded-full bg-white/70" />
             </button>
           </div>
         </div>
