@@ -369,7 +369,7 @@ function GroupControls({ groupId, zoom }: GroupControlsProps) {
                           {COLOR_OPTIONS.map(({ color, label }, index) => {
                             const totalItems = COLOR_OPTIONS.length;
                             const arcSpread = 150;
-                            const startAngle = -110 - arcSpread / 2;
+                            const startAngle = -130 - arcSpread / 2;
                             const angleStep = arcSpread / (totalItems - 1);
                             const angle = startAngle + index * angleStep;
                             const radius = 55;
