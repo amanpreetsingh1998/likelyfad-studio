@@ -46,7 +46,7 @@ function GroupBackground({ groupId }: GroupBackgroundProps) {
         width: group.size.width,
         height: group.size.height,
         backgroundColor: `${bgColor}60`,
-        border: `1px solid ${bgColor}`,
+        border: group.isNbpInput ? `2px dashed ${bgColor}` : `1px solid ${bgColor}`,
         pointerEvents: "none",
       }}
     />
@@ -437,6 +437,22 @@ function GroupControls({ groupId, zoom }: GroupControlsProps) {
                       </svg>
                     )}
                     <span>{group.locked ? "Unlock" : "Lock"}</span>
+                  </button>
+
+                  {/* NBP Input toggle row */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); updateGroup(groupId, { isNbpInput: !group.isNbpInput }); setShowMenu(false); }}
+                    className="flex items-center gap-2 px-3 py-1.5 w-full hover:bg-white/10 text-xs text-white/80 transition-colors"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
+                    </svg>
+                    <span>NBP Input</span>
+                    {group.isNbpInput && (
+                      <svg className="w-3 h-3 ml-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
                   </button>
 
                   {/* Delete row */}
