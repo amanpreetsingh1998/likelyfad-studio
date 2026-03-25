@@ -68,6 +68,7 @@ export interface ImageInputNodeData extends BaseNodeData {
  */
 export interface AudioInputNodeData extends BaseNodeData {
   audioFile: string | null;      // Base64 data URL of the audio file
+  audioFileRef?: string;         // External audio reference for storage optimization
   filename: string | null;       // Original filename for display
   duration: number | null;       // Duration in seconds
   format: string | null;         // MIME type (audio/mp3, audio/wav, etc.)
@@ -299,7 +300,9 @@ export interface OutputGalleryNodeData extends BaseNodeData {
  */
 export interface ImageCompareNodeData extends BaseNodeData {
   imageA: string | null;
+  imageARef?: string;            // External image reference for storage optimization
   imageB: string | null;
+  imageBRef?: string;            // External image reference for storage optimization
 }
 
 /**
@@ -444,6 +447,7 @@ export interface GLBViewerNodeData extends BaseNodeData {
   glbUrl: string | null;       // Object URL for the loaded GLB file
   filename: string | null;     // Original filename for display
   capturedImage: string | null; // Base64 PNG snapshot of the 3D viewport
+  capturedImageRef?: string;    // External image reference for storage optimization
 }
 
 /**
