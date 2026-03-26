@@ -114,15 +114,28 @@ The `/examples` directory contains example workflow files. To try them:
 | Type | Purpose |
 |:-----|:--------|
 | **Image Input** | Load or upload reference images |
+| **Audio Input** | Load or upload audio files |
 | **Prompt** | Text prompt input |
+| **Prompt Constructor** | Build dynamic prompts with variables and LLM-powered text construction |
+| **Array** | Batch process multiple inputs through a workflow |
 | **Generate** | AI image generation (multi-provider) |
-| **Video** | AI video generation and trimming |
-| **LLM** | AI text generation |
+| **Generate Video** | AI video generation |
+| **Generate Audio** | Text-to-speech and AI audio generation |
+| **Generate 3D** | AI 3D model generation |
+| **LLM** | AI text generation (Gemini, OpenAI, Anthropic) |
 | **Annotation** | Draw on images with full-screen editor |
 | **Split Grid** | Split image into grid cells |
-| **Audio** | AI audio/TTS generation |
+| **Video Stitch** | Combine video clips into a single output |
+| **Video Trim** | Trim video clips to a specific range |
+| **Video Frame Grab** | Extract frames from video |
+| **Image Compare** | Side-by-side image comparison |
+| **Ease Curve** | Define easing curves for parameter interpolation |
+| **Router** | Route data to different branches |
+| **Switch** | Toggle between execution paths |
+| **Conditional Switch** | Route data based on conditions |
 | **GLB Viewer** | Load and display 3D GLB models |
 | **Output** | Display final result |
+| **Output Gallery** | Display multiple results in a gallery |
 
 ## Tech Stack
 
