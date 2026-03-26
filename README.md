@@ -78,7 +78,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 Create a `.env.local` file in the root directory:
 
 ```env
-GEMINI_API_KEY=your_gemini_api_key
+GEMINI_API_KEY=your_gemini_api_key          # Required for prompt-to-workflow
 OPENAI_API_KEY=your_openai_api_key          # Optional
 ANTHROPIC_API_KEY=your_anthropic_api_key    # Optional
 REPLICATE_API_KEY=your_replicate_api_key    # Optional
