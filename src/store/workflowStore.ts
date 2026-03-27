@@ -1956,6 +1956,7 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
         version: 1,
         id: workflowId,
         name: workflowName,
+        directoryPath: saveDirectoryPath,
         nodes: currentNodes,
         edges,
         edgeStyle,
