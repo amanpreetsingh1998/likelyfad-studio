@@ -23,6 +23,9 @@ export function WorkflowBrowserModal({
       onClick={onClose}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="workflow-browser-title"
         className="w-full max-w-2xl mx-4 bg-neutral-800 rounded-xl border border-neutral-700 shadow-2xl overflow-clip max-h-[85vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >

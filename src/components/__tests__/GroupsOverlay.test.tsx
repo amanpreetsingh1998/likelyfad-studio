@@ -226,6 +226,7 @@ describe("GroupControlsOverlay", () => {
 
       expect(screen.getByText("Background")).toBeInTheDocument();
       expect(screen.getByText("Lock")).toBeInTheDocument();
+      expect(screen.getByText("NBP Input")).toBeInTheDocument();
       expect(screen.getByText("Delete")).toBeInTheDocument();
     });
   });

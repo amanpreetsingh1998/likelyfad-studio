@@ -225,7 +225,11 @@ export function AudioInputNode({ id, data, selected }: NodeProps<AudioInputNodeT
         </div>
       ) : (
         <div
+          role="button"
+          tabIndex={0}
+          aria-label="Upload audio file"
           onClick={() => fileInputRef.current?.click()}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileInputRef.current?.click(); } }}
           onDrop={handleDrop}
           onDragOver={handleDragOver}
           className={`w-full h-full bg-neutral-900/40 flex flex-col items-center justify-center cursor-pointer hover:bg-neutral-800/60 transition-colors ${nodeData.isOptional ? "border-2 border-dashed border-neutral-600" : ""}`}

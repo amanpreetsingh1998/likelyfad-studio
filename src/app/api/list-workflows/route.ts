@@ -77,8 +77,8 @@ async function probeWorkflow(
           }
 
           // Extract name via regex — avoids JSON.parse on potentially huge files
-          const nameMatch = head.match(/"name"\s*:\s*"([^"]*)"/);
-          const name = nameMatch ? nameMatch[1] : dirName;
+          const nameMatch = head.match(/"name"\s*:\s*"((?:\\.|[^"\\])*)"/);
+          const name = nameMatch ? nameMatch[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\') : dirName;
 
           const stat = await fs.stat(filePath);
           return {

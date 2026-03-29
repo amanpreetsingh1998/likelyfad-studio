@@ -11,7 +11,7 @@ import {
 interface WorkflowListEntry {
   name: string;
   directoryPath: string;
-  relativePath?: string;
+  relativePath: string;
   lastModified: number;
 }
 
@@ -188,7 +188,7 @@ export function WorkflowBrowserView({
                 />
               </svg>
             </div>
-            <h2 className="text-lg font-medium text-neutral-200">
+            <h2 id="workflow-browser-title" className="text-lg font-medium text-neutral-200">
               Your Workflows
             </h2>
           </div>

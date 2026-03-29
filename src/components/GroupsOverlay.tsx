@@ -76,6 +76,13 @@ function GroupControls({ groupId, zoom }: GroupControlsProps) {
   const colorPickerRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
+  // Reset color picker when menu closes
+  useEffect(() => {
+    if (!showMenu) {
+      setShowColorPicker(false);
+    }
+  }, [showMenu]);
+
   useEffect(() => {
     if (group?.name && !isEditing) {
       setEditName(group.name);
@@ -145,6 +152,7 @@ function GroupControls({ groupId, zoom }: GroupControlsProps) {
   // Header drag handlers
   const handleHeaderMouseDown = useCallback(
     (e: React.MouseEvent) => {
+      if (group?.locked) return;
       if (
         (e.target as HTMLElement).closest("button") ||
         (e.target as HTMLElement).closest("input")
@@ -156,12 +164,13 @@ function GroupControls({ groupId, zoom }: GroupControlsProps) {
       setIsDragging(true);
       dragStartRef.current = { x: e.clientX, y: e.clientY };
     },
-    []
+    [group?.locked]
   );
 
   // Resize handlers
   const handleResizeMouseDown = useCallback(
     (e: React.MouseEvent, handle: string) => {
+      if (group?.locked) return;
       e.stopPropagation();
       e.preventDefault();
       setIsResizing(true);
@@ -175,7 +184,7 @@ function GroupControls({ groupId, zoom }: GroupControlsProps) {
         posY: group.position.y,
       };
     },
-    [group?.size, group?.position]
+    [group?.locked, group?.size, group?.position]
   );
 
   useEffect(() => {
@@ -325,7 +334,7 @@ function GroupControls({ groupId, zoom }: GroupControlsProps) {
                 <span
                   className="text-xs font-medium text-white truncate"
                   style={{ maxWidth: 200 }}
-                  onDoubleClick={(e) => { e.stopPropagation(); setIsEditing(true); }}
+                  onDoubleClick={(e) => { e.stopPropagation(); if (!group.locked) setIsEditing(true); }}
                 >
                   {group.name}
                 </span>
