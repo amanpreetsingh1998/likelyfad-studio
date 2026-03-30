@@ -215,7 +215,7 @@ describe("Undo/Redo integration", () => {
   });
 
   describe("delete node via onNodesChange + onEdgesChange restores connections", () => {
-    it("single undo restores both node and its connected edges", async () => {
+    it("single undo restores both node and its connected edges", () => {
       let store = useWorkflowStore.getState();
 
       // Create two nodes and connect them
@@ -243,16 +243,17 @@ describe("Undo/Redo integration", () => {
       expect(store.nodes.length).toBe(2);
       expect(store.edges.length).toBe(1);
 
-      // Simulate pressing Delete: React Flow fires onNodesChange(remove) then
-      // onEdgesChange(remove) synchronously in the same cycle
+      // Simulate pressing Delete: React Flow v12 fires onEdgesChange(remove)
+      // BEFORE onNodesChange(remove) — both synchronously in the same cycle.
+      const edgeId = store.edges[0].id;
       act(() => {
+        store.onEdgesChange([{ type: "remove", id: edgeId }]);
         store.onNodesChange([{ type: "remove", id: promptId }]);
-        store.onEdgesChange([{ type: "remove", id: store.edges[0].id }]);
       });
 
-      // Wait for microtask to clear nodeRemoveCheckpointActive
-      await act(async () => {
-        await Promise.resolve();
+      // Advance past the setTimeout(0) that clears deleteCheckpointActive
+      act(() => {
+        vi.advanceTimersByTime(0);
       });
 
       store = useWorkflowStore.getState();
@@ -281,7 +282,7 @@ describe("Undo/Redo integration", () => {
       expect(store.nodes.length).toBe(2);
     });
 
-    it("single undo restores image-source node and does not create extra entries from clearStaleInputImages", async () => {
+    it("single undo restores image-source node and does not create extra entries from clearStaleInputImages", () => {
       let store = useWorkflowStore.getState();
 
       // Create imageInput -> nanoBanana (image connection triggers clearStaleInputImages on delete)
@@ -309,20 +310,18 @@ describe("Undo/Redo integration", () => {
       expect(store.nodes.length).toBe(2);
       expect(store.edges.length).toBe(1);
 
-      // Delete the imageInput node — this triggers clearStaleInputImages
-      // which calls updateNodeData on the nanoBanana target
+      // Delete the imageInput node — React Flow v12 fires edges first, then nodes.
+      // This triggers clearStaleInputImages which calls updateNodeData on the
+      // nanoBanana target as a side effect.
+      const edgeId = store.edges[0].id;
       act(() => {
+        store.onEdgesChange([{ type: "remove", id: edgeId }]);
         store.onNodesChange([{ type: "remove", id: imageInputId }]);
-        store.onEdgesChange([{ type: "remove", id: store.edges[0].id }]);
       });
 
-      // Wait for microtask to clear nodeRemoveCheckpointActive
-      await act(async () => {
-        await Promise.resolve();
-      });
-
-      // Also advance past the debounced data-change timer (500ms)
-      await act(async () => {
+      // Advance past the setTimeout(0) that clears deleteCheckpointActive
+      // and any debounced data-change timer (500ms)
+      act(() => {
         vi.advanceTimersByTime(600);
       });
 
@@ -348,6 +347,54 @@ describe("Undo/Redo integration", () => {
       store = useWorkflowStore.getState();
       expect(store.edges.length).toBe(0);
       expect(store.nodes.length).toBe(2);
+    });
+
+    it("standalone edge removal via onEdgesChange still creates undo entry", () => {
+      let store = useWorkflowStore.getState();
+
+      act(() => {
+        store.addNode("prompt", { x: 0, y: 0 });
+      });
+      store = useWorkflowStore.getState();
+      act(() => {
+        store.addNode("nanoBanana", { x: 300, y: 0 });
+      });
+      store = useWorkflowStore.getState();
+      const promptId = store.nodes[0].id;
+      const genId = store.nodes[1].id;
+
+      act(() => {
+        store.onConnect({
+          source: promptId,
+          target: genId,
+          sourceHandle: "text",
+          targetHandle: "text",
+        });
+      });
+
+      store = useWorkflowStore.getState();
+      expect(store.edges.length).toBe(1);
+      const edgeId = store.edges[0].id;
+
+      // Only remove the edge (no node removal) — should still be undoable
+      act(() => {
+        store.onEdgesChange([{ type: "remove", id: edgeId }]);
+      });
+
+      act(() => {
+        vi.advanceTimersByTime(0);
+      });
+
+      store = useWorkflowStore.getState();
+      expect(store.edges.length).toBe(0);
+
+      act(() => {
+        store.undo();
+      });
+
+      store = useWorkflowStore.getState();
+      expect(store.edges.length).toBe(1);
+      expect(store.edges[0].id).toBe(edgeId);
     });
   });
 

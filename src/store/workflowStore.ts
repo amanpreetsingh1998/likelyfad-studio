@@ -397,9 +397,15 @@ const undoManager = new UndoManager();
 let isDragging = false;
 let pendingDataSnapshot: UndoSnapshot | null = null;
 let dataChangeTimer: ReturnType<typeof setTimeout> | null = null;
-// When true, onEdgesChange(remove) skips its checkpoint because onNodesChange(remove)
-// already captured one in the same React Flow event cycle.
-let nodeRemoveCheckpointActive = false;
+// When true, a remove-checkpoint was already pushed in the current React Flow
+// deleteElements cycle.  React Flow v12 fires onEdgesChange(remove) BEFORE
+// onNodesChange(remove) — both happen synchronously inside the same microtask
+// after an internal `await`.  The flag is set by whichever handler fires first
+// and checked by the second so only ONE checkpoint is recorded.  It is also
+// checked by updateNodeData to suppress debounced snapshots from side-effects
+// like clearStaleInputImages.  Cleared via setTimeout(0) (macrotask) so it
+// survives all microtasks / Promise continuations in the current event-loop turn.
+let deleteCheckpointActive = false;
 
 // RAF debounce for hover updates — coalesces rapid mouseenter/mouseleave events
 // into a single store update per animation frame
@@ -682,9 +688,9 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
   updateNodeData: (nodeId: string, data: Partial<WorkflowNodeData>) => {
     const node = get().nodes.find((n) => n.id === nodeId);
 
-    // Debounced undo tracking: skip during execution and during node removal
+    // Debounced undo tracking: skip during execution and during node/edge deletion
     // (clearStaleInputImages calls updateNodeData as a side effect of deletion)
-    if (!get().isRunning && !nodeRemoveCheckpointActive) {
+    if (!get().isRunning && !deleteCheckpointActive) {
       if (!pendingDataSnapshot) {
         pendingDataSnapshot = captureUndoSnapshot(get());
       }
@@ -751,13 +757,13 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
       isDragging = false;
     }
 
-    // Undo: capture snapshot before node removal.
-    // Also set flag so the consequent onEdgesChange(remove) from React Flow
-    // doesn't push a second checkpoint for the same user action.
-    if (hasRemoveChange) {
+    // Undo: capture snapshot before node removal — but skip if onEdgesChange
+    // already pushed a checkpoint in this same deleteElements cycle
+    // (React Flow v12 fires edge removals BEFORE node removals).
+    if (hasRemoveChange && !deleteCheckpointActive) {
       pushUndoCheckpoint(get, set);
-      nodeRemoveCheckpointActive = true;
-      Promise.resolve().then(() => { nodeRemoveCheckpointActive = false; });
+      deleteCheckpointActive = true;
+      setTimeout(() => { deleteCheckpointActive = false; }, 0);
     }
 
     set((state) => ({
@@ -777,10 +783,14 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
     const hasRemoveChange = changes.some((c) => c.type === "remove");
     const hasAddOrRemove = changes.some((c) => c.type === "add" || c.type === "remove");
 
-    // Undo: capture snapshot before edge removal — but skip if a node-remove
-    // checkpoint was already pushed in this same React Flow event cycle
-    if (hasRemoveChange && !nodeRemoveCheckpointActive) {
+    // Undo: capture snapshot before edge removal — but skip if a checkpoint
+    // was already pushed in this same React Flow deleteElements cycle.
+    // React Flow v12 fires onEdgesChange(remove) BEFORE onNodesChange(remove),
+    // so this is typically the first handler to set the flag.
+    if (hasRemoveChange && !deleteCheckpointActive) {
       pushUndoCheckpoint(get, set);
+      deleteCheckpointActive = true;
+      setTimeout(() => { deleteCheckpointActive = false; }, 0);
     }
 
     // Capture removed edges before applyEdgeChanges removes them
