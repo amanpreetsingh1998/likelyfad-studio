@@ -1,14 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createHmac } from "crypto";
 
 const AUTH_COOKIE = "auth-token";
 const TOKEN_MAX_AGE = 7 * 24 * 60 * 60; // 7 days in seconds
 
-function createToken(password: string): string {
+/** HMAC-SHA256 using Web Crypto API. */
+async function hmacSign(secret: string, message: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(message));
+  return Array.from(new Uint8Array(signature))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function createToken(password: string): Promise<string> {
   const timestamp = Date.now().toString();
-  const signature = createHmac("sha256", password)
-    .update(timestamp)
-    .digest("hex");
+  const signature = await hmacSign(password, timestamp);
   return `${timestamp}.${signature}`;
 }
 
@@ -36,7 +49,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Wrong password" }, { status: 401 });
   }
 
-  const token = createToken(password);
+  const token = await createToken(password);
   const response = NextResponse.json({ success: true });
 
   response.cookies.set(AUTH_COOKIE, token, {

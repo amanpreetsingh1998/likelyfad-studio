@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createHmac } from "crypto";
 
 const AUTH_COOKIE = "auth-token";
 const TOKEN_MAX_AGE = 7 * 24 * 60 * 60; // 7 days in seconds
@@ -8,11 +7,48 @@ function getSecret(): string {
   return process.env.APP_PASSWORD || "";
 }
 
+/** Convert a hex string to a Uint8Array. */
+function hexToBytes(hex: string): Uint8Array {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < hex.length; i += 2) {
+    bytes[i / 2] = parseInt(hex.substring(i, i + 2), 16);
+  }
+  return bytes;
+}
+
+/** HMAC-SHA256 using Web Crypto API (Edge Runtime compatible). */
+async function hmacSign(secret: string, message: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(message));
+  return Array.from(new Uint8Array(signature))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+/** Constant-time comparison to prevent timing attacks. */
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  const aBuf = hexToBytes(a);
+  const bBuf = hexToBytes(b);
+  let result = 0;
+  for (let i = 0; i < aBuf.length; i++) {
+    result |= aBuf[i] ^ bBuf[i];
+  }
+  return result === 0;
+}
+
 /**
  * Verify the auth token cookie.
  * Token format: `timestamp.signature` where signature = HMAC(password, timestamp).
  */
-function isValidToken(token: string): boolean {
+async function isValidToken(token: string): Promise<boolean> {
   const secret = getSecret();
   if (!secret) return true; // No password set — allow all traffic
 
@@ -25,11 +61,11 @@ function isValidToken(token: string): boolean {
   if (Date.now() - issued > TOKEN_MAX_AGE * 1000) return false;
 
   // Verify signature
-  const expected = createHmac("sha256", secret).update(timestamp).digest("hex");
-  return signature === expected;
+  const expected = await hmacSign(secret, timestamp);
+  return timingSafeEqual(signature, expected);
 }
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const password = getSecret();
 
   // If no APP_PASSWORD is set, skip protection entirely (local dev convenience)
@@ -39,7 +75,7 @@ export function middleware(request: NextRequest) {
 
   const token = request.cookies.get(AUTH_COOKIE)?.value;
 
-  if (token && isValidToken(token)) {
+  if (token && (await isValidToken(token))) {
     return NextResponse.next();
   }
 
