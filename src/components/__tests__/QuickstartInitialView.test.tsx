@@ -201,7 +201,7 @@ describe("QuickstartInitialView", () => {
       );
 
       const instagramLink = screen.getByText("Instagram").closest("a");
-      expect(instagramLink).toHaveAttribute("href", "https://www.instagram.com/");
+      expect(instagramLink).toHaveAttribute("href", "https://www.instagram.com/amanxdesign");
       expect(instagramLink).toHaveAttribute("target", "_blank");
       expect(instagramLink).toHaveAttribute("rel", "noopener noreferrer");
     });

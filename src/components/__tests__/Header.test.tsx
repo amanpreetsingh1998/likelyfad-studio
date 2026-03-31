@@ -94,7 +94,7 @@ describe("Header", () => {
     it("should render Instagram link", () => {
       render(<Header />);
       const link = screen.getByTitle("Instagram");
-      expect(link).toHaveAttribute("href", "https://www.instagram.com/");
+      expect(link).toHaveAttribute("href", "https://www.instagram.com/amanxdesign");
     });
   });
 

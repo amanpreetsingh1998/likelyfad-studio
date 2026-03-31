@@ -400,7 +400,7 @@ export function Header() {
           </button>
           <span className="text-neutral-500">·</span>
           <a
-            href="https://www.instagram.com/"
+            href="https://www.instagram.com/amanxdesign"
             target="_blank"
             rel="noopener noreferrer"
             className="text-neutral-400 hover:text-neutral-200 transition-colors"

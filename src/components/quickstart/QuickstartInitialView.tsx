@@ -48,7 +48,7 @@ export function QuickstartInitialView({
               X / Twitter
             </a>
             <a
-              href="https://www.instagram.com/"
+              href="https://www.instagram.com/amanxdesign"
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-2 text-sm text-neutral-400 hover:text-neutral-200 transition-colors"

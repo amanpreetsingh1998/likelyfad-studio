@@ -6,7 +6,7 @@ AI-powered creative production workflows.
 
 Build image, video, audio, and 3D generation pipelines by connecting nodes on a visual canvas.
 
-[**Live App**](https://likelyfad-studio.vercel.app) &nbsp;&bull;&nbsp; [X / Twitter](https://x.com/amanxdesign) &nbsp;&bull;&nbsp; [Instagram](https://www.instagram.com/)
+[**Live App**](https://likelyfad-studio.vercel.app) &nbsp;&bull;&nbsp; [X / Twitter](https://x.com/amanxdesign) &nbsp;&bull;&nbsp; [Instagram](https://www.instagram.com/amanxdesign)
 
 </div>
 
