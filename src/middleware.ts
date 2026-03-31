@@ -93,6 +93,6 @@ export const config = {
      * - /_next (Next.js internals — static assets, HMR, etc.)
      * - /favicon.ico, /banana_icon.png, /node-banana.png (static files)
      */
-    "/((?!login|api/auth/login|_next|favicon\\.ico|banana_icon\\.png|node-banana\\.png).*)",
+    "/((?!login|api/auth/login|_next|favicon\\.ico|ls-icon\\.png|node-banana\\.png).*)",
   ],
 };

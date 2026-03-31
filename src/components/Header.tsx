@@ -219,7 +219,7 @@ export function Header() {
             className="flex items-center gap-2 hover:opacity-80 transition-opacity"
             title="Open welcome screen"
           >
-            <img src="/banana_icon.png" alt="Likelyfad Studio" className="w-6 h-6" />
+            <img src="/ls-icon.png" alt="Likelyfad Studio" className="w-6 h-6" />
             <h1 className="text-2xl font-semibold text-neutral-100 tracking-tight">
               Likelyfad Studio
             </h1>

@@ -82,7 +82,7 @@ describe("Header", () => {
       render(<Header />);
       const icon = screen.getByAltText("Likelyfad Studio");
       expect(icon).toBeInTheDocument();
-      expect(icon).toHaveAttribute("src", "/banana_icon.png");
+      expect(icon).toHaveAttribute("src", "/ls-icon.png");
     });
 
     it("should render 'Made by Aman' link", () => {

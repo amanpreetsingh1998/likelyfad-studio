@@ -396,7 +396,7 @@ export function ProjectSetupModal({
       >
         <div className="px-8 pt-8 pb-0 shrink-0">
           <div className="flex items-center gap-2 mb-5">
-            <img src="/banana_icon.png" alt="" className="w-6 h-6" />
+            <img src="/ls-icon.png" alt="" className="w-6 h-6" />
             <h2 className="text-xl font-medium text-neutral-100">
               {mode === "new" ? "New Project" : "Project Settings"}
             </h2>
