@@ -497,12 +497,12 @@ export function TemplateExplorerView({
               <p className="text-xs text-neutral-500 mt-3">
                 Want to share your workflow?{" "}
                 <a
-                  href="https://discord.com/invite/89Nr6EKkTf"
+                  href="https://x.com/amanxdesign"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-purple-400 hover:text-purple-300 underline"
                 >
-                  Join our Discord
+                  Reach out on X
                 </a>{" "}
                 to submit it to the community templates.
               </p>

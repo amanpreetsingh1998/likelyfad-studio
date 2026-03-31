@@ -67,7 +67,7 @@ export default function LoginPage() {
             textAlign: "center",
           }}
         >
-          Node Banana
+          Likelyfad Studio
         </h1>
         <p
           style={{

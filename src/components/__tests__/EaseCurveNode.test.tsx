@@ -188,13 +188,13 @@ describe("EaseCurveNode", () => {
       ).toBeInTheDocument();
     });
 
-    it("should show Discord link when encoder is unsupported", () => {
+    it("should show report link when encoder is unsupported", () => {
       render(<EaseCurveNode {...createNodeProps({ encoderSupported: false })} />);
-      const link = screen.getByText(/Message Willie on Discord/);
+      const link = screen.getByText(/Report issue on X/);
       expect(link).toBeInTheDocument();
       expect(link.closest("a")).toHaveAttribute(
         "href",
-        "https://discord.com/invite/89Nr6EKkTf"
+        "https://x.com/amanxdesign"
       );
     });
   });

@@ -385,12 +385,12 @@ export function VideoStitchNode({ id, data, selected }: NodeProps<VideoStitchNod
             Your browser doesn't support video encoding.
           </span>
           <a
-            href="https://discord.com/invite/89Nr6EKkTf"
+            href="https://x.com/amanxdesign"
             target="_blank"
             rel="noopener noreferrer"
             className="text-[10px] text-blue-400 hover:text-blue-300 underline"
           >
-            Doesn't seem right? Message Willie on Discord.
+            Doesn&apos;t seem right? Report issue on X.
           </a>
         </div>
       </BaseNode>

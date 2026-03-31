@@ -1,42 +1,26 @@
 <div align="center">
 
-<img width="full" alt="Node Banana" src="public/node-banana.png" />
+### Likelyfad Studio
 
-### An Open Visual Workflow Editor for AI APIs
+AI-powered creative production workflows.
 
-[![GitHub stars](https://img.shields.io/github/stars/shrimbly/node-banana?style=flat&logo=github)](https://github.com/shrimbly/node-banana/stargazers)
-[![License](https://img.shields.io/github/license/shrimbly/node-banana?style=flat)](LICENSE)
-[![Discord](https://img.shields.io/badge/Discord-555?logo=discord)](https://discord.com/invite/89Nr6EKkTf)
+Build image, video, audio, and 3D generation pipelines by connecting nodes on a visual canvas.
 
-<br />
-
-Build AI image, 3D, audio and video generation pipelines by connecting nodes on a visual canvas.<br />
-Multi-provider support. Dynamic prompting features. Local, private, MIT, BYOK.
-
-<br />
-
-[**Documentation**](https://node-banana-docs.vercel.app/) &nbsp;&bull;&nbsp; [Discord](https://discord.com/invite/89Nr6EKkTf)
-
-<br />
+[**Live App**](https://likelyfad-studio.vercel.app) &nbsp;&bull;&nbsp; [X / Twitter](https://x.com/amanxdesign) &nbsp;&bull;&nbsp; [Instagram](https://www.instagram.com/)
 
 </div>
 
-## Build Complex AI Pipelines Visually
+## What Is This
 
-Node Banana is a node-based workflow editor for AI media generation. Drag nodes onto an infinite canvas, connect them with typed handles, and execute pipelines that call AI APIs in dependency order.
+Likelyfad Studio is a visual node-based workflow editor for AI media generation. Drag nodes onto an infinite canvas, connect them, and run pipelines that call AI APIs in dependency order.
 
-- **Build dynamic prompts** with variables, LLM/VLM-powered prompt construction, and reusable prompt chains
-- **Generate workflows from natural language** or choose from preset templates
-- **Chain multiple AI models together** across providers in a single pipeline
-- **Generate images, video, 3D models, and audio** from a single workflow
-- **Annotate and edit images** with a full-screen drawing editor
-- **Save and share workflows** as portable JSON files
+Built for creative production — product shots, lifestyle images, color variations, video, and more.
 
 ## Features
 
 | Feature | Description |
 |:--------|:------------|
-| **Dynamic Prompting** | Build prompts with variables, LLM-powered text construction, and reusable prompt chains that adapt per run and per input |
+| **Dynamic Prompting** | Build prompts with variables, LLM-powered text construction, and reusable prompt chains |
 | **Prompt to Workflow** | Generate complete workflows from natural language descriptions |
 | **Visual Node Editor** | Drag-and-drop nodes onto an infinite canvas with pan and zoom |
 | **Image Generation** | Generate images using Google Gemini, Replicate, fal.ai, Kie.ai, and more |
@@ -46,8 +30,6 @@ Node Banana is a node-based workflow editor for AI media generation. Drag nodes 
 | **Image Annotation** | Full-screen editor with drawing tools (rectangles, circles, arrows, freehand, text) |
 | **Text Generation** | Generate text using Google Gemini, OpenAI, or Anthropic models |
 | **Workflow Chaining** | Connect multiple nodes to create complex multi-step pipelines |
-| **Group Locking** | Lock node groups to skip them during execution |
-| **Save/Load** | Export and import workflows as JSON files |
 
 ## Supported Providers
 
@@ -70,8 +52,8 @@ Node Banana is a node-based workflow editor for AI media generation. Drag nodes 
 ### Quick Start
 
 ```bash
-git clone https://github.com/shrimbly/node-banana.git
-cd node-banana
+git clone https://github.com/amanpreetsingh1998/likelyfad-studio.git
+cd likelyfad-studio
 npm install
 npm run dev
 ```
@@ -83,6 +65,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 Create a `.env.local` file in the root directory:
 
 ```env
+APP_PASSWORD=your_password                   # Required for deployed app
 GEMINI_API_KEY=your_gemini_api_key          # Required for prompt-to-workflow
 OPENAI_API_KEY=your_openai_api_key          # Optional
 ANTHROPIC_API_KEY=your_anthropic_api_key    # Optional
@@ -92,81 +75,15 @@ KIE_API_KEY=your_kie_api_key                # Optional
 WAVESPEED_API_KEY=your_wavespeed_api_key    # Optional
 ```
 
-**API keys can also be configured in Project Settings within the app.** 
-
-### Build
-
-```bash
-npm run build
-npm run start
-```
-
-## Example Workflows
-
-The `/examples` directory contains example workflow files. To try them:
-
-1. Start the dev server with `npm run dev`
-2. Drag any `.json` file from the `/examples` folder into the browser window
-3. Review the prompts in each node before running — they're targeted to specific use cases
-
-## Node Types
-
-| Type | Purpose |
-|:-----|:--------|
-| **Image Input** | Load or upload reference images |
-| **Audio Input** | Load or upload audio files |
-| **Prompt** | Text prompt input |
-| **Prompt Constructor** | Build dynamic prompts with variables and LLM-powered text construction |
-| **Array** | Batch process multiple inputs through a workflow |
-| **Generate** | AI image generation (multi-provider) |
-| **Generate Video** | AI video generation |
-| **Generate Audio** | Text-to-speech and AI audio generation |
-| **Generate 3D** | AI 3D model generation |
-| **LLM** | AI text generation (Gemini, OpenAI, Anthropic) |
-| **Annotation** | Draw on images with full-screen editor |
-| **Split Grid** | Split image into grid cells |
-| **Video Stitch** | Combine video clips into a single output |
-| **Video Trim** | Trim video clips to a specific range |
-| **Video Frame Grab** | Extract frames from video |
-| **Image Compare** | Side-by-side image comparison |
-| **Ease Curve** | Define easing curves for parameter interpolation |
-| **Router** | Route data to different branches |
-| **Switch** | Toggle between execution paths |
-| **Conditional Switch** | Route data based on conditions |
-| **GLB Viewer** | Load and display 3D GLB models |
-| **Output** | Display final result |
-| **Output Gallery** | Display multiple results in a gallery |
+API keys can also be configured in Project Settings within the app.
 
 ## Tech Stack
 
-<p>
-  <a href="https://nextjs.org/"><img src="https://img.shields.io/badge/Next.js-000000?logo=next.js&logoColor=white" alt="Next.js" /></a>
-  <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white" alt="TypeScript" /></a>
-  <a href="https://reactflow.dev/"><img src="https://img.shields.io/badge/React%20Flow-FF0072?logo=react&logoColor=white" alt="React Flow" /></a>
-  <a href="https://konvajs.org/"><img src="https://img.shields.io/badge/Konva.js-0D83CD?logo=konva&logoColor=white" alt="Konva.js" /></a>
-  <a href="https://zustand-demo.pmnd.rs/"><img src="https://img.shields.io/badge/Zustand-443E38?logo=react&logoColor=white" alt="Zustand" /></a>
-  <a href="https://tailwindcss.com/"><img src="https://img.shields.io/badge/Tailwindcss-%2338B2AC.svg?logo=tailwind-css&logoColor=white" alt="TailwindCSS" /></a>
-</p>
+Next.js 16 &bull; React 19 &bull; TypeScript &bull; React Flow &bull; Zustand &bull; TailwindCSS &bull; Konva.js &bull; Three.js
 
-## Testing
+## Credits
 
-```bash
-npm test              # Watch mode
-npm run test:run      # Single run
-npm run test:coverage # With coverage report
-```
-
-## Contributing
-
-PRs are welcome! Fork the repo, branch from `develop`, and open a PR back to `develop`.
-
-This is primarily built for my own workflows — if a PR conflicts with my plans I'll politely decline. For larger contributions, join the [Discord](https://discord.com/invite/89Nr6EKkTf) to coordinate first.
-
-## Community
-
-- **[Discord](https://discord.com/invite/89Nr6EKkTf)** — Chat, get help, and share workflows
-- **[Documentation](https://node-banana-docs.vercel.app/)** — Guides and reference
-- **[GitHub Issues](https://github.com/shrimbly/node-banana/issues)** — Report bugs and request features
+Based on [Node Banana](https://github.com/shrimbly/node-banana) by Willie — MIT licensed.
 
 ## License
 

@@ -75,26 +75,26 @@ describe("Header", () => {
   describe("Basic Rendering", () => {
     it("should render the app title", () => {
       render(<Header />);
-      expect(screen.getByText("Node Banana")).toBeInTheDocument();
+      expect(screen.getByText("Likelyfad Studio")).toBeInTheDocument();
     });
 
     it("should render the banana icon", () => {
       render(<Header />);
-      const icon = screen.getByAltText("Banana");
+      const icon = screen.getByAltText("Likelyfad Studio");
       expect(icon).toBeInTheDocument();
       expect(icon).toHaveAttribute("src", "/banana_icon.png");
     });
 
-    it("should render 'Made by Willie' link", () => {
+    it("should render 'Made by Aman' link", () => {
       render(<Header />);
-      const link = screen.getByText("Made by Willie");
-      expect(link).toHaveAttribute("href", "https://x.com/ReflctWillie");
+      const link = screen.getByText("Made by Aman");
+      expect(link).toHaveAttribute("href", "https://x.com/amanxdesign");
     });
 
-    it("should render Discord support link", () => {
+    it("should render Instagram link", () => {
       render(<Header />);
-      const link = screen.getByTitle("Support");
-      expect(link).toHaveAttribute("href", "https://discord.com/invite/89Nr6EKkTf");
+      const link = screen.getByTitle("Instagram");
+      expect(link).toHaveAttribute("href", "https://www.instagram.com/");
     });
   });
 

@@ -17,7 +17,7 @@ describe("QuickstartInitialView", () => {
   });
 
   describe("Basic Rendering", () => {
-    it("should render the Node Banana title and logo", () => {
+    it("should render the Likelyfad Studio title and logo", () => {
       render(
         <QuickstartInitialView
           onNewProject={mockOnNewProject}
@@ -27,7 +27,7 @@ describe("QuickstartInitialView", () => {
         />
       );
 
-      expect(screen.getByText("Node Banana")).toBeInTheDocument();
+      expect(screen.getByText("Likelyfad Studio")).toBeInTheDocument();
       expect(screen.getAllByAltText("").length).toBeGreaterThan(0); // Logo images
     });
 
@@ -42,7 +42,7 @@ describe("QuickstartInitialView", () => {
       );
 
       expect(
-        screen.getByText(/node based workflow editor for generative AI pipelines/i)
+        screen.getByText(/AI-powered creative production workflows/i)
       ).toBeInTheDocument();
     });
 
@@ -174,7 +174,7 @@ describe("QuickstartInitialView", () => {
   });
 
   describe("External Links", () => {
-    it("should render Discord link with correct URL", () => {
+    it("should render X/Twitter link with correct URL", () => {
       render(
         <QuickstartInitialView
           onNewProject={mockOnNewProject}
@@ -184,32 +184,13 @@ describe("QuickstartInitialView", () => {
         />
       );
 
-      const discordLink = screen.getByText("Discord").closest("a");
-      expect(discordLink).toHaveAttribute(
-        "href",
-        "https://discord.com/invite/89Nr6EKkTf"
-      );
-      expect(discordLink).toHaveAttribute("target", "_blank");
-      expect(discordLink).toHaveAttribute("rel", "noopener noreferrer");
-    });
-
-    it("should render Twitter/X link with correct URL", () => {
-      render(
-        <QuickstartInitialView
-          onNewProject={mockOnNewProject}
-          onSelectTemplates={mockOnSelectTemplates}
-          onSelectVibe={mockOnSelectVibe}
-          onSelectLoad={mockOnSelectLoad}
-        />
-      );
-
-      const twitterLink = screen.getByText("Willie").closest("a");
-      expect(twitterLink).toHaveAttribute("href", "https://x.com/ReflctWillie");
+      const twitterLink = screen.getByText("X / Twitter").closest("a");
+      expect(twitterLink).toHaveAttribute("href", "https://x.com/amanxdesign");
       expect(twitterLink).toHaveAttribute("target", "_blank");
       expect(twitterLink).toHaveAttribute("rel", "noopener noreferrer");
     });
 
-    it("should render docs link", () => {
+    it("should render Instagram link with correct URL", () => {
       render(
         <QuickstartInitialView
           onNewProject={mockOnNewProject}
@@ -219,10 +200,10 @@ describe("QuickstartInitialView", () => {
         />
       );
 
-      const docsLink = screen.getByText("Docs").closest("a");
-      expect(docsLink).toHaveAttribute("href", "https://node-banana-docs.vercel.app/");
-      expect(docsLink).toHaveAttribute("target", "_blank");
-      expect(docsLink).toHaveAttribute("rel", "noopener noreferrer");
+      const instagramLink = screen.getByText("Instagram").closest("a");
+      expect(instagramLink).toHaveAttribute("href", "https://www.instagram.com/");
+      expect(instagramLink).toHaveAttribute("target", "_blank");
+      expect(instagramLink).toHaveAttribute("rel", "noopener noreferrer");
     });
   });
 
