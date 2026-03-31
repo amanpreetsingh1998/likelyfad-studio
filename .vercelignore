@@ -1,0 +1,3 @@
+# Exclude large files from serverless function bundles
+examples/
+.planning/
