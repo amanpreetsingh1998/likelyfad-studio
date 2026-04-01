@@ -907,8 +907,8 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
     );
 
     // Deep clone the nodes and edges to avoid reference issues
-    const clonedNodes = JSON.parse(JSON.stringify(selectedNodes)) as WorkflowNode[];
-    const clonedEdges = JSON.parse(JSON.stringify(connectedEdges)) as WorkflowEdge[];
+    const clonedNodes = clonePreservingStrings(selectedNodes) as WorkflowNode[];
+    const clonedEdges = clonePreservingStrings(connectedEdges) as WorkflowEdge[];
 
     set({ clipboard: { nodes: clonedNodes, edges: clonedEdges } });
   },
@@ -946,7 +946,7 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
         width: undefined,
         height: undefined,
         measured: undefined,
-        data: JSON.parse(JSON.stringify(node.data)),
+        data: clonePreservingStrings(node.data),
       };
     });
 
@@ -2536,12 +2536,12 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
   captureSnapshot: () => {
     const state = get();
     // Deep copy the current workflow state to avoid reference sharing
-    const snapshot = {
-      nodes: JSON.parse(JSON.stringify(state.nodes)),
-      edges: JSON.parse(JSON.stringify(state.edges)),
-      groups: JSON.parse(JSON.stringify(state.groups)),
+    const snapshot = clonePreservingStrings({
+      nodes: state.nodes,
+      edges: state.edges,
+      groups: state.groups,
       edgeStyle: state.edgeStyle,
-    };
+    });
     set({
       previousWorkflowSnapshot: snapshot,
       manualChangeCount: 0,
