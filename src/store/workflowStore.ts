@@ -60,7 +60,7 @@ import {
   chunk,
   clearNodeImageRefs,
 } from "./utils/executionUtils";
-import { getConnectedInputsPure, validateWorkflowPure } from "./utils/connectedInputs";
+import { getConnectedInputsPure, validateWorkflowPure, type ConnectedInputs } from "./utils/connectedInputs";
 import { evaluateRule } from "./utils/ruleEvaluation";
 import { computeDimmedNodes } from "./utils/dimmingUtils";
 import {
@@ -96,7 +96,7 @@ export { CONCURRENCY_SETTINGS_KEY } from "./utils/executionUtils";
 async function evaluateAndExecuteConditionalSwitch(
   node: WorkflowNode,
   executionCtx: NodeExecutionContext,
-  getConnectedInputs: (nodeId: string) => { text: string | null; images: string[]; videos: string[]; audio: string[]; model3d: string | null; dynamicInputs: Record<string, string | string[]>; easeCurve: { bezierHandles: [number, number, number, number]; easingPreset: string | null; outputDuration: number } | null },
+  getConnectedInputs: (nodeId: string) => ConnectedInputs,
   updateNodeData: (nodeId: string, data: Partial<WorkflowNodeData>) => void,
 ): Promise<void> {
   const condInputs = getConnectedInputs(node.id);
@@ -144,6 +144,13 @@ function buildConnectionEdgeData(
   // Array node uses a single output handle; assign each edge a stable item index.
   if (sourceNode?.type === "array" && (connection.sourceHandle || "text") === "text") {
     const sourceData = sourceNode.data as Record<string, unknown>;
+
+    // Batch mode: all items sent through a single connection
+    if (sourceData.batchMode === true) {
+      baseData.arrayBatchAll = true;
+      return baseData;
+    }
+
     const selectedIndex = sourceData.selectedOutputIndex;
     const outputItems = Array.isArray(sourceData.outputItems) ? sourceData.outputItems : [];
     const outputCount = outputItems.length;
@@ -276,7 +283,7 @@ interface WorkflowStore {
 
   // Helpers
   getNodeById: (id: string) => WorkflowNode | undefined;
-  getConnectedInputs: (nodeId: string) => { images: string[]; videos: string[]; audio: string[]; model3d: string | null; text: string | null; dynamicInputs: Record<string, string | string[]>; easeCurve: { bezierHandles: [number, number, number, number]; easingPreset: string | null; outputDuration: number } | null };
+  getConnectedInputs: (nodeId: string) => ConnectedInputs;
   validateWorkflow: () => { valid: boolean; errors: string[] };
 
   // Global Image History
@@ -1313,6 +1320,76 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
       });
 
       const executionCtx = get()._buildExecutionContext(node, signal);
+
+      // Batch mode: for generate-type nodes, detect textItems and loop through them
+      const batchNodeTypes = new Set(["nanoBanana", "generateVideo", "generateAudio", "llmGenerate"]);
+      if (node.type && batchNodeTypes.has(node.type)) {
+        const connectedInputs = get().getConnectedInputs(node.id);
+        if (connectedInputs.textItems.length > 0) {
+          const items = connectedInputs.textItems;
+          const totalItems = items.length;
+
+          for (let i = 0; i < totalItems; i++) {
+            // Check abort signal before each iteration
+            if (signal.aborted) {
+              throw new DOMException('Aborted', 'AbortError');
+            }
+
+            // Update status with batch progress
+            get().updateNodeData(node.id, {
+              status: "loading",
+              error: null,
+            } as Partial<WorkflowNodeData>);
+
+            logger.info('node.execution', `Batch ${i + 1} of ${totalItems}`, {
+              nodeId: node.id,
+              nodeType: node.type,
+              batchIndex: i,
+              batchTotal: totalItems,
+            });
+
+            // Create a wrapped context where getConnectedInputs returns
+            // the current item as `text` and clears `textItems`
+            const batchCtx: NodeExecutionContext = {
+              ...executionCtx,
+              getConnectedInputs: (nodeId: string) => {
+                const inputs = get().getConnectedInputs(nodeId);
+                return {
+                  ...inputs,
+                  text: items[i],
+                  textItems: [], // Clear so executors don't see batch
+                };
+              },
+            };
+
+            // Execute the appropriate executor
+            switch (node.type) {
+              case "nanoBanana":
+                await executeNanoBanana(batchCtx);
+                break;
+              case "generateVideo":
+                await executeGenerateVideo(batchCtx);
+                break;
+              case "generateAudio":
+                await executeGenerateAudio(batchCtx);
+                break;
+              case "llmGenerate":
+                await executeLlmGenerate(batchCtx);
+                break;
+            }
+
+            // After each iteration (except last), reset status to loading for next iteration
+            if (i < totalItems - 1) {
+              get().updateNodeData(node.id, {
+                status: "loading",
+              } as Partial<WorkflowNodeData>);
+            }
+          }
+
+          // Batch complete — skip the normal switch below
+          return;
+        }
+      }
 
       switch (node.type) {
           case "imageInput":

@@ -39,6 +39,7 @@ export interface ConnectedInputs {
   audio: string[];
   model3d: string | null;
   text: string | null;
+  textItems: string[]; // All items from array batch mode (empty when not in batch)
   dynamicInputs: Record<string, string | string[]>;
   easeCurve: { bezierHandles: [number, number, number, number]; easingPreset: string | null; outputDuration: number } | null;
 }
@@ -169,13 +170,14 @@ export function getConnectedInputsPure(
   dimmedNodeIds?: Set<string>
 ): ConnectedInputs {
   const _visited = visited || new Set<string>();
-  if (_visited.has(nodeId)) return { images: [], videos: [], audio: [], model3d: null, text: null, dynamicInputs: {}, easeCurve: null };
+  if (_visited.has(nodeId)) return { images: [], videos: [], audio: [], model3d: null, text: null, textItems: [], dynamicInputs: {}, easeCurve: null };
   _visited.add(nodeId);
   const images: string[] = [];
   const videos: string[] = [];
   const audio: string[] = [];
   let model3d: string | null = null;
   let text: string | null = null;
+  const textItems: string[] = [];
   const dynamicInputs: Record<string, string | string[]> = {};
   let easeCurve: ConnectedInputs["easeCurve"] = null;
 
@@ -225,6 +227,18 @@ export function getConnectedInputsPure(
 
       // Skip dimmed source nodes — their data should not flow downstream
       if (dimmedNodeIds && dimmedNodeIds.has(sourceNode.id)) return;
+
+      // Array batch mode — send all items as textItems instead of a single item
+      if (sourceNode.type === "array" && (edge.data as Record<string, unknown> | undefined)?.arrayBatchAll === true) {
+        const arrayData = sourceNode.data as ArrayNodeData;
+        const items = arrayData.outputItems;
+        if (items.length > 0) {
+          textItems.push(...items);
+          // Set text to first item for backward compatibility
+          if (text === null) text = items[0];
+        }
+        return; // Skip normal getSourceOutput processing
+      }
 
       // Router passthrough — traverse upstream to find actual data source
       if (sourceNode.type === "router") {
@@ -369,7 +383,7 @@ export function getConnectedInputsPure(
     }
   }
 
-  return { images, videos, audio, model3d, text, dynamicInputs, easeCurve };
+  return { images, videos, audio, model3d, text, textItems, dynamicInputs, easeCurve };
 }
 
 /**
