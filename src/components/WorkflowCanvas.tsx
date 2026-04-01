@@ -1207,6 +1207,10 @@ export function WorkflowCanvas() {
         } else if (nodeType === "generateAudio") {
           // GenerateAudio outputs audio (no audio input to wire to)
           sourceHandleIdForNewNode = "audio";
+        } else if (nodeType === "generateVideo") {
+          // GenerateVideo accepts audio input and outputs video
+          targetHandleId = "audio";
+          sourceHandleIdForNewNode = "video";
         } else if (nodeType === "videoStitch") {
           // VideoStitch accepts audio
           targetHandleId = "audio";

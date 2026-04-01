@@ -85,6 +85,7 @@ import {
   executeRouter,
   executeSwitch,
   executeConditionalSwitch,
+  runBatchIfApplicable,
 } from "./execution";
 import type { NodeExecutionContext } from "./execution";
 export type { LevelGroup } from "./utils/executionUtils";
@@ -145,11 +146,8 @@ function buildConnectionEdgeData(
   if (sourceNode?.type === "array" && (connection.sourceHandle || "text") === "text") {
     const sourceData = sourceNode.data as Record<string, unknown>;
 
-    // Batch mode: all items sent through a single connection
-    if (sourceData.batchMode === true) {
-      baseData.arrayBatchAll = true;
-      return baseData;
-    }
+    // Batch mode is now derived dynamically in connectedInputs.ts from
+    // the source node's batchMode — no need to stamp edge metadata.
 
     const selectedIndex = sourceData.selectedOutputIndex;
     const outputItems = Array.isArray(sourceData.outputItems) ? sourceData.outputItems : [];
@@ -909,8 +907,8 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
     );
 
     // Deep clone the nodes and edges to avoid reference issues
-    const clonedNodes = JSON.parse(JSON.stringify(selectedNodes)) as WorkflowNode[];
-    const clonedEdges = JSON.parse(JSON.stringify(connectedEdges)) as WorkflowEdge[];
+    const clonedNodes = clonePreservingStrings(selectedNodes) as WorkflowNode[];
+    const clonedEdges = clonePreservingStrings(connectedEdges) as WorkflowEdge[];
 
     set({ clipboard: { nodes: clonedNodes, edges: clonedEdges } });
   },
@@ -948,7 +946,7 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
         width: undefined,
         height: undefined,
         measured: undefined,
-        data: JSON.parse(JSON.stringify(node.data)),
+        data: clonePreservingStrings(node.data),
       };
     });
 
@@ -1322,73 +1320,8 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
       const executionCtx = get()._buildExecutionContext(node, signal);
 
       // Batch mode: for generate-type nodes, detect textItems and loop through them
-      const batchNodeTypes = new Set(["nanoBanana", "generateVideo", "generateAudio", "llmGenerate"]);
-      if (node.type && batchNodeTypes.has(node.type)) {
-        const connectedInputs = get().getConnectedInputs(node.id);
-        if (connectedInputs.textItems.length > 0) {
-          const items = connectedInputs.textItems;
-          const totalItems = items.length;
-
-          for (let i = 0; i < totalItems; i++) {
-            // Check abort signal before each iteration
-            if (signal.aborted) {
-              throw new DOMException('Aborted', 'AbortError');
-            }
-
-            // Update status with batch progress
-            get().updateNodeData(node.id, {
-              status: "loading",
-              error: null,
-            } as Partial<WorkflowNodeData>);
-
-            logger.info('node.execution', `Batch ${i + 1} of ${totalItems}`, {
-              nodeId: node.id,
-              nodeType: node.type,
-              batchIndex: i,
-              batchTotal: totalItems,
-            });
-
-            // Create a wrapped context where getConnectedInputs returns
-            // the current item as `text` and clears `textItems`
-            const batchCtx: NodeExecutionContext = {
-              ...executionCtx,
-              getConnectedInputs: (nodeId: string) => {
-                const inputs = get().getConnectedInputs(nodeId);
-                return {
-                  ...inputs,
-                  text: items[i],
-                  textItems: [], // Clear so executors don't see batch
-                };
-              },
-            };
-
-            // Execute the appropriate executor
-            switch (node.type) {
-              case "nanoBanana":
-                await executeNanoBanana(batchCtx);
-                break;
-              case "generateVideo":
-                await executeGenerateVideo(batchCtx);
-                break;
-              case "generateAudio":
-                await executeGenerateAudio(batchCtx);
-                break;
-              case "llmGenerate":
-                await executeLlmGenerate(batchCtx);
-                break;
-            }
-
-            // After each iteration (except last), reset status to loading for next iteration
-            if (i < totalItems - 1) {
-              get().updateNodeData(node.id, {
-                status: "loading",
-              } as Partial<WorkflowNodeData>);
-            }
-          }
-
-          // Batch complete — skip the normal switch below
-          return;
-        }
+      if (await runBatchIfApplicable(executionCtx)) {
+        return;
       }
 
       switch (node.type) {
@@ -1605,7 +1538,12 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
 
       const regenOptions = { useStoredFallback: true };
 
-      if (node.type === "nanoBanana") {
+      // Try batch mode first (handles textItems from array nodes)
+      const wasBatch = await runBatchIfApplicable(executionCtx, regenOptions);
+
+      if (wasBatch) {
+        // Batch handled — skip to downstream execution
+      } else if (node.type === "nanoBanana") {
         await executeNanoBanana(executionCtx, regenOptions);
       } else if (node.type === "array") {
         await executeArray(executionCtx);
@@ -1737,6 +1675,11 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
 
       const executionCtx = get()._buildExecutionContext(node, signal);
       const regenOptions = { useStoredFallback: true };
+
+      // Try batch mode first (handles textItems from array nodes)
+      if (await runBatchIfApplicable(executionCtx, regenOptions)) {
+        return;
+      }
 
       switch (node.type) {
         case "imageInput":
@@ -2593,12 +2536,12 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
   captureSnapshot: () => {
     const state = get();
     // Deep copy the current workflow state to avoid reference sharing
-    const snapshot = {
-      nodes: JSON.parse(JSON.stringify(state.nodes)),
-      edges: JSON.parse(JSON.stringify(state.edges)),
-      groups: JSON.parse(JSON.stringify(state.groups)),
+    const snapshot = clonePreservingStrings({
+      nodes: state.nodes,
+      edges: state.edges,
+      groups: state.groups,
       edgeStyle: state.edgeStyle,
-    };
+    });
     set({
       previousWorkflowSnapshot: snapshot,
       manualChangeCount: 0,

@@ -57,9 +57,13 @@ export class UndoManager {
  * snapshots, but strings (immutable in JS) are returned by reference.
  * This avoids duplicating multi-MB base64 blobs across undo history.
  *
- * Matches JSON.parse(JSON.stringify()) semantics:
+ * Matches JSON.parse(JSON.stringify()) semantics for plain JSON-like
+ * objects/arrays:
  *  - `undefined` values are dropped from objects, become `null` in arrays
  *  - functions are dropped from objects, become `null` in arrays
+ *
+ * Does NOT call toJSON() on objects. Objects with custom toJSON methods
+ * are treated as plain objects (their enumerable own properties are cloned).
  */
 export function clonePreservingStrings<T>(value: T): T {
   if (value === null || typeof value !== "object") {

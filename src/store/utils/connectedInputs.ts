@@ -229,7 +229,8 @@ export function getConnectedInputsPure(
       if (dimmedNodeIds && dimmedNodeIds.has(sourceNode.id)) return;
 
       // Array batch mode — send all items as textItems instead of a single item
-      if (sourceNode.type === "array" && (edge.data as Record<string, unknown> | undefined)?.arrayBatchAll === true) {
+      // Derive from source node's current batchMode (not edge metadata which can go stale)
+      if (sourceNode.type === "array" && (sourceNode.data as ArrayNodeData).batchMode === true) {
         const arrayData = sourceNode.data as ArrayNodeData;
         const items = arrayData.outputItems;
         if (items.length > 0) {
