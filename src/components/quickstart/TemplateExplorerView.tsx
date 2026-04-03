@@ -18,7 +18,6 @@ const CATEGORY_OPTIONS: { id: CategoryFilter; label: string }[] = [
   { id: "all", label: "All" },
   { id: "simple", label: "Simple" },
   { id: "advanced", label: "Advanced" },
-  { id: "community", label: "Community" },
 ];
 
 export function TemplateExplorerView({
@@ -435,79 +434,7 @@ export function TemplateExplorerView({
             </div>
           )}
 
-          {/* Divider */}
-          {filteredPresets.length > 0 && (filteredCommunity.length > 0 || (isLoadingList && categoryFilter !== "community")) && (
-            <div className="border-t border-neutral-700" />
-          )}
-
-          {/* Community Workflows */}
-          {(filteredCommunity.length > 0 || (isLoadingList && (categoryFilter === "all" || categoryFilter === "community"))) && (
-            <div className="space-y-3">
-              <h3 className="text-xs font-medium text-neutral-400 uppercase tracking-wider">
-                Community Workflows
-              </h3>
-
-              {isLoadingList ? (
-                <div className="flex items-center justify-center py-8">
-                  <svg
-                    className="w-5 h-5 text-neutral-500 animate-spin"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    />
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    />
-                  </svg>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-3">
-                  {filteredCommunity.map((workflow) => (
-                    <TemplateCard
-                      key={workflow.id}
-                      template={{
-                        id: workflow.id,
-                        name: workflow.name,
-                        description: workflow.description,
-                        icon: "M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z",
-                        category: "community",
-                        tags: workflow.tags,
-                      }}
-                      nodeCount={workflow.nodeCount}
-                      previewImage={workflow.previewImage}
-                      hoverImage={workflow.hoverImage}
-                      isLoading={loadingWorkflowId === workflow.id}
-                      onUseWorkflow={() => handleCommunitySelect(workflow.id)}
-                      disabled={isLoading && loadingWorkflowId !== workflow.id}
-                    />
-                  ))}
-                </div>
-              )}
-
-              {/* Discord CTA */}
-              <p className="text-xs text-neutral-500 mt-3">
-                Want to share your workflow?{" "}
-                <a
-                  href="https://x.com/amanxdesign"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-purple-400 hover:text-purple-300 underline"
-                >
-                  Reach out on X
-                </a>{" "}
-                to submit it to the community templates.
-              </p>
-            </div>
-          )}
+          {/* Community workflows removed — available locally in community-workflows-backup/ */}
 
           {/* Error */}
           {error && (

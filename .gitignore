@@ -46,6 +46,9 @@ logs/*.json
 # planning docs
 .planning/
 
+# community workflow backups (large files)
+community-workflows-backup/
+
 # agents
 .agents/
 
