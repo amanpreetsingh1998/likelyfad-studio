@@ -1,5 +1,8 @@
 import { create, StateCreator } from "zustand";
 import { useShallow } from "zustand/shallow";
+// === LIKELYFAD CUSTOM START ===
+import { saveProject } from "@/lib/likelyfad/cloud-storage";
+// === LIKELYFAD CUSTOM END ===
 import {
   Connection,
   EdgeChange,
@@ -1984,16 +1987,18 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
     // Determine the workflow directory path (passed in, from saved config, or embedded in legacy workflow JSON)
     const directoryPath = workflowPath || savedConfig?.directoryPath || workflow.directoryPath || null;
 
-    // Hydrate media if we have a directory path and the workflow has media refs
+    // === LIKELYFAD CUSTOM START === (cloud hydration: use project ID instead of directory path)
     let hydratedWorkflow = workflow;
-    if (directoryPath) {
+    const projectId = workflow.id || workflowPath;
+    if (projectId) {
       try {
-        hydratedWorkflow = await hydrateWorkflowMedia(workflow, directoryPath);
+        hydratedWorkflow = await hydrateWorkflowMedia(workflow, projectId);
       } catch (error) {
         console.error("Failed to hydrate workflow media:", error);
         // Continue with original workflow if hydration fails
       }
     }
+    // === LIKELYFAD CUSTOM END ===
 
     // Load cost data for this workflow
     const costData = workflow.id ? loadWorkflowCostData(workflow.id) : null;
@@ -2155,9 +2160,11 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
       imageRefBasePath,
     } = get();
 
-    if (!workflowId || !workflowName || !saveDirectoryPath) {
+    // === LIKELYFAD CUSTOM START === (removed saveDirectoryPath requirement for cloud mode)
+    if (!workflowId || !workflowName) {
       return false;
     }
+    // === LIKELYFAD CUSTOM END ===
 
     set({ isSaving: true });
 
@@ -2204,29 +2211,28 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
         version: 1,
         id: workflowId,
         name: workflowName,
-        directoryPath: saveDirectoryPath,
+        directoryPath: saveDirectoryPath ?? undefined,
         nodes: currentNodes,
         edges,
         edgeStyle,
         groups: groups && Object.keys(groups).length > 0 ? groups : undefined,
       };
 
-      // If external media storage is enabled, externalize media before saving
-      if (useExternalImageStorage) {
-        workflow = await externalizeWorkflowMedia(workflow, saveDirectoryPath);
-      }
+      // === LIKELYFAD CUSTOM START === (cloud save: externalize media then save to Supabase)
+      // Externalize media — strips base64 from nodes and uploads to Supabase Storage
+      workflow = await externalizeWorkflowMedia(workflow, workflowId);
 
-      const response = await fetch("/api/workflow", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          directoryPath: saveDirectoryPath,
-          filename: workflowName,
-          workflow,
-        }),
-      });
+      // Save workflow JSON to Supabase projects table
+      await saveProject(
+        workflowId,
+        workflowName,
+        workflow as unknown as Record<string, unknown>,
+        edgeStyle,
+        workflow.nodes.length
+      );
 
-      const result = await response.json();
+      const result: { success: boolean; error?: string } = { success: true };
+      // === LIKELYFAD CUSTOM END ===
 
       if (result.success) {
         const timestamp = Date.now();
@@ -2307,7 +2313,7 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
         saveSaveConfig({
           workflowId,
           name: workflowName,
-          directoryPath: saveDirectoryPath,
+          directoryPath: saveDirectoryPath || "cloud",
           generationsPath: get().generationsPath,
           lastSavedAt: timestamp,
           useExternalImageStorage,
@@ -2361,6 +2367,7 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
   initializeAutoSave: () => {
     if (autoSaveIntervalId) return;
 
+    // === LIKELYFAD CUSTOM START === (30s cloud auto-save, removed saveDirectoryPath check)
     autoSaveIntervalId = setInterval(async () => {
       const state = get();
       if (
@@ -2368,12 +2375,12 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
         state.hasUnsavedChanges &&
         state.workflowId &&
         state.workflowName &&
-        state.saveDirectoryPath &&
         !state.isSaving
       ) {
         await state.saveToFile();
       }
-    }, 90 * 1000); // 90 seconds
+    }, 30 * 1000); // 30 seconds — cloud save
+    // === LIKELYFAD CUSTOM END ===
   },
 
   cleanupAutoSave: () => {

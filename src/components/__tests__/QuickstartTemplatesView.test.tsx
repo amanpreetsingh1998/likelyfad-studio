@@ -96,7 +96,8 @@ describe("QuickstartTemplatesView", () => {
       });
     });
 
-    it("should render Community Workflows section header", async () => {
+    // === LIKELYFAD CUSTOM: skipped — community section removed ===
+    it.skip("should render Community Workflows section header", async () => {
       render(
         <QuickstartTemplatesView
           onBack={mockOnBack}
@@ -345,7 +346,8 @@ describe("QuickstartTemplatesView", () => {
     });
   });
 
-  describe("Community Workflows", () => {
+  // === LIKELYFAD CUSTOM: skipped — community workflows removed ===
+  describe.skip("Community Workflows", () => {
     it("should show loading state while fetching community workflows", async () => {
       let resolveList: ((value: unknown) => void) | undefined;
       mockFetch.mockImplementation((url: string) => {
@@ -600,7 +602,8 @@ describe("QuickstartTemplatesView", () => {
       });
     });
 
-    it("should show error message when community workflow loading fails", async () => {
+    // === LIKELYFAD CUSTOM: skipped — community workflows removed ===
+    it.skip("should show error message when community workflow loading fails", async () => {
       mockFetch.mockImplementation((url: string) => {
         if (url === "/api/community-workflows") {
           return Promise.resolve({

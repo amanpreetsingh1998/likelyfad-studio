@@ -29,7 +29,8 @@ describe("templates", () => {
     });
   });
 
-  describe("PRESET_TEMPLATES", () => {
+  // === LIKELYFAD CUSTOM: skipped — preset templates cleared for custom templates ===
+  describe.skip("PRESET_TEMPLATES", () => {
     it("should have 6 preset templates", () => {
       expect(PRESET_TEMPLATES).toHaveLength(6);
     });
@@ -95,7 +96,8 @@ describe("templates", () => {
     });
   });
 
-  describe("getAllPresets", () => {
+  // === LIKELYFAD CUSTOM: skipped — preset templates cleared ===
+  describe.skip("getAllPresets", () => {
     it("should return all 6 presets", () => {
       const presets = getAllPresets();
       expect(presets).toHaveLength(6);
@@ -116,7 +118,8 @@ describe("templates", () => {
     });
   });
 
-  describe("getPresetTemplate", () => {
+  // === LIKELYFAD CUSTOM: skipped — preset templates cleared ===
+  describe.skip("getPresetTemplate", () => {
     const contentLevels: ContentLevel[] = ["empty", "minimal", "full"];
 
     it("should throw error for invalid template ID", () => {
@@ -217,7 +220,8 @@ describe("templates", () => {
     });
   });
 
-  describe("getTemplateContent", () => {
+  // === LIKELYFAD CUSTOM: skipped — preset templates cleared ===
+  describe.skip("getTemplateContent", () => {
     it("should return content for valid template and level", () => {
       const content = getTemplateContent("product-shot", "full");
       expect(content).not.toBeNull();
@@ -250,7 +254,8 @@ describe("templates", () => {
     });
   });
 
-  describe("template-specific tests", () => {
+  // === LIKELYFAD CUSTOM: skipped — preset templates cleared ===
+  describe.skip("template-specific tests", () => {
     describe("product-shot template", () => {
       it("should have 2 image inputs (product and scene)", () => {
         const workflow = getPresetTemplate("product-shot", "empty");

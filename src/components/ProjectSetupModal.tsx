@@ -263,54 +263,18 @@ export function ProjectSetupModal({
     }
   };
 
+  // === LIKELYFAD CUSTOM START === (cloud-only: no directory validation needed)
   const handleSaveProject = async () => {
     if (!name.trim()) {
       setError("Project name is required");
       return;
     }
 
-    if (!directoryPath.trim()) {
-      setError("Project directory is required");
-      return;
-    }
-
-    const fullProjectPath = ensureProjectSubfolderPath(directoryPath, name);
-
-    if (!(fullProjectPath.startsWith("/") || /^[A-Za-z]:[\\\/]/.test(fullProjectPath) || fullProjectPath.startsWith("\\\\"))) {
-      setError("Project directory must be an absolute path (starting with /, a drive letter, or a UNC path)");
-      return;
-    }
-
-    setIsValidating(true);
-    setError(null);
-
-    try {
-      // Validate path shape when it already exists
-      const response = await fetch(
-        `/api/workflow?path=${encodeURIComponent(fullProjectPath)}`
-      );
-      const result = await response.json();
-
-      if (result.exists && !result.isDirectory) {
-        setError("Project path is not a directory");
-        setIsValidating(false);
-        return;
-      }
-
-      const id = mode === "new" ? generateWorkflowId() : useWorkflowStore.getState().workflowId || generateWorkflowId();
-      // Update external storage setting
-      setUseExternalImageStorage(externalStorage);
-      // Remember the base directory for next time
-      setLastProjectBaseDir(directoryPath);
-      onSave(id, name.trim(), fullProjectPath);
-      setIsValidating(false);
-    } catch (err) {
-      setError(
-        `Failed to validate directory: ${err instanceof Error ? err.message : "Unknown error"}`
-      );
-      setIsValidating(false);
-    }
+    const id = mode === "new" ? generateWorkflowId() : useWorkflowStore.getState().workflowId || generateWorkflowId();
+    setUseExternalImageStorage(true); // Always externalize in cloud mode
+    onSave(id, name.trim(), "cloud"); // "cloud" as placeholder path
   };
+  // === LIKELYFAD CUSTOM END ===
 
   const handleSaveProviders = () => {
     // Save each provider's settings
@@ -451,51 +415,11 @@ export function ProjectSetupModal({
               />
             </div>
 
-            <div>
-              <label className="block text-sm text-neutral-400 mb-1">
-                Project Directory
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={directoryPath}
-                  onChange={(e) => setDirectoryPath(e.target.value)}
-                  placeholder="/Users/username/projects/my-project"
-                  className="flex-1 px-3 py-2 bg-neutral-900 border border-neutral-600 rounded-lg text-neutral-100 text-sm focus:outline-none focus:border-neutral-500"
-                />
-                <button
-                  type="button"
-                  onClick={handleBrowse}
-                  disabled={isBrowsing}
-                  className="px-3 py-2 bg-neutral-700 hover:bg-neutral-600 disabled:bg-neutral-700 disabled:opacity-50 text-neutral-200 text-sm rounded-lg transition-colors"
-                >
-                  {isBrowsing ? "..." : "Browse"}
-                </button>
-              </div>
-              <p className="text-xs text-neutral-400 mt-1">
-                Workflow files and images will be saved here. Subfolders for inputs and generations will be auto-created.
-              </p>
-            </div>
-
-            <div className="pt-2 border-t border-neutral-700">
-              <label className="flex items-center justify-between gap-3 cursor-pointer">
-                <div>
-                  <span className="text-sm text-neutral-200">Embed images as base64</span>
-                  <p className="text-xs text-neutral-400">
-                    Embeds all images in workflow, larger workflow files. Can hit memory limits on very large workflows.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={!externalStorage}
-                  onClick={() => setExternalStorage(externalStorage ? false : true)}
-                  className={`relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors ${!externalStorage ? "bg-blue-500" : "bg-neutral-600"}`}
-                >
-                  <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform ${!externalStorage ? "translate-x-[18px]" : "translate-x-[3px]"}`} />
-                </button>
-              </label>
-            </div>
+            {/* === LIKELYFAD CUSTOM START === (directory picker and embed toggle hidden for cloud mode) */}
+            <p className="text-xs text-neutral-400">
+              Your project is saved automatically to the cloud.
+            </p>
+            {/* === LIKELYFAD CUSTOM END === */}
 
             <div className="pt-2 border-t border-neutral-700">
               <label className="flex items-center justify-between gap-3 cursor-pointer">

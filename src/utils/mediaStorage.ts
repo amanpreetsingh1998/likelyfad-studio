@@ -577,15 +577,16 @@ async function saveImageAndGetId(
   // Use existing ID if provided (for consistency with imageHistory), otherwise generate new
   const imageId = existingId || generateImageId();
 
+  // === LIKELYFAD CUSTOM START === (upload to Supabase Storage via cloud API)
   const savePromise = (async () => {
     const response = await fetchWithTimeout(
-      "/api/workflow-images",
+      "/api/likelyfad/media",
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          workflowPath,
-          imageId,
+          projectId: workflowPath, // workflowPath is the project ID in cloud mode
+          mediaId: imageId,
           imageData,
           folder,
         }),
@@ -601,6 +602,7 @@ async function saveImageAndGetId(
     savedImageIds.set(hash, imageId);
     return imageId;
   })();
+  // === LIKELYFAD CUSTOM END ===
 
   if (!existingId) {
     inFlightSaves.set(hash, savePromise);
@@ -643,17 +645,18 @@ async function saveVideoAndGetRef(
 
   const videoId = existingId || generateMediaId("vid");
 
+  // === LIKELYFAD CUSTOM START === (upload video to Supabase Storage)
   const savePromise = (async () => {
     const response = await fetchWithTimeout(
-      "/api/save-generation",
+      "/api/likelyfad/media",
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          directoryPath: `${workflowPath}/generations`,
-          createDirectory: true,
-          imageId: videoId,
-          video: videoData,
+          projectId: workflowPath,
+          mediaId: videoId,
+          imageData: videoData,
+          folder: "generations",
         }),
       },
       60000 // 60s timeout for larger video files
@@ -662,6 +665,7 @@ async function saveVideoAndGetRef(
     const result = await response.json();
 
     if (!result.success) {
+    // === LIKELYFAD CUSTOM END ===
       throw new Error(`Failed to save video: ${result.error}`);
     }
 
@@ -711,23 +715,25 @@ async function saveAudioAndGetRef(
 
   const audioId = existingId || generateMediaId("aud");
 
+  // === LIKELYFAD CUSTOM START === (upload audio to Supabase Storage)
   const savePromise = (async () => {
     const response = await fetchWithTimeout(
-      "/api/save-generation",
+      "/api/likelyfad/media",
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          directoryPath: `${workflowPath}/generations`,
-          createDirectory: true,
-          imageId: audioId,
-          audio: audioData,
+          projectId: workflowPath,
+          mediaId: audioId,
+          imageData: audioData,
+          folder: "generations",
         }),
       },
       60000 // 60s timeout for larger audio files
     );
 
     const result = await response.json();
+    // === LIKELYFAD CUSTOM END ===
 
     if (!result.success) {
       throw new Error(`Failed to save audio: ${result.error}`);
@@ -1091,57 +1097,14 @@ async function loadMediaById(
     return loadedMedia.get(mediaId)!;
   }
 
-  let response: Response;
+  // === LIKELYFAD CUSTOM START === (load from Supabase Storage via cloud API)
+  const params = new URLSearchParams({
+    projectId: workflowPath, // workflowPath is the project ID in cloud mode
+    mediaId,
+    type: mediaType,
+  });
 
-  if (mediaType === "image") {
-    // Use workflow-images API for images (legacy path)
-    const params = new URLSearchParams({
-      workflowPath,
-      imageId: mediaId,
-    });
-
-    response = await fetch(`/api/workflow-images?${params.toString()}`);
-  } else {
-    // Use load-generation API for videos and audio
-    // Try generations/ subfolder first, fall back to root for legacy files
-    response = await fetch("/api/load-generation", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        directoryPath: `${workflowPath}/generations`,
-        imageId: mediaId,
-      }),
-    });
-
-    let genResult = await response.json();
-
-    // Fallback to root directory for legacy files saved before generations/ fix
-    if (!genResult.success && genResult.notFound) {
-      response = await fetch("/api/load-generation", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          directoryPath: workflowPath,
-          imageId: mediaId,
-        }),
-      });
-      genResult = await response.json();
-    }
-
-    if (!genResult.success) {
-      console.log(`${mediaType} not found: ${mediaId}`);
-      return "";
-    }
-    const mediaData = mediaType === "video" ? genResult.video : genResult.audio;
-    if (!mediaData) {
-      console.log(`${mediaType} not found or invalid payload: ${mediaId}`);
-      return "";
-    }
-    loadedMedia.set(mediaId, mediaData);
-    return mediaData;
-  }
-
-  // Only images reach here (video/audio return early above)
+  const response = await fetch(`/api/likelyfad/media?${params.toString()}`);
   const result = await response.json();
 
   if (!result.success) {
@@ -1151,4 +1114,5 @@ async function loadMediaById(
 
   loadedMedia.set(mediaId, result.image);
   return result.image;
+  // === LIKELYFAD CUSTOM END ===
 }
