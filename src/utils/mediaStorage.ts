@@ -577,28 +577,10 @@ async function saveImageAndGetId(
   // Use existing ID if provided (for consistency with imageHistory), otherwise generate new
   const imageId = existingId || generateImageId();
 
-  // === LIKELYFAD CUSTOM START === (upload to Supabase Storage via cloud API)
+  // === LIKELYFAD CUSTOM START === (upload directly to Supabase Storage — bypasses Vercel 4.5MB body limit)
   const savePromise = (async () => {
-    const response = await fetchWithTimeout(
-      "/api/likelyfad/media",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          projectId: workflowPath, // workflowPath is the project ID in cloud mode
-          mediaId: imageId,
-          imageData,
-          folder,
-        }),
-      }
-    );
-
-    const result = await response.json();
-
-    if (!result.success) {
-      throw new Error(`Failed to save image: ${result.error}`);
-    }
-
+    const { uploadMedia } = await import("@/lib/likelyfad/cloud-storage");
+    await uploadMedia(workflowPath, imageId, imageData, folder);
     savedImageIds.set(hash, imageId);
     return imageId;
   })();
@@ -645,34 +627,14 @@ async function saveVideoAndGetRef(
 
   const videoId = existingId || generateMediaId("vid");
 
-  // === LIKELYFAD CUSTOM START === (upload video to Supabase Storage)
+  // === LIKELYFAD CUSTOM START === (upload directly to Supabase Storage — bypasses Vercel 4.5MB limit)
   const savePromise = (async () => {
-    const response = await fetchWithTimeout(
-      "/api/likelyfad/media",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          projectId: workflowPath,
-          mediaId: videoId,
-          imageData: videoData,
-          folder: "generations",
-        }),
-      },
-      60000 // 60s timeout for larger video files
-    );
-
-    const result = await response.json();
-
-    if (!result.success) {
-    // === LIKELYFAD CUSTOM END ===
-      throw new Error(`Failed to save video: ${result.error}`);
-    }
-
-    const actualId = result.imageId || videoId;
-    savedMediaIds.set(hash, actualId);
-    return actualId;
+    const { uploadMedia } = await import("@/lib/likelyfad/cloud-storage");
+    await uploadMedia(workflowPath, videoId, videoData, "generations");
+    savedMediaIds.set(hash, videoId);
+    return videoId;
   })();
+  // === LIKELYFAD CUSTOM END ===
 
   if (!existingId) {
     inFlightSaves.set(hash, savePromise);
@@ -715,34 +677,14 @@ async function saveAudioAndGetRef(
 
   const audioId = existingId || generateMediaId("aud");
 
-  // === LIKELYFAD CUSTOM START === (upload audio to Supabase Storage)
+  // === LIKELYFAD CUSTOM START === (upload directly to Supabase Storage — bypasses Vercel 4.5MB limit)
   const savePromise = (async () => {
-    const response = await fetchWithTimeout(
-      "/api/likelyfad/media",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          projectId: workflowPath,
-          mediaId: audioId,
-          imageData: audioData,
-          folder: "generations",
-        }),
-      },
-      60000 // 60s timeout for larger audio files
-    );
-
-    const result = await response.json();
-    // === LIKELYFAD CUSTOM END ===
-
-    if (!result.success) {
-      throw new Error(`Failed to save audio: ${result.error}`);
-    }
-
-    const actualId = result.imageId || audioId;
-    savedMediaIds.set(hash, actualId);
-    return actualId;
+    const { uploadMedia } = await import("@/lib/likelyfad/cloud-storage");
+    await uploadMedia(workflowPath, audioId, audioData, "generations");
+    savedMediaIds.set(hash, audioId);
+    return audioId;
   })();
+  // === LIKELYFAD CUSTOM END ===
 
   if (!existingId) {
     inFlightSaves.set(hash, savePromise);
@@ -1097,22 +1039,15 @@ async function loadMediaById(
     return loadedMedia.get(mediaId)!;
   }
 
-  // === LIKELYFAD CUSTOM START === (load from Supabase Storage via cloud API)
-  const params = new URLSearchParams({
-    projectId: workflowPath, // workflowPath is the project ID in cloud mode
-    mediaId,
-    type: mediaType,
-  });
-
-  const response = await fetch(`/api/likelyfad/media?${params.toString()}`);
-  const result = await response.json();
-
-  if (!result.success) {
+  // === LIKELYFAD CUSTOM START === (load directly from Supabase Storage — no API route needed)
+  try {
+    const { loadMedia } = await import("@/lib/likelyfad/cloud-storage");
+    const dataUrl = await loadMedia(workflowPath, mediaId, mediaType);
+    loadedMedia.set(mediaId, dataUrl);
+    return dataUrl;
+  } catch {
     console.log(`${mediaType} not found: ${mediaId}`);
     return "";
   }
-
-  loadedMedia.set(mediaId, result.image);
-  return result.image;
   // === LIKELYFAD CUSTOM END ===
 }
