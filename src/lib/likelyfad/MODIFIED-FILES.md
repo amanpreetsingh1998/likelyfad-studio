@@ -35,3 +35,9 @@ Every upstream file edited by Likelyfad Studio is listed here. All changes are w
 
 ### 8. `.env.example`
 - **Variables**: Added NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
+
+### 9. `src/components/quickstart/WorkflowBrowserView.tsx`
+- **Import**: Added `useRef` to React imports
+- **handleImportJson()**: New function to read JSON file via `<input type="file">` and load as workflow
+- **State A UI**: Added "Import Workflow JSON" button below "Choose folder" with divider
+- **State B footer**: Added "Import JSON" button next to "Open from directory"

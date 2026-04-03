@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { WorkflowFile } from "@/store/workflowStore";
 import { QuickstartBackButton } from "./QuickstartBackButton";
 import {
@@ -48,6 +48,34 @@ export function WorkflowBrowserView({
   const [isLoading, setIsLoading] = useState(false);
   const [loadingWorkflow, setLoadingWorkflow] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // === LIKELYFAD CUSTOM START === (import workflow from JSON file)
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImportJson = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const json = JSON.parse(event.target?.result as string);
+        if (!json.nodes || !json.edges) {
+          setError("Invalid workflow file — missing nodes or edges");
+          return;
+        }
+        const workflow = json as WorkflowFile;
+        onWorkflowLoaded(workflow, workflow.id || "imported");
+        onClose?.();
+      } catch {
+        setError("Failed to parse JSON file");
+      }
+    };
+    reader.readAsText(file);
+    // Reset input so the same file can be re-selected
+    e.target.value = "";
+  }, [onWorkflowLoaded, onClose]);
+  // === LIKELYFAD CUSTOM END ===
 
   useEffect(() => {
     setDefaultDir(getWorkflowsDirectory());
@@ -201,6 +229,22 @@ export function WorkflowBrowserView({
           >
             Choose folder
           </button>
+          {/* === LIKELYFAD CUSTOM START === (import JSON file button) */}
+          <span className="text-xs text-neutral-600">&mdash; or &mdash;</span>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="px-4 py-2 text-sm font-medium text-neutral-200 bg-neutral-700 hover:bg-neutral-600 rounded-lg transition-colors"
+          >
+            Import Workflow JSON
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json"
+            onChange={handleImportJson}
+            className="hidden"
+          />
+          {/* === LIKELYFAD CUSTOM END === */}
         </div>
       </div>
     );
@@ -329,16 +373,30 @@ export function WorkflowBrowserView({
 
       {/* Footer */}
       <div className="px-6 py-3 border-t border-neutral-700/50 flex-shrink-0 flex items-center justify-between">
-        <button
-          onClick={handleBrowseOther}
-          disabled={loadingWorkflow !== null}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-neutral-300 bg-neutral-700/50 hover:bg-neutral-700 border border-neutral-600/50 hover:border-neutral-600 rounded-md transition-colors disabled:opacity-50"
-        >
-          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
-          </svg>
-          Open from directory
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleBrowseOther}
+            disabled={loadingWorkflow !== null}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-neutral-300 bg-neutral-700/50 hover:bg-neutral-700 border border-neutral-600/50 hover:border-neutral-600 rounded-md transition-colors disabled:opacity-50"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
+            </svg>
+            Open from directory
+          </button>
+          {/* === LIKELYFAD CUSTOM START === (import JSON in footer) */}
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={loadingWorkflow !== null}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-neutral-300 bg-neutral-700/50 hover:bg-neutral-700 border border-neutral-600/50 hover:border-neutral-600 rounded-md transition-colors disabled:opacity-50"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+            </svg>
+            Import JSON
+          </button>
+          {/* === LIKELYFAD CUSTOM END === */}
+        </div>
         <button
           onClick={browseAndSetDir}
           disabled={loadingWorkflow !== null}
