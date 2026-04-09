@@ -15,6 +15,7 @@ import type { NodeExecutionContext } from "./types";
 import { uploadImageForGeneration, uploadDynamicInputsForGeneration } from "@/lib/likelyfad/cloud-storage";
 import { logCostEvent } from "@/lib/likelyfad/costEvents";
 import { useWorkflowStore } from "@/store/workflowStore";
+import { getPricingOverride } from "@/lib/likelyfad/pricing-overrides";
 // === LIKELYFAD CUSTOM END ===
 
 export interface NanoBananaOptions {
@@ -235,14 +236,28 @@ export async function executeNanoBanana(
           costAmount = sel.pricing.amount;
           modelName = sel.displayName || sel.modelId;
           addIncurredCost(costAmount);
-        } else if (!sel || sel.provider === "gemini") {
+        } else if (sel?.modelId) {
+          // Fallback: look up pricing override directly by modelId. This catches
+          // already-selected models whose cached metadata is missing pricing.
+          const override = getPricingOverride(sel.modelId);
+          if (override) {
+            costAmount = override.amount;
+            modelName = sel.displayName || sel.modelId;
+            addIncurredCost(costAmount);
+            console.log(`[cost] pricing from override for ${sel.modelId}: $${override.amount}`);
+          } else if (!sel || sel.provider === "gemini") {
+            costAmount = calculateGenerationCost(nodeData.model, nodeData.resolution);
+            modelName = nodeData.model;
+            addIncurredCost(costAmount);
+          } else {
+            console.warn(
+              `[cost] NOT tracking cost for ${sel.provider}/${sel.modelId} — no pricing metadata and no override. Add to src/lib/likelyfad/pricing-overrides.ts`
+            );
+          }
+        } else {
           costAmount = calculateGenerationCost(nodeData.model, nodeData.resolution);
           modelName = nodeData.model;
           addIncurredCost(costAmount);
-        } else {
-          console.warn(
-            `[cost] NOT tracking cost for ${sel.provider}/${sel.modelId} — no pricing metadata attached to selectedModel`
-          );
         }
         if (costAmount > 0) {
           console.log(`[cost] +${costAmount} for ${modelName}, new total: ${useWorkflowStore.getState().incurredCost}`);

@@ -32,6 +32,12 @@ export const PRICING_OVERRIDES: Record<string, PricingOverride> = {
   // Gemini 3 Pro Image Preview on fal.ai — $0.15/image, 4K outputs charged at 2x ($0.30)
   // NOTE: Cost tracker uses standard rate. If you generate at 4K, actual spend will be ~2x what's shown.
   "fal-ai/gemini-3-pro-image-preview": { amount: 0.15, note: "Gemini 3 Pro via fal.ai ($0.30 at 4K)" },
+  // The /edit variant is the image-to-image endpoint — same price.
+  "fal-ai/gemini-3-pro-image-preview/edit": { amount: 0.15, note: "Gemini 3 Pro edit via fal.ai" },
+
+  // Kling Video v2.6 Image-to-Video — $0.28/5s, $0.56/10s (using standard rate for 5s)
+  "fal-ai/kling-video/v2.6/standard/image-to-video": { amount: 0.28, note: "Kling v2.6 standard 5s" },
+  "fal-ai/kling-video/v2.6/pro/image-to-video": { amount: 0.49, note: "Kling v2.6 pro 5s" },
 
   // Add more entries as needed:
   // "fal-ai/flux/dev": { amount: 0.025 },

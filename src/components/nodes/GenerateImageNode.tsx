@@ -16,6 +16,9 @@ import { useInlineParameters } from "@/hooks/useInlineParameters";
 import { InlineParameterPanel } from "./InlineParameterPanel";
 import { browseRegistry } from "@/utils/browseRegistry";
 import { useAdaptiveImageSrc } from "@/hooks/useAdaptiveImageSrc";
+// === LIKELYFAD CUSTOM START ===
+import { downloadMedia, buildMediaFilename } from "@/lib/likelyfad/downloadMedia";
+// === LIKELYFAD CUSTOM END ===
 
 /** Reorder items so they read column-first in a row-based CSS grid.
  *  e.g. [1,2,3,4,5,6,7,8] with 2 cols → [1,5,2,6,3,7,4,8] */
@@ -758,8 +761,23 @@ export function GenerateImageNode({ id, data, selected }: NodeProps<NanoBananaNo
                 </svg>
               </div>
             )}
-            {/* Clear button */}
-            <div className="absolute top-1 right-1">
+            {/* === LIKELYFAD CUSTOM START === (download + clear buttons) */}
+            <div className="absolute top-1 right-1 flex items-center gap-1">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void downloadMedia(
+                    nodeData.outputImage,
+                    buildMediaFilename("image", "image")
+                  );
+                }}
+                className="w-5 h-5 bg-neutral-900/80 hover:bg-blue-600/80 rounded flex items-center justify-center text-neutral-400 hover:text-white transition-colors"
+                title="Download image"
+              >
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                </svg>
+              </button>
               <button
                 onClick={handleClearImage}
                 className="w-5 h-5 bg-neutral-900/80 hover:bg-red-600/80 rounded flex items-center justify-center text-neutral-400 hover:text-white transition-colors"
@@ -770,6 +788,7 @@ export function GenerateImageNode({ id, data, selected }: NodeProps<NanoBananaNo
                 </svg>
               </button>
             </div>
+            {/* === LIKELYFAD CUSTOM END === */}
 
             {/* Carousel controls - overlaid on image bottom */}
             {hasCarouselImages && (

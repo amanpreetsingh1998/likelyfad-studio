@@ -14,6 +14,9 @@ import { useAudioPlayback } from "@/hooks/useAudioPlayback";
 import { useInlineParameters } from "@/hooks/useInlineParameters";
 import { InlineParameterPanel } from "./InlineParameterPanel";
 import { browseRegistry } from "@/utils/browseRegistry";
+// === LIKELYFAD CUSTOM START ===
+import { downloadMedia, buildMediaFilename } from "@/lib/likelyfad/downloadMedia";
+// === LIKELYFAD CUSTOM END ===
 
 type GenerateAudioNodeType = Node<GenerateAudioNodeData, "generateAudio">;
 
@@ -379,16 +382,35 @@ export function GenerateAudioNode({ id, data, selected }: NodeProps<GenerateAudi
               )}
             </div>
 
-            {/* Clear button */}
-            <button
-              onClick={handleClearAudio}
-              className="absolute top-1 right-1 w-5 h-5 bg-black/60 text-white rounded text-xs opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
-              title="Clear audio"
-            >
-              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
+            {/* === LIKELYFAD CUSTOM START === (download + clear buttons) */}
+            <div className="absolute top-1 right-1 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const ext = nodeData.format === "wav" ? "wav" : "mp3";
+                  void downloadMedia(
+                    nodeData.outputAudio,
+                    buildMediaFilename("audio", "audio", ext)
+                  );
+                }}
+                className="w-5 h-5 bg-black/60 hover:bg-blue-600/80 text-white rounded text-xs flex items-center justify-center transition-colors"
+                title="Download audio"
+              >
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                </svg>
+              </button>
+              <button
+                onClick={handleClearAudio}
+                className="w-5 h-5 bg-black/60 hover:bg-red-600/80 text-white rounded text-xs flex items-center justify-center transition-colors"
+                title="Clear audio"
+              >
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            {/* === LIKELYFAD CUSTOM END === */}
           </div>
         )}
 

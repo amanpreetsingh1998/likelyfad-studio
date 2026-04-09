@@ -208,8 +208,18 @@ export async function executeGenerateVideo(
           hasPricing: !!sel?.pricing,
           pricingAmount: sel?.pricing?.amount,
         });
+        let costAmount = 0;
         if (sel?.pricing) {
-          const costAmount = sel.pricing.amount;
+          costAmount = sel.pricing.amount;
+        } else if (sel?.modelId) {
+          const { getPricingOverride } = await import("@/lib/likelyfad/pricing-overrides");
+          const override = getPricingOverride(sel.modelId);
+          if (override) {
+            costAmount = override.amount;
+            console.log(`[cost] video pricing from override for ${sel.modelId}: $${override.amount}`);
+          }
+        }
+        if (costAmount > 0 && sel) {
           addIncurredCost(costAmount);
           const { logCostEvent } = await import("@/lib/likelyfad/costEvents");
           const { useWorkflowStore } = await import("@/store/workflowStore");
@@ -223,7 +233,9 @@ export async function executeGenerateVideo(
           });
           void useWorkflowStore.getState().saveToFile().catch(() => {});
         } else {
-          console.warn(`[cost] NOT tracking video cost for ${sel?.provider}/${sel?.modelId} — no pricing`);
+          console.warn(
+            `[cost] NOT tracking video cost for ${sel?.provider}/${sel?.modelId} — no pricing and no override`
+          );
         }
       }
       // === LIKELYFAD CUSTOM END ===

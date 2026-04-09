@@ -17,6 +17,9 @@ import { useVideoAutoplay } from "@/hooks/useVideoAutoplay";
 import { useInlineParameters } from "@/hooks/useInlineParameters";
 import { InlineParameterPanel } from "./InlineParameterPanel";
 import { browseRegistry } from "@/utils/browseRegistry";
+// === LIKELYFAD CUSTOM START ===
+import { downloadMedia, buildMediaFilename } from "@/lib/likelyfad/downloadMedia";
+// === LIKELYFAD CUSTOM END ===
 
 // Video generation capabilities
 const VIDEO_CAPABILITIES: ModelCapability[] = ["text-to-video", "image-to-video", "audio-to-video"];
@@ -732,8 +735,23 @@ export function GenerateVideoNode({ id, data, selected }: NodeProps<GenerateVide
                 </svg>
               </div>
             )}
-            {/* Clear button */}
-            <div className="absolute top-1 right-1">
+            {/* === LIKELYFAD CUSTOM START === (download + clear buttons) */}
+            <div className="absolute top-1 right-1 flex items-center gap-1">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void downloadMedia(
+                    nodeData.outputVideo,
+                    buildMediaFilename("video", "video", "mp4")
+                  );
+                }}
+                className="w-5 h-5 bg-neutral-900/80 hover:bg-blue-600/80 rounded flex items-center justify-center text-neutral-400 hover:text-white transition-colors"
+                title="Download video"
+              >
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                </svg>
+              </button>
               <button
                 onClick={handleClearVideo}
                 className="w-5 h-5 bg-neutral-900/80 hover:bg-red-600/80 rounded flex items-center justify-center text-neutral-400 hover:text-white transition-colors"
@@ -744,6 +762,7 @@ export function GenerateVideoNode({ id, data, selected }: NodeProps<GenerateVide
                 </svg>
               </button>
             </div>
+            {/* === LIKELYFAD CUSTOM END === */}
 
             {/* Carousel controls - overlaid on video bottom */}
             {hasCarouselVideos && (
