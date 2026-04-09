@@ -15,6 +15,8 @@ interface ProjectListModalProps {
   onSelectProject: (projectId: string) => void;
   onNewProject: () => void;
   onClose: () => void;
+  loadingProjectId?: string | null;
+  externalError?: string | null;
 }
 
 export function ProjectListModal({
@@ -22,6 +24,8 @@ export function ProjectListModal({
   onSelectProject,
   onNewProject,
   onClose,
+  loadingProjectId,
+  externalError,
 }: ProjectListModalProps) {
   const [projects, setProjects] = useState<ProjectEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -208,49 +212,87 @@ export function ProjectListModal({
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-              {projects.map((project) => (
+              {externalError && (
+                <div
+                  style={{
+                    padding: "10px 12px",
+                    marginBottom: "8px",
+                    background: "#450a0a",
+                    border: "1px solid #7f1d1d",
+                    borderRadius: "6px",
+                    color: "#fecaca",
+                    fontSize: "12px",
+                    lineHeight: 1.4,
+                  }}
+                >
+                  <strong style={{ color: "#fca5a5" }}>Failed to load:</strong>{" "}
+                  {externalError}
+                </div>
+              )}
+              {projects.map((project) => {
+                const isLoadingThis = loadingProjectId === project.id;
+                const isDisabled = !!loadingProjectId && !isLoadingThis;
+                return (
                 <button
                   key={project.id}
-                  onClick={() => onSelectProject(project.id)}
+                  onClick={() => !loadingProjectId && onSelectProject(project.id)}
+                  disabled={!!loadingProjectId}
                   style={{
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "space-between",
                     padding: "12px 14px",
-                    background: "#0a0a0a",
-                    border: "1px solid #262626",
+                    background: isLoadingThis ? "#1a1a1a" : "#0a0a0a",
+                    border: `1px solid ${isLoadingThis ? "#525252" : "#262626"}`,
                     borderRadius: "8px",
-                    cursor: "pointer",
+                    cursor: loadingProjectId ? "wait" : "pointer",
                     textAlign: "left",
                     width: "100%",
                     transition: "border-color 0.15s",
+                    opacity: isDisabled ? 0.4 : 1,
                   }}
-                  onMouseEnter={(e) =>
-                    (e.currentTarget.style.borderColor = "#404040")
-                  }
-                  onMouseLeave={(e) =>
-                    (e.currentTarget.style.borderColor = "#262626")
-                  }
+                  onMouseEnter={(e) => {
+                    if (!loadingProjectId) e.currentTarget.style.borderColor = "#404040";
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!loadingProjectId) e.currentTarget.style.borderColor = "#262626";
+                  }}
                 >
-                  <div>
-                    <div
-                      style={{
-                        fontSize: "14px",
-                        fontWeight: 500,
-                        color: "#fafafa",
-                      }}
-                    >
-                      {project.name}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: "12px",
-                        color: "#737373",
-                        marginTop: "2px",
-                      }}
-                    >
-                      {project.node_count} nodes &middot;{" "}
-                      {timeAgo(project.updated_at)}
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                    {isLoadingThis && (
+                      <div
+                        style={{
+                          width: "16px",
+                          height: "16px",
+                          border: "2px solid #404040",
+                          borderTopColor: "#fafafa",
+                          borderRadius: "50%",
+                          animation: "lf-pl-spin 0.8s linear infinite",
+                          flexShrink: 0,
+                        }}
+                      />
+                    )}
+                    <div>
+                      <div
+                        style={{
+                          fontSize: "14px",
+                          fontWeight: 500,
+                          color: "#fafafa",
+                        }}
+                      >
+                        {project.name}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: "12px",
+                          color: isLoadingThis ? "#a3a3a3" : "#737373",
+                          marginTop: "2px",
+                        }}
+                      >
+                        {isLoadingThis
+                          ? "Loading..."
+                          : `${project.node_count} nodes \u00b7 ${timeAgo(project.updated_at)}`}
+                      </div>
                     </div>
                   </div>
                   <button
@@ -279,7 +321,9 @@ export function ProjectListModal({
                     {deletingId === project.id ? "..." : "Delete"}
                   </button>
                 </button>
-              ))}
+                );
+              })}
+              <style>{`@keyframes lf-pl-spin { to { transform: rotate(360deg); } }`}</style>
             </div>
           )}
         </div>
