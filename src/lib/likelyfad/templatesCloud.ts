@@ -203,6 +203,14 @@ export function deriveProviderTags(nodes: WorkflowNode[]): string[] {
   const set = new Set<string>();
   for (const node of nodes) {
     const data = node.data as Record<string, unknown>;
+
+    // LLM generate nodes expose `provider` directly (no selectedModel)
+    if (node.type === "llmGenerate") {
+      const p = data?.provider as string | undefined;
+      if (p) set.add(normalizeProvider(p));
+      continue;
+    }
+
     const sel = data?.selectedModel as { provider?: string } | undefined;
     if (sel?.provider) {
       set.add(normalizeProvider(sel.provider));
@@ -215,11 +223,24 @@ export function deriveProviderTags(nodes: WorkflowNode[]): string[] {
  * Walk nodes and collect unique model display names actually used in the
  * workflow. Dedupes by display name (or modelId as fallback) so the same
  * model used in three nodes only shows up once.
+ *
+ * Covers generation nodes (via selectedModel) AND LLM generate nodes (via
+ * their `model` string), so the checklist reflects every model that would
+ * consume API credits during a run.
  */
 export function deriveModelsUsed(nodes: WorkflowNode[]): string[] {
   const set = new Set<string>();
   for (const node of nodes) {
     const data = node.data as Record<string, unknown>;
+
+    // LLM generate nodes — use the raw model string
+    if (node.type === "llmGenerate") {
+      const model = (data?.model as string | undefined)?.trim();
+      if (model) set.add(model);
+      continue;
+    }
+
+    // Image / video / audio / 3d generation nodes — use selectedModel
     const sel = data?.selectedModel as
       | { displayName?: string; modelId?: string }
       | undefined;
@@ -231,17 +252,82 @@ export function deriveModelsUsed(nodes: WorkflowNode[]): string[] {
 }
 
 /**
- * Estimate the dollar cost of one full run of the workflow by summing the
- * pricing of every generation node. Falls back to the pricing-overrides
- * table for models whose selectedModel.pricing is missing.
+ * Rough per-run cost estimates for LLM models (USD, single turn).
+ * Assumes ~2K input + 1K output tokens as a midpoint for template estimates.
+ * LLM nodes don't currently track runtime cost, so this map is used only for
+ * the template gallery's "estimated cost per run" preview.
  *
- * This is a simple lower-bound estimate: one generation per generation
- * node. Real costs can be higher (4K output, batch runs, long videos).
+ * Keys match the `model` string stored on LLMGenerateNodeData. The first
+ * substring match wins, so you can use loose keys like "gpt-4o".
+ */
+const LLM_RUN_ESTIMATES: Record<string, number> = {
+  // Google / Gemini
+  "gemini-3-pro": 0.025,
+  "gemini-3-flash": 0.005,
+  "gemini-2.5-pro": 0.015,
+  "gemini-2.5-flash": 0.002,
+  "gemini-2.0-flash": 0.0015,
+  "gemini-1.5-pro": 0.01,
+  "gemini-1.5-flash": 0.001,
+  // OpenAI
+  "gpt-5": 0.03,
+  "gpt-4.1": 0.02,
+  "gpt-4o-mini": 0.002,
+  "gpt-4o": 0.015,
+  "gpt-4": 0.04,
+  "o1": 0.05,
+  "o3": 0.04,
+  // Anthropic
+  "claude-opus-4": 0.06,
+  "claude-sonnet-4": 0.02,
+  "claude-haiku-4": 0.003,
+  "claude-3-5-sonnet": 0.018,
+  "claude-3-5-haiku": 0.003,
+  "claude-3-opus": 0.06,
+  "claude-3-sonnet": 0.018,
+  "claude-3-haiku": 0.002,
+};
+
+/** Fallback per-run cost for LLM models we don't recognize (~midrange). */
+const LLM_FALLBACK_RUN_COST = 0.01;
+
+function estimateLlmRunCost(model: string | undefined): number {
+  if (!model) return LLM_FALLBACK_RUN_COST;
+  const key = model.toLowerCase();
+  // Prefer the longest matching key so "gpt-4o-mini" wins over "gpt-4o"
+  let best: { match: string; cost: number } | null = null;
+  for (const [k, cost] of Object.entries(LLM_RUN_ESTIMATES)) {
+    if (key.includes(k) && (!best || k.length > best.match.length)) {
+      best = { match: k, cost };
+    }
+  }
+  return best?.cost ?? LLM_FALLBACK_RUN_COST;
+}
+
+/**
+ * Estimate the dollar cost of one full run of the workflow by summing the
+ * pricing of EVERY node that consumes API credits. This includes:
+ *   - Image/video/audio/3d generation nodes (via selectedModel.pricing +
+ *     pricing-overrides fallback)
+ *   - LLM generate nodes (via LLM_RUN_ESTIMATES — runtime cost tracking
+ *     doesn't exist for LLMs yet, so this is an explicit per-run estimate)
+ *
+ * This is a lower-bound estimate for a single run — real costs can be higher
+ * for 4K outputs, long videos, batch runs, or large LLM context windows.
  */
 export function estimateWorkflowCost(nodes: WorkflowNode[]): number {
   let total = 0;
   for (const node of nodes) {
     const data = node.data as Record<string, unknown>;
+
+    // LLM generate nodes — per-run estimate by model name
+    if (node.type === "llmGenerate") {
+      const model = (data?.model as string | undefined) || undefined;
+      total += estimateLlmRunCost(model);
+      continue;
+    }
+
+    // Image / video / audio / 3d generation nodes — selectedModel.pricing
     const sel = data?.selectedModel as
       | { modelId?: string; pricing?: { amount?: number } }
       | undefined;
