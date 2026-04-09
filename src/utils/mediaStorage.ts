@@ -1039,14 +1039,32 @@ async function loadMediaById(
     return loadedMedia.get(mediaId)!;
   }
 
-  // === LIKELYFAD CUSTOM START === (load directly from Supabase Storage — no API route needed)
+  // === LIKELYFAD CUSTOM START === (load from Supabase Storage; fall back to service-role API on failure)
   try {
     const { loadMedia } = await import("@/lib/likelyfad/cloud-storage");
     const dataUrl = await loadMedia(workflowPath, mediaId, mediaType);
     loadedMedia.set(mediaId, dataUrl);
     return dataUrl;
-  } catch {
-    console.log(`${mediaType} not found: ${mediaId}`);
+  } catch (directErr) {
+    console.warn(
+      `[mediaStorage] direct loadMedia failed for ${mediaId} (project=${workflowPath}); falling back to /api/likelyfad/media`,
+      directErr
+    );
+    try {
+      const url = `/api/likelyfad/media?projectId=${encodeURIComponent(workflowPath)}&mediaId=${encodeURIComponent(mediaId)}&type=${mediaType}`;
+      const res = await fetch(url);
+      const json = await res.json();
+      if (json.success && json.image) {
+        loadedMedia.set(mediaId, json.image);
+        return json.image;
+      }
+      console.error(
+        `[mediaStorage] API fallback also failed for ${mediaId}:`,
+        json.error || "no image returned"
+      );
+    } catch (apiErr) {
+      console.error(`[mediaStorage] API fallback threw for ${mediaId}:`, apiErr);
+    }
     return "";
   }
   // === LIKELYFAD CUSTOM END ===

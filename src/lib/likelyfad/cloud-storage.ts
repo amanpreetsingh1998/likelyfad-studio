@@ -123,6 +123,8 @@ export async function uploadMedia(
   // Decode base64 to Uint8Array
   const binary = Uint8Array.from(atob(rawBase64), (c) => c.charCodeAt(0));
 
+  console.log(`[cloud-storage] uploadMedia → ${storagePath} (${binary.length} bytes)`);
+
   // Upload to Supabase Storage (upsert to handle re-saves)
   const { error: uploadError } = await supabase.storage
     .from(MEDIA_BUCKET)
@@ -132,12 +134,14 @@ export async function uploadMedia(
     });
 
   if (uploadError) {
-    console.error("Failed to upload media:", uploadError);
+    console.error(`[cloud-storage] uploadMedia FAILED for ${storagePath}:`, uploadError);
     throw new Error(uploadError.message);
   }
 
-  // Upsert metadata row
-  await supabase.from("media").upsert(
+  console.log(`[cloud-storage] uploadMedia OK → ${storagePath}`);
+
+  // Upsert metadata row (best-effort — main source of truth is the storage path)
+  const { error: metaError } = await supabase.from("media").upsert(
     {
       id: `${projectId}/${folder}/${mediaId}`,
       project_id: projectId,
@@ -147,6 +151,9 @@ export async function uploadMedia(
     },
     { onConflict: "id" }
   );
+  if (metaError) {
+    console.warn(`[cloud-storage] media table upsert failed (non-fatal):`, metaError.message);
+  }
 
   return mediaId;
 }
@@ -168,14 +175,19 @@ export async function loadMedia(
         ? ["mp4", "webm"]
         : ["mp3", "wav", "ogg", "m4a"];
 
+  console.log(`[cloud-storage] loadMedia start → project=${projectId} mediaId=${mediaId} type=${mediaType}`);
+  const attempts: string[] = [];
+
   for (const folder of folders) {
     for (const ext of extensions) {
       const storagePath = `default/${projectId}/${folder}/${mediaId}.${ext}`;
+      attempts.push(storagePath);
       const { data, error } = await supabase.storage
         .from(MEDIA_BUCKET)
         .download(storagePath);
 
       if (!error && data) {
+        console.log(`[cloud-storage] loadMedia HIT → ${storagePath} (${data.size} bytes)`);
         // Convert blob to base64 data URL
         const arrayBuffer = await data.arrayBuffer();
         const base64 = btoa(
@@ -189,9 +201,17 @@ export async function loadMedia(
               : `${mediaType}/${ext}`;
         return `data:${mime};base64,${base64}`;
       }
+      if (error) {
+        // Log non-404 errors loudly (RLS denials, network errors, etc.)
+        const msg = (error as Error).message || String(error);
+        if (!/not.found|object.not.found|404/i.test(msg)) {
+          console.warn(`[cloud-storage] loadMedia error on ${storagePath}:`, msg);
+        }
+      }
     }
   }
 
+  console.error(`[cloud-storage] loadMedia MISS → all paths failed for ${mediaId}. Tried:`, attempts);
   throw new Error(`Media not found: ${mediaId} for project ${projectId}`);
 }
 
@@ -282,4 +302,101 @@ export async function uploadImageForGeneration(
   }
 
   return signedData.signedUrl;
+}
+
+// ─── Debug Inspector ────────────────────────────────────────────────
+// Exposes window.__likelyfadInspect() in the browser to diagnose
+// persistence issues. Lists projects, walks the storage bucket, and
+// reports what is stored vs what the workflow_json references.
+
+export interface InspectResult {
+  projects: Array<{
+    id: string;
+    name: string;
+    node_count: number;
+    refs_in_workflow: string[];
+    storage_files: string[];
+    missing_in_storage: string[];
+    orphan_in_storage: string[];
+  }>;
+}
+
+export async function inspectPersistence(targetProjectId?: string): Promise<InspectResult> {
+  const out: InspectResult = { projects: [] };
+
+  const { data: projectRows, error: projErr } = await supabase
+    .from("projects")
+    .select("id, name, node_count, workflow_json")
+    .order("updated_at", { ascending: false });
+
+  if (projErr) {
+    console.error("[inspect] failed to list projects:", projErr);
+    throw projErr;
+  }
+
+  for (const row of projectRows ?? []) {
+    if (targetProjectId && row.id !== targetProjectId) continue;
+
+    // Walk workflow_json for refs
+    const refs: string[] = [];
+    const wf = row.workflow_json as { nodes?: Array<{ data?: Record<string, unknown> }> };
+    for (const node of wf?.nodes ?? []) {
+      const d = (node.data ?? {}) as Record<string, unknown>;
+      for (const key of [
+        "imageRef",
+        "outputImageRef",
+        "sourceImageRef",
+        "videoRef",
+        "outputVideoRef",
+        "audioFileRef",
+      ]) {
+        const v = d[key];
+        if (typeof v === "string" && v.length > 0) refs.push(v);
+      }
+      const inputRefs = d.inputImageRefs;
+      if (Array.isArray(inputRefs)) {
+        for (const r of inputRefs) if (typeof r === "string" && r) refs.push(r);
+      }
+    }
+
+    // List storage files for this project
+    const storageFiles: string[] = [];
+    for (const folder of ["generations", "inputs"]) {
+      const { data: files, error: listErr } = await supabase.storage
+        .from(MEDIA_BUCKET)
+        .list(`default/${row.id}/${folder}`, { limit: 1000 });
+      if (listErr) {
+        console.warn(`[inspect] list error on default/${row.id}/${folder}:`, listErr.message);
+        continue;
+      }
+      for (const f of files ?? []) {
+        storageFiles.push(`${folder}/${f.name}`);
+      }
+    }
+
+    // Compute missing/orphans
+    const storedIds = new Set(
+      storageFiles.map((p) => p.split("/").pop()!.replace(/\.[^.]+$/, ""))
+    );
+    const missing = refs.filter((r) => !storedIds.has(r));
+    const orphan = [...storedIds].filter((id) => !refs.includes(id));
+
+    out.projects.push({
+      id: row.id,
+      name: row.name,
+      node_count: row.node_count,
+      refs_in_workflow: refs,
+      storage_files: storageFiles,
+      missing_in_storage: missing,
+      orphan_in_storage: orphan,
+    });
+  }
+
+  console.log("[inspect] result", out);
+  return out;
+}
+
+// Expose to window for browser console use
+if (typeof window !== "undefined") {
+  (window as unknown as Record<string, unknown>).__likelyfadInspect = inspectPersistence;
 }

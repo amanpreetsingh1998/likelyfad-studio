@@ -87,6 +87,11 @@ Every upstream file edited by Likelyfad Studio is listed here. All changes are w
 - Added `uploadDynamicInputsForGeneration()` — walks dynamicInputs and uploads any base64 strings
 - Added `incurred_cost` to `saveProject()`/`loadProject()` signatures
 - Added `incurred_cost` to `ProjectListEntry` type
+- Added diagnostic logging in `uploadMedia()` and `loadMedia()` (logs every storage path tried)
+- Added `inspectPersistence()` exposed as `window.__likelyfadInspect()` — lists projects, walks the bucket, reports refs vs files, missing/orphan media
+
+### 19. `src/utils/mediaStorage.ts` (additional edit)
+- **`loadMediaById()`**: On direct loadMedia failure, falls back to `/api/likelyfad/media` GET (which uses service role and bypasses any storage RLS issue). Logs both the direct error and any API fallback failure instead of silently swallowing.
 
 ### Additional executor edits (sections 10/11/12 also updated)
 - All four generation executors (video, nanoBanana, 3D) now also upload base64 found in `dynamicInputs` (not just the `images` array). This was the cause of the 413 on Kling Video v2.6 — the upstream image was sent through both `images[]` AND `dynamicInputs.image_url`, and only the former was being uploaded.
