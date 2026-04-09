@@ -492,7 +492,7 @@ describe("CostDialog", () => {
         />
       );
 
-      expect(screen.getByText("Actual API spend from Gemini generations")).toBeInTheDocument();
+      expect(screen.getByText("Actual API spend across all generations in this project")).toBeInTheDocument();
     });
   });
 
@@ -604,7 +604,7 @@ describe("CostDialog", () => {
   });
 
   describe("Pricing Note", () => {
-    it("should display Gemini pricing and external provider note", () => {
+    it("should display pricing override note", () => {
       render(
         <CostDialog
           predictedCost={createGeminiOnlyCost()}
@@ -613,8 +613,7 @@ describe("CostDialog", () => {
         />
       );
 
-      expect(screen.getByText(/Gemini pricing: \$0\.039-\$0\.24\/image/)).toBeInTheDocument();
-      expect(screen.getByText(/External providers not tracked/)).toBeInTheDocument();
+      expect(screen.getByText(/pricing-overrides/)).toBeInTheDocument();
     });
   });
 });

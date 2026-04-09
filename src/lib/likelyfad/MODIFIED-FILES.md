@@ -74,6 +74,14 @@ Every upstream file edited by Likelyfad Studio is listed here. All changes are w
 ### 17. `src/components/CostIndicator.tsx`
 - **Display logic**: Removed `hasNonGeminiProviders` guard — cost now shown for all providers, displays incurred cost when available
 
+### 17b. `src/components/CostDialog.tsx`
+- **Incurred Cost section copy**: Removed "Gemini only" language — now describes incurred cost as actual spend across all generations
+- **Pricing note**: Updated to mention pricing-overrides file for external providers
+
+### 17c. `src/app/api/models/route.ts`
+- **Import**: Added `getPricingOverride` from `@/lib/likelyfad/pricing-overrides`
+- **mapFalModel()**: Injects pricing from override map for fal.ai models that don't expose pricing via API
+
 ### 18. `src/lib/likelyfad/cloud-storage.ts` (our file, not upstream — but relevant)
 - Added `uploadImageForGeneration()` — uploads base64 to Storage, returns signed URL
 - Added `incurred_cost` to `saveProject()`/`loadProject()` signatures

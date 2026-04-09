@@ -236,7 +236,7 @@ export function CostDialog({ predictedCost, incurredCost, onClose }: CostDialogP
             </div>
           )}
 
-          {/* Incurred Cost Section - Gemini only */}
+          {/* === LIKELYFAD CUSTOM START === (incurred cost now tracks all providers with pricing metadata) */}
           <div className="bg-neutral-900 rounded-lg p-4">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm text-neutral-400">Incurred Cost</span>
@@ -245,7 +245,7 @@ export function CostDialog({ predictedCost, incurredCost, onClose }: CostDialogP
               </span>
             </div>
             <p className="text-xs text-neutral-500">
-              Actual API spend from Gemini generations
+              Actual API spend across all generations in this project
             </p>
 
             {incurredCost > 0 && (
@@ -260,8 +260,9 @@ export function CostDialog({ predictedCost, incurredCost, onClose }: CostDialogP
 
           {/* Pricing Note */}
           <div className="text-xs text-neutral-600">
-            <p>Gemini pricing: $0.039-$0.24/image. External providers not tracked.</p>
+            <p>Cost tracking requires pricing metadata. External providers without listed prices in src/lib/likelyfad/pricing-overrides.ts won&apos;t be tracked.</p>
           </div>
+          {/* === LIKELYFAD CUSTOM END === */}
         </div>
       </div>
     </div>

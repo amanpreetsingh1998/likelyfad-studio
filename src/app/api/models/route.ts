@@ -37,6 +37,9 @@ import {
   setCachedWaveSpeedSchemas,
   WaveSpeedApiSchema,
 } from "@/lib/providers/cache";
+// === LIKELYFAD CUSTOM START === (manual pricing overrides for fal.ai/replicate models that don't expose pricing via API)
+import { getPricingOverride } from "@/lib/likelyfad/pricing-overrides";
+// === LIKELYFAD CUSTOM END ===
 
 // API base URLs
 const REPLICATE_API_BASE = "https://api.replicate.com/v1";
@@ -877,6 +880,13 @@ function isRelevantFalModel(model: FalModel): boolean {
 function mapFalModel(model: FalModel): ProviderModel {
   const capability = mapFalCategory(model.metadata.category);
 
+  // === LIKELYFAD CUSTOM START === (inject manual pricing override if available)
+  const override = getPricingOverride(model.endpoint_id);
+  const pricing = override
+    ? { type: "per-run" as const, amount: override.amount, currency: "USD" }
+    : undefined;
+  // === LIKELYFAD CUSTOM END ===
+
   return {
     id: model.endpoint_id,
     name: model.metadata.display_name,
@@ -884,6 +894,9 @@ function mapFalModel(model: FalModel): ProviderModel {
     provider: "fal",
     capabilities: capability ? [capability] : [],
     coverImage: model.metadata.thumbnail_url,
+    // === LIKELYFAD CUSTOM START ===
+    ...(pricing ? { pricing } : {}),
+    // === LIKELYFAD CUSTOM END ===
   };
 }
 
