@@ -5,9 +5,10 @@ Every upstream file edited by Likelyfad Studio is listed here. All changes are w
 ## Files Modified
 
 ### 1. `src/store/workflowStore.ts`
-- **Import**: Added `saveProject` from cloud-storage (line 3)
+- **Import**: Added `saveProject`, `ensureProjectRow` from cloud-storage (line 3)
 - **saveToFile() guard**: Removed `saveDirectoryPath` requirement (~line 2158)
-- **saveToFile() body**: Replaced filesystem save with `saveProject()` call to Supabase (~line 2219)
+- **saveToFile() isNewDirectory bypass**: Forced to `false` in cloud mode. The upstream heuristic regenerated `workflowId` on every auto-save (because `saveDirectoryPath` is null and refs exist after first save), creating a duplicate project row every 30s. (~line 2187)
+- **saveToFile() body**: Reordered to `ensureProjectRow → externalize → saveProject` so the `media.project_id` FK is satisfied during media upload (fixes 409 on first save). (~line 2223)
 - **initializeAutoSave()**: Changed interval from 90s to 30s, removed `saveDirectoryPath` check (~line 2368)
 - **loadWorkflow()**: Changed hydration to use project ID instead of directory path (~line 1990)
 
@@ -89,6 +90,14 @@ Every upstream file edited by Likelyfad Studio is listed here. All changes are w
 - Added `incurred_cost` to `ProjectListEntry` type
 - Added diagnostic logging in `uploadMedia()` and `loadMedia()` (logs every storage path tried)
 - Added `inspectPersistence()` exposed as `window.__likelyfadInspect()` — lists projects, walks the bucket, reports refs vs files, missing/orphan media
+- Added `ensureProjectRow(id, name)` — minimal upsert with `ignoreDuplicates: true` to satisfy `media.project_id` FK before externalization
+- `deleteProject()`: walks Storage by prefix (`default/<id>/{generations,inputs,generation-inputs}`) instead of querying the unreliable `media` table
+
+### `src/app/api/likelyfad/projects/[id]/route.ts` (new file, our route)
+- DELETE handler now walks Storage by prefix instead of querying the `media` table, so orphaned files are cleaned up even when the metadata insert previously failed
+
+### `src/components/likelyfad/ProjectListModal.tsx` (new file, our component)
+- `handleDelete`: surfaces server errors instead of silently swallowing, refetches list on partial failure
 
 ### 19. `src/utils/mediaStorage.ts` (additional edit)
 - **`loadMediaById()`**: On direct loadMedia failure, falls back to `/api/likelyfad/media` GET (which uses service role and bypasses any storage RLS issue). Logs both the direct error and any API fallback failure instead of silently swallowing.

@@ -41,19 +41,37 @@ export async function DELETE(
     const { id } = await params;
     const supabase = getServiceClient();
 
-    // Get media storage paths before deleting
-    const { data: mediaRows } = await supabase
-      .from("media")
-      .select("storage_path")
-      .eq("project_id", id);
-
-    // Delete storage files
-    if (mediaRows && mediaRows.length > 0) {
-      const paths = mediaRows.map((r) => r.storage_path);
-      await supabase.storage.from("project-media").remove(paths);
+    // Walk Storage by prefix — the media table is best-effort and may be empty
+    // due to FK constraint failures during early saves. Storage is the source of truth.
+    const folders = ["generations", "inputs", "generation-inputs"];
+    const allPaths: string[] = [];
+    for (const folder of folders) {
+      const prefix = `default/${id}/${folder}`;
+      const { data: files, error: listErr } = await supabase.storage
+        .from("project-media")
+        .list(prefix, { limit: 1000 });
+      if (listErr) {
+        console.warn(`[delete] list error on ${prefix}:`, listErr.message);
+        continue;
+      }
+      for (const f of files ?? []) {
+        allPaths.push(`${prefix}/${f.name}`);
+      }
     }
 
-    // Delete project (cascades to media table)
+    if (allPaths.length > 0) {
+      const { error: removeErr } = await supabase.storage
+        .from("project-media")
+        .remove(allPaths);
+      if (removeErr) {
+        console.warn(`[delete] storage remove error:`, removeErr.message);
+      }
+    }
+
+    // Delete media metadata rows (best-effort)
+    await supabase.from("media").delete().eq("project_id", id);
+
+    // Delete project row
     const { error } = await supabase.from("projects").delete().eq("id", id);
 
     if (error) {

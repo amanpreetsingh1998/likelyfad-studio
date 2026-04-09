@@ -32,6 +32,21 @@ export async function listProjects(): Promise<ProjectListEntry[]> {
   return data ?? [];
 }
 
+/**
+ * Ensure a project row exists for the given id (creates a minimal stub if missing).
+ * Used to satisfy the media.project_id FK before externalizing media.
+ * If the row already exists, this is a no-op (does NOT overwrite workflow_json/name).
+ */
+export async function ensureProjectRow(id: string, name: string): Promise<void> {
+  const { error } = await supabase.from("projects").upsert(
+    { id, name },
+    { onConflict: "id", ignoreDuplicates: true }
+  );
+  if (error) {
+    console.warn(`[cloud-storage] ensureProjectRow failed for ${id}:`, error.message);
+  }
+}
+
 export async function saveProject(
   id: string,
   name: string,
@@ -77,18 +92,35 @@ export async function loadProject(
 }
 
 export async function deleteProject(id: string): Promise<void> {
-  // Delete media files from storage first
-  const { data: mediaRows } = await supabase
-    .from("media")
-    .select("storage_path")
-    .eq("project_id", id);
-
-  if (mediaRows && mediaRows.length > 0) {
-    const paths = mediaRows.map((r) => r.storage_path);
-    await supabase.storage.from(MEDIA_BUCKET).remove(paths);
+  // Walk Storage by prefix instead of relying on the (often-empty) media table.
+  // We delete every file under default/<id>/{generations,inputs,generation-inputs}.
+  const folders = ["generations", "inputs", "generation-inputs"];
+  const allPaths: string[] = [];
+  for (const folder of folders) {
+    const prefix = `default/${id}/${folder}`;
+    const { data: files, error: listErr } = await supabase.storage
+      .from(MEDIA_BUCKET)
+      .list(prefix, { limit: 1000 });
+    if (listErr) {
+      console.warn(`[cloud-storage] deleteProject list error on ${prefix}:`, listErr.message);
+      continue;
+    }
+    for (const f of files ?? []) {
+      allPaths.push(`${prefix}/${f.name}`);
+    }
   }
 
-  // Delete project (cascades to media table rows)
+  if (allPaths.length > 0) {
+    const { error: removeErr } = await supabase.storage.from(MEDIA_BUCKET).remove(allPaths);
+    if (removeErr) {
+      console.warn(`[cloud-storage] deleteProject remove error:`, removeErr.message);
+    }
+  }
+
+  // Delete media metadata rows (best-effort)
+  await supabase.from("media").delete().eq("project_id", id);
+
+  // Delete project row
   const { error } = await supabase.from("projects").delete().eq("id", id);
 
   if (error) {

@@ -56,10 +56,19 @@ export function ProjectListModal({
 
     setDeletingId(projectId);
     try {
-      await fetch(`/api/likelyfad/projects/${projectId}`, { method: "DELETE" });
+      const res = await fetch(`/api/likelyfad/projects/${projectId}`, {
+        method: "DELETE",
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json.error) {
+        setError(json.error || `Delete failed (HTTP ${res.status})`);
+        // Refetch in case the row was partially deleted
+        await fetchProjects();
+        return;
+      }
       setProjects((prev) => prev.filter((p) => p.id !== projectId));
-    } catch {
-      setError("Failed to delete project");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete project");
     } finally {
       setDeletingId(null);
     }

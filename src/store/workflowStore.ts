@@ -1,7 +1,7 @@
 import { create, StateCreator } from "zustand";
 import { useShallow } from "zustand/shallow";
 // === LIKELYFAD CUSTOM START ===
-import { saveProject } from "@/lib/likelyfad/cloud-storage";
+import { saveProject, ensureProjectRow } from "@/lib/likelyfad/cloud-storage";
 // === LIKELYFAD CUSTOM END ===
 import {
   Connection,
@@ -2184,14 +2184,16 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
         return data.imageRef || data.outputImageRef || data.sourceImageRef || data.inputImageRefs;
       });
 
-      // If saving to a different directory than where refs point, clear refs
-      // so images will be re-saved to the new location
-      const isNewDirectory = useExternalImageStorage && (
-        // Case 1: Known different directory
-        (imageRefBasePath !== null && imageRefBasePath !== saveDirectoryPath) ||
-        // Case 2: Has refs but unknown where they came from - treat as new directory to be safe
-        (imageRefBasePath === null && hasExistingRefs)
-      );
+      // === LIKELYFAD CUSTOM START === (cloud mode has no directories — never fork the project on auto-save)
+      // The upstream `isNewDirectory` heuristic is filesystem-based: it triggers a new
+      // workflowId when refs exist but the base path is unknown. In cloud mode that's
+      // ALWAYS true after the first save (saveDirectoryPath stays null/"cloud" and refs
+      // appear once externalize runs), which created a new project row every 30s.
+      // We're cloud-only, so disable the heuristic entirely.
+      const isNewDirectory: boolean = false;
+      void hasExistingRefs;
+      void imageRefBasePath;
+      // === LIKELYFAD CUSTOM END ===
 
       if (isNewDirectory) {
         // Generate new workflow ID for the duplicate - prevents localStorage collision
@@ -2218,11 +2220,16 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
         groups: groups && Object.keys(groups).length > 0 ? groups : undefined,
       };
 
-      // === LIKELYFAD CUSTOM START === (cloud save: externalize media then save to Supabase, persist incurred cost)
-      // Externalize media — strips base64 from nodes and uploads to Supabase Storage
+      // === LIKELYFAD CUSTOM START === (cloud save: ensure project row exists, externalize media, then full save)
+      // Step 1: ensure the projects row exists so the media.project_id FK is satisfied
+      // when uploadMedia inserts metadata rows during externalization. Without this,
+      // the very first save of a new project hits a 409 FK violation.
+      await ensureProjectRow(workflowId, workflowName);
+
+      // Step 2: externalize media — strips base64 from nodes and uploads to Supabase Storage
       workflow = await externalizeWorkflowMedia(workflow, workflowId);
 
-      // Save workflow JSON + incurred cost to Supabase projects table
+      // Step 3: save the full workflow JSON + incurred cost to the projects table
       const currentIncurredCost = get().incurredCost;
       await saveProject(
         workflowId,
