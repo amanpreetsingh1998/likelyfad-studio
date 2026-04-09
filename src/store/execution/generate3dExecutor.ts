@@ -141,10 +141,21 @@ export async function executeGenerate3D(
         error: null,
       });
 
-      // Track cost if applicable
+      // === LIKELYFAD CUSTOM START === (track cost + log 48h event for 3d generation)
       if (nodeData.selectedModel?.pricing) {
-        addIncurredCost(nodeData.selectedModel.pricing.amount);
+        const costAmount = nodeData.selectedModel.pricing.amount;
+        addIncurredCost(costAmount);
+        const { logCostEvent } = await import("@/lib/likelyfad/costEvents");
+        const { useWorkflowStore } = await import("@/store/workflowStore");
+        logCostEvent({
+          projectId: useWorkflowStore.getState().workflowId,
+          nodeId: node.id,
+          nodeType: "3d",
+          modelName: nodeData.selectedModel.displayName || nodeData.selectedModel.modelId,
+          amount: costAmount,
+        });
       }
+      // === LIKELYFAD CUSTOM END ===
 
       // Auto-save 3D model to generations folder if configured
       if (generationsPath) {

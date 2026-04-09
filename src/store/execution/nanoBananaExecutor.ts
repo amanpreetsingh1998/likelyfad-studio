@@ -13,6 +13,8 @@ import { buildGenerateHeaders } from "@/store/utils/buildApiHeaders";
 import type { NodeExecutionContext } from "./types";
 // === LIKELYFAD CUSTOM START ===
 import { uploadImageForGeneration, uploadDynamicInputsForGeneration } from "@/lib/likelyfad/cloud-storage";
+import { logCostEvent } from "@/lib/likelyfad/costEvents";
+import { useWorkflowStore } from "@/store/workflowStore";
 // === LIKELYFAD CUSTOM END ===
 
 export interface NanoBananaOptions {
@@ -214,12 +216,28 @@ export async function executeNanoBanana(
           }
         });
 
-      // === LIKELYFAD CUSTOM START === (track cost for all providers with pricing metadata, fallback to Gemini lookup)
-      if (nodeData.selectedModel?.pricing) {
-        addIncurredCost(nodeData.selectedModel.pricing.amount);
-      } else if (!nodeData.selectedModel || nodeData.selectedModel.provider === "gemini") {
-        const generationCost = calculateGenerationCost(nodeData.model, nodeData.resolution);
-        addIncurredCost(generationCost);
+      // === LIKELYFAD CUSTOM START === (track cost + log event to 48h rolling table)
+      {
+        let costAmount = 0;
+        let modelName: string | undefined;
+        if (nodeData.selectedModel?.pricing) {
+          costAmount = nodeData.selectedModel.pricing.amount;
+          modelName = nodeData.selectedModel.displayName || nodeData.selectedModel.modelId;
+          addIncurredCost(costAmount);
+        } else if (!nodeData.selectedModel || nodeData.selectedModel.provider === "gemini") {
+          costAmount = calculateGenerationCost(nodeData.model, nodeData.resolution);
+          modelName = nodeData.model;
+          addIncurredCost(costAmount);
+        }
+        if (costAmount > 0) {
+          logCostEvent({
+            projectId: useWorkflowStore.getState().workflowId,
+            nodeId: node.id,
+            nodeType: "image",
+            modelName,
+            amount: costAmount,
+          });
+        }
       }
       // === LIKELYFAD CUSTOM END ===
 

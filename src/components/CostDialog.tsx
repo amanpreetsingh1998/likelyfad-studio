@@ -1,9 +1,12 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useWorkflowStore } from "@/store/workflowStore";
 import { PredictedCostResult, CostBreakdownItem, formatCost } from "@/utils/costCalculator";
 import { ProviderType } from "@/types/providers";
+// === LIKELYFAD CUSTOM START === (48h rolling cost events)
+import { fetchCostEvents, type CostEvent } from "@/lib/likelyfad/costEvents";
+// === LIKELYFAD CUSTOM END ===
 
 interface CostDialogProps {
   predictedCost: PredictedCostResult;
@@ -93,6 +96,54 @@ function ExternalLinkIcon() {
 
 export function CostDialog({ predictedCost, incurredCost, onClose }: CostDialogProps) {
   const resetIncurredCost = useWorkflowStore((state) => state.resetIncurredCost);
+  // === LIKELYFAD CUSTOM START === (fetch 48h rolling events for this project)
+  const workflowId = useWorkflowStore((state) => state.workflowId);
+  const [events, setEvents] = useState<CostEvent[]>([]);
+  const [eventsLoading, setEventsLoading] = useState(false);
+
+  useEffect(() => {
+    if (!workflowId) return;
+    let cancelled = false;
+    setEventsLoading(true);
+    fetchCostEvents(workflowId)
+      .then((list) => {
+        if (!cancelled) setEvents(list);
+      })
+      .finally(() => {
+        if (!cancelled) setEventsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [workflowId]);
+
+  // Bucket events into Today / Yesterday based on local-time day boundaries.
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const startOfYesterday = startOfToday - 24 * 60 * 60 * 1000;
+
+  const todayEvents: CostEvent[] = [];
+  const yesterdayEvents: CostEvent[] = [];
+  for (const ev of events) {
+    const ts = new Date(ev.created_at).getTime();
+    if (ts >= startOfToday) todayEvents.push(ev);
+    else if (ts >= startOfYesterday) yesterdayEvents.push(ev);
+  }
+  const todayTotal = todayEvents.reduce((s, e) => s + Number(e.amount || 0), 0);
+  const yesterdayTotal = yesterdayEvents.reduce((s, e) => s + Number(e.amount || 0), 0);
+
+  const formatTime = (iso: string) => {
+    const d = new Date(iso);
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  };
+
+  const nodeTypeIcon = (t: string | null) => {
+    if (t === "video") return "🎬";
+    if (t === "audio") return "🎵";
+    if (t === "3d") return "🧊";
+    return "🖼️";
+  };
+  // === LIKELYFAD CUSTOM END ===
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -135,7 +186,7 @@ export function CostDialog({ predictedCost, incurredCost, onClose }: CostDialogP
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50">
-      <div className="bg-neutral-800 rounded-lg p-6 w-[400px] border border-neutral-700 shadow-xl">
+      <div className="bg-neutral-800 rounded-lg p-6 w-[440px] max-h-[85vh] overflow-y-auto border border-neutral-700 shadow-xl">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-neutral-100">
             Workflow Costs
@@ -236,25 +287,104 @@ export function CostDialog({ predictedCost, incurredCost, onClose }: CostDialogP
             </div>
           )}
 
-          {/* === LIKELYFAD CUSTOM START === (incurred cost now tracks all providers with pricing metadata) */}
-          <div className="bg-neutral-900 rounded-lg p-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-neutral-400">Incurred Cost</span>
-              <span className="text-lg font-semibold text-green-400">
+          {/* === LIKELYFAD CUSTOM START === (lifetime total + 48h breakdown) */}
+          {/* Lifetime total — authoritative, from projects.incurred_cost */}
+          <div className="bg-gradient-to-br from-green-950/40 to-neutral-900 rounded-lg p-4 border border-green-900/30">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-sm text-neutral-300">Lifetime Cost</span>
+              <span className="text-2xl font-semibold text-green-400">
                 {formatCost(incurredCost)}
               </span>
             </div>
             <p className="text-xs text-neutral-500">
-              Actual API spend across all generations in this project
+              Total API spend for this project (all time)
             </p>
 
             {incurredCost > 0 && (
               <button
                 onClick={handleReset}
-                className="mt-3 text-xs text-neutral-400 hover:text-red-400 transition-colors"
+                className="mt-3 text-xs text-neutral-500 hover:text-red-400 transition-colors"
               >
                 Reset to $0.00
               </button>
+            )}
+          </div>
+
+          {/* 48h breakdown */}
+          <div className="bg-neutral-900 rounded-lg p-4">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-sm text-neutral-300">Recent Activity</span>
+              <span className="text-xs text-neutral-600">Last 48 hours</span>
+            </div>
+
+            {eventsLoading && (
+              <p className="text-xs text-neutral-500">Loading...</p>
+            )}
+
+            {!eventsLoading && events.length === 0 && (
+              <p className="text-xs text-neutral-500">
+                No generations in the last 48 hours
+              </p>
+            )}
+
+            {!eventsLoading && todayEvents.length > 0 && (
+              <div className="mb-4">
+                <div className="flex items-center justify-between text-xs font-medium text-neutral-400 mb-2 pb-1 border-b border-neutral-800">
+                  <span>TODAY</span>
+                  <span className="text-green-400">{formatCost(todayTotal)}</span>
+                </div>
+                <div className="space-y-1.5">
+                  {todayEvents.map((ev) => (
+                    <div
+                      key={ev.id}
+                      className="flex items-center justify-between text-xs"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span>{nodeTypeIcon(ev.node_type)}</span>
+                        <span className="text-neutral-500 tabular-nums shrink-0">
+                          {formatTime(ev.created_at)}
+                        </span>
+                        <span className="text-neutral-400 truncate">
+                          {ev.model_name || "—"}
+                        </span>
+                      </div>
+                      <span className="text-neutral-300 tabular-nums ml-2 shrink-0">
+                        {formatCost(Number(ev.amount))}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {!eventsLoading && yesterdayEvents.length > 0 && (
+              <div>
+                <div className="flex items-center justify-between text-xs font-medium text-neutral-400 mb-2 pb-1 border-b border-neutral-800">
+                  <span>YESTERDAY</span>
+                  <span className="text-green-400">{formatCost(yesterdayTotal)}</span>
+                </div>
+                <div className="space-y-1.5">
+                  {yesterdayEvents.map((ev) => (
+                    <div
+                      key={ev.id}
+                      className="flex items-center justify-between text-xs"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span>{nodeTypeIcon(ev.node_type)}</span>
+                        <span className="text-neutral-500 tabular-nums shrink-0">
+                          {formatTime(ev.created_at)}
+                        </span>
+                        <span className="text-neutral-400 truncate">
+                          {ev.model_name || "—"}
+                        </span>
+                      </div>
+                      <span className="text-neutral-300 tabular-nums ml-2 shrink-0">
+                        {formatCost(Number(ev.amount))}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
 

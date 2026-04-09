@@ -143,9 +143,19 @@ export async function executeGenerateAudio(
         selectedAudioHistoryIndex: 0,
       });
 
-      // === LIKELYFAD CUSTOM START === (track cost for ALL providers with pricing metadata)
+      // === LIKELYFAD CUSTOM START === (track cost + log 48h event for audio generation)
       if (nodeData.selectedModel?.pricing) {
-        addIncurredCost(nodeData.selectedModel.pricing.amount);
+        const costAmount = nodeData.selectedModel.pricing.amount;
+        addIncurredCost(costAmount);
+        const { logCostEvent } = await import("@/lib/likelyfad/costEvents");
+        const { useWorkflowStore } = await import("@/store/workflowStore");
+        logCostEvent({
+          projectId: useWorkflowStore.getState().workflowId,
+          nodeId: node.id,
+          nodeType: "audio",
+          modelName: nodeData.selectedModel.displayName || nodeData.selectedModel.modelId,
+          amount: costAmount,
+        });
       }
       // === LIKELYFAD CUSTOM END ===
 
