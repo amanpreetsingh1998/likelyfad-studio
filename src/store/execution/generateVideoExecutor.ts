@@ -9,7 +9,7 @@ import type { GenerateVideoNodeData } from "@/types";
 import { buildGenerateHeaders } from "@/store/utils/buildApiHeaders";
 import type { NodeExecutionContext } from "./types";
 // === LIKELYFAD CUSTOM START ===
-import { uploadImageForGeneration } from "@/lib/likelyfad/cloud-storage";
+import { uploadImageForGeneration, uploadDynamicInputsForGeneration } from "@/lib/likelyfad/cloud-storage";
 // === LIKELYFAD CUSTOM END ===
 
 export interface GenerateVideoOptions {
@@ -97,12 +97,15 @@ export async function executeGenerateVideo(
   const workflowId = useWorkflowStore.getState().workflowId || undefined;
 
   let uploadedImages = images;
+  let uploadedDynamicInputs = dynamicInputs;
   try {
     if (images.length > 0) {
       uploadedImages = await Promise.all(
         images.map((img) => uploadImageForGeneration(img, workflowId))
       );
     }
+    // Also upload base64 in dynamicInputs (Kling/fal video models receive image via dynamic schema fields like image_url)
+    uploadedDynamicInputs = await uploadDynamicInputsForGeneration(dynamicInputs, workflowId);
   } catch (err) {
     console.error("Failed to upload images for generation:", err);
     updateNodeData(node.id, {
@@ -119,7 +122,7 @@ export async function executeGenerateVideo(
     prompt: text,
     selectedModel: nodeData.selectedModel,
     parameters: nodeData.parameters,
-    dynamicInputs,
+    dynamicInputs: uploadedDynamicInputs,
     mediaType: "video" as const,
   };
 

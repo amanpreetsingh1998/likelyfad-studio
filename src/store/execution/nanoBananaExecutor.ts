@@ -12,7 +12,7 @@ import { calculateGenerationCost } from "@/utils/costCalculator";
 import { buildGenerateHeaders } from "@/store/utils/buildApiHeaders";
 import type { NodeExecutionContext } from "./types";
 // === LIKELYFAD CUSTOM START ===
-import { uploadImageForGeneration } from "@/lib/likelyfad/cloud-storage";
+import { uploadImageForGeneration, uploadDynamicInputsForGeneration } from "@/lib/likelyfad/cloud-storage";
 // === LIKELYFAD CUSTOM END ===
 
 export interface NanoBananaOptions {
@@ -102,12 +102,15 @@ export async function executeNanoBanana(
   const _workflowIdForUpload = _storeForUpload.getState().workflowId || undefined;
 
   let uploadedImages = images;
+  let uploadedDynamicInputs = sanitizedDynamicInputs;
   try {
     if (images.length > 0) {
       uploadedImages = await Promise.all(
         images.map((img) => uploadImageForGeneration(img, _workflowIdForUpload))
       );
     }
+    // Also upload base64 in dynamicInputs (fal models receive image via schema fields like image_url)
+    uploadedDynamicInputs = await uploadDynamicInputsForGeneration(sanitizedDynamicInputs, _workflowIdForUpload);
   } catch (err) {
     console.error("Failed to upload images for generation:", err);
     updateNodeData(node.id, {
@@ -129,7 +132,7 @@ export async function executeNanoBanana(
     useImageSearch: nodeData.useImageSearch,
     selectedModel: nodeData.selectedModel,
     parameters: nodeData.parameters,
-    dynamicInputs: sanitizedDynamicInputs,
+    dynamicInputs: uploadedDynamicInputs,
   };
 
   // Final guard: assert that prompt is a string before sending to API

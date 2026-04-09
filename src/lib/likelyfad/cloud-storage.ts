@@ -203,6 +203,36 @@ export async function loadMedia(
  * This is used to bypass Vercel's 4.5MB request body limit — instead of sending
  * base64 in the request to /api/generate, we upload to Storage and send the URL.
  */
+/**
+ * Walk a dynamicInputs object and upload any base64 image strings to Supabase Storage,
+ * replacing them with signed URLs. Non-base64 values pass through unchanged.
+ *
+ * Used by generation executors to ensure no base64 data ends up in the request body
+ * (which would trip Vercel's 4.5MB limit).
+ */
+export async function uploadDynamicInputsForGeneration(
+  dynamicInputs: Record<string, string | string[]>,
+  projectId?: string
+): Promise<Record<string, string | string[]>> {
+  const result: Record<string, string | string[]> = {};
+  for (const [key, value] of Object.entries(dynamicInputs)) {
+    if (Array.isArray(value)) {
+      result[key] = await Promise.all(
+        value.map((v) =>
+          typeof v === "string" && v.startsWith("data:")
+            ? uploadImageForGeneration(v, projectId)
+            : Promise.resolve(v)
+        )
+      );
+    } else if (typeof value === "string" && value.startsWith("data:")) {
+      result[key] = await uploadImageForGeneration(value, projectId);
+    } else {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
 export async function uploadImageForGeneration(
   imageData: string,
   projectId?: string

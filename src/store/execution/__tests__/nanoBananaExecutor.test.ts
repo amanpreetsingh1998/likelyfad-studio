@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // === LIKELYFAD CUSTOM: mock cloud-storage to avoid Supabase init in tests ===
 vi.mock("@/lib/likelyfad/cloud-storage", () => ({
   uploadImageForGeneration: vi.fn((img: string) => Promise.resolve(img)),
+  uploadDynamicInputsForGeneration: vi.fn((di: Record<string, unknown>) => Promise.resolve(di)),
 }));
 // === LIKELYFAD CUSTOM END ===
 

@@ -9,7 +9,7 @@ import type { Generate3DNodeData } from "@/types";
 import { buildGenerateHeaders } from "@/store/utils/buildApiHeaders";
 import type { NodeExecutionContext } from "./types";
 // === LIKELYFAD CUSTOM START ===
-import { uploadImageForGeneration } from "@/lib/likelyfad/cloud-storage";
+import { uploadImageForGeneration, uploadDynamicInputsForGeneration } from "@/lib/likelyfad/cloud-storage";
 // === LIKELYFAD CUSTOM END ===
 
 export interface Generate3DOptions {
@@ -77,14 +77,16 @@ export async function executeGenerate3D(
 
   // === LIKELYFAD CUSTOM START === (upload base64 images to Supabase Storage, pass URLs to avoid 4.5MB payload limit)
   let uploadedImages = images;
+  let uploadedDynamicInputs = dynamicInputs;
   try {
+    const { useWorkflowStore } = await import("@/store/workflowStore");
+    const workflowId = useWorkflowStore.getState().workflowId || undefined;
     if (images.length > 0) {
-      const { useWorkflowStore } = await import("@/store/workflowStore");
-      const workflowId = useWorkflowStore.getState().workflowId || undefined;
       uploadedImages = await Promise.all(
         images.map((img) => uploadImageForGeneration(img, workflowId))
       );
     }
+    uploadedDynamicInputs = await uploadDynamicInputsForGeneration(dynamicInputs, workflowId);
   } catch (err) {
     console.error("Failed to upload images for 3d generation:", err);
     updateNodeData(node.id, {
@@ -101,7 +103,7 @@ export async function executeGenerate3D(
     prompt: promptText || "",
     selectedModel: nodeData.selectedModel,
     parameters: nodeData.parameters,
-    dynamicInputs,
+    dynamicInputs: uploadedDynamicInputs,
     mediaType: "3d" as const,
   };
 

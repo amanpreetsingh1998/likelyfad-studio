@@ -84,8 +84,12 @@ Every upstream file edited by Likelyfad Studio is listed here. All changes are w
 
 ### 18. `src/lib/likelyfad/cloud-storage.ts` (our file, not upstream — but relevant)
 - Added `uploadImageForGeneration()` — uploads base64 to Storage, returns signed URL
+- Added `uploadDynamicInputsForGeneration()` — walks dynamicInputs and uploads any base64 strings
 - Added `incurred_cost` to `saveProject()`/`loadProject()` signatures
 - Added `incurred_cost` to `ProjectListEntry` type
+
+### Additional executor edits (sections 10/11/12 also updated)
+- All four generation executors (video, nanoBanana, 3D) now also upload base64 found in `dynamicInputs` (not just the `images` array). This was the cause of the 413 on Kling Video v2.6 — the upstream image was sent through both `images[]` AND `dynamicInputs.image_url`, and only the former was being uploaded.
 
 ### Database schema change
 Run this SQL in Supabase SQL Editor:
