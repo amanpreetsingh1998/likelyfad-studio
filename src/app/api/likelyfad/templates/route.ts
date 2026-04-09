@@ -8,7 +8,7 @@ export async function GET() {
     const supabase = getServiceClient();
     const { data, error } = await supabase
       .from("templates")
-      .select("id, name, description, category, tags, node_count, thumbnail_url, created_at")
+      .select("id, name, description, category, tags, node_count, thumbnail_url, hover_url, models, estimated_cost, created_at")
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -28,7 +28,18 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name, description, category, tags, node_count, thumbnail_url, workflow_json } = body;
+    const {
+      name,
+      description,
+      category,
+      tags,
+      node_count,
+      thumbnail_url,
+      hover_url,
+      models,
+      estimated_cost,
+      workflow_json,
+    } = body;
 
     if (!name || !workflow_json) {
       return NextResponse.json(
@@ -47,6 +58,9 @@ export async function POST(request: NextRequest) {
         tags: tags ?? [],
         node_count: node_count ?? 0,
         thumbnail_url: thumbnail_url ?? null,
+        hover_url: hover_url ?? null,
+        models: models ?? [],
+        estimated_cost: estimated_cost ?? 0,
         workflow_json,
       })
       .select("id")

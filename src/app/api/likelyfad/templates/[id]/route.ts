@@ -12,7 +12,7 @@ export async function GET(
     const supabase = getServiceClient();
     const { data, error } = await supabase
       .from("templates")
-      .select("id, name, description, category, tags, node_count, thumbnail_url, workflow_json, created_at")
+      .select("id, name, description, category, tags, node_count, thumbnail_url, hover_url, models, estimated_cost, workflow_json, created_at")
       .eq("id", id)
       .single();
 

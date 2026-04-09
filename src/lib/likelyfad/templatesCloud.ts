@@ -2,6 +2,7 @@
 
 import type { WorkflowFile } from "@/store/workflowStore";
 import type { WorkflowNode } from "@/types";
+import { PRICING_OVERRIDES } from "./pricing-overrides";
 
 export interface CloudTemplate {
   id: string;
@@ -11,6 +12,9 @@ export interface CloudTemplate {
   tags: string[];
   node_count: number;
   thumbnail_url: string | null;
+  hover_url: string | null;
+  models: string[];
+  estimated_cost: number;
   created_at: string;
 }
 
@@ -59,6 +63,9 @@ export async function saveCloudTemplate(body: {
   tags: string[];
   node_count: number;
   thumbnail_url?: string | null;
+  hover_url?: string | null;
+  models: string[];
+  estimated_cost: number;
   workflow_json: Omit<WorkflowFile, "id">;
 }): Promise<string | null> {
   try {
@@ -148,6 +155,46 @@ export function stripWorkflowForTemplate(workflow: WorkflowFile): Omit<WorkflowF
   };
 }
 
+// ─── Auto-detection helpers ────────────────────────────────────────────
+
+/**
+ * Full list of providers the user can toggle in the SaveTemplateModal.
+ * Auto-detection pre-checks the ones found in the workflow; users can also
+ * check additional providers manually (e.g. if a template is meant to be
+ * swapped to a different provider).
+ */
+export const KNOWN_PROVIDERS = [
+  "Gemini",
+  "fal.ai",
+  "Replicate",
+  "OpenAI",
+  "Anthropic",
+  "Google",
+  "ElevenLabs",
+  "HeyGen",
+  "Runway",
+  "Wavespeed",
+] as const;
+
+/**
+ * Normalize a raw provider string to one of the known display names.
+ * Returns the normalized name or the raw string if unknown.
+ */
+function normalizeProvider(raw: string): string {
+  const p = raw.toLowerCase();
+  if (p === "gemini") return "Gemini";
+  if (p === "fal" || p === "fal.ai" || p === "fal-ai") return "fal.ai";
+  if (p === "replicate") return "Replicate";
+  if (p === "openai" || p === "chatgpt") return "OpenAI";
+  if (p === "anthropic" || p === "claude") return "Anthropic";
+  if (p === "google") return "Google";
+  if (p === "elevenlabs" || p === "eleven-labs") return "ElevenLabs";
+  if (p === "heygen") return "HeyGen";
+  if (p === "runway" || p === "runwayml") return "Runway";
+  if (p === "wavespeed") return "Wavespeed";
+  return raw;
+}
+
 /**
  * Walk nodes and collect unique provider tags from generation nodes.
  * Used to auto-fill provider chips on the template card.
@@ -158,16 +205,58 @@ export function deriveProviderTags(nodes: WorkflowNode[]): string[] {
     const data = node.data as Record<string, unknown>;
     const sel = data?.selectedModel as { provider?: string } | undefined;
     if (sel?.provider) {
-      // Normalize provider display names
-      const p = sel.provider;
-      if (p === "gemini") set.add("Gemini");
-      else if (p === "fal") set.add("fal.ai");
-      else if (p === "replicate") set.add("Replicate");
-      else if (p === "openai") set.add("OpenAI");
-      else if (p === "anthropic") set.add("Anthropic");
-      else if (p === "google") set.add("Google");
-      else set.add(p);
+      set.add(normalizeProvider(sel.provider));
     }
   }
   return Array.from(set).sort();
+}
+
+/**
+ * Walk nodes and collect unique model display names actually used in the
+ * workflow. Dedupes by display name (or modelId as fallback) so the same
+ * model used in three nodes only shows up once.
+ */
+export function deriveModelsUsed(nodes: WorkflowNode[]): string[] {
+  const set = new Set<string>();
+  for (const node of nodes) {
+    const data = node.data as Record<string, unknown>;
+    const sel = data?.selectedModel as
+      | { displayName?: string; modelId?: string }
+      | undefined;
+    if (!sel) continue;
+    const label = sel.displayName?.trim() || sel.modelId?.trim();
+    if (label) set.add(label);
+  }
+  return Array.from(set).sort();
+}
+
+/**
+ * Estimate the dollar cost of one full run of the workflow by summing the
+ * pricing of every generation node. Falls back to the pricing-overrides
+ * table for models whose selectedModel.pricing is missing.
+ *
+ * This is a simple lower-bound estimate: one generation per generation
+ * node. Real costs can be higher (4K output, batch runs, long videos).
+ */
+export function estimateWorkflowCost(nodes: WorkflowNode[]): number {
+  let total = 0;
+  for (const node of nodes) {
+    const data = node.data as Record<string, unknown>;
+    const sel = data?.selectedModel as
+      | { modelId?: string; pricing?: { amount?: number } }
+      | undefined;
+    if (!sel) continue;
+    if (typeof sel.pricing?.amount === "number") {
+      total += sel.pricing.amount;
+      continue;
+    }
+    if (sel.modelId) {
+      const override = PRICING_OVERRIDES[sel.modelId];
+      if (override) {
+        total += override.amount;
+      }
+    }
+  }
+  // Round to 4 decimals to avoid floating point noise in the DB column
+  return Math.round(total * 10000) / 10000;
 }
