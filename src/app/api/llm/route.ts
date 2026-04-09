@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 import { LLMGenerateRequest, LLMGenerateResponse, LLMModelType } from "@/types";
 import { logger } from "@/utils/logger";
+// === LIKELYFAD CUSTOM === (runtime LLM cost tracking)
+import { computeLlmCost } from "@/lib/likelyfad/llm-pricing";
+
+interface LlmUsage {
+  inputTokens: number;
+  outputTokens: number;
+}
 
 export const maxDuration = 60; // 1 minute timeout
 
@@ -37,7 +44,7 @@ async function generateWithGoogle(
   images?: string[],
   requestId?: string,
   userApiKey?: string | null
-): Promise<string> {
+): Promise<{ text: string; usage: LlmUsage }> {
   // User-provided key takes precedence over env variable
   const apiKey = userApiKey || process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -103,13 +110,24 @@ async function generateWithGoogle(
     throw new Error("No text in Google AI response");
   }
 
+  // === LIKELYFAD CUSTOM === (capture usage metadata for cost tracking)
+  const meta = (response as unknown as {
+    usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number };
+  }).usageMetadata;
+  const usage: LlmUsage = {
+    inputTokens: meta?.promptTokenCount ?? 0,
+    outputTokens: meta?.candidatesTokenCount ?? 0,
+  };
+
   logger.info('api.llm', 'Google AI API response received', {
     requestId,
     duration,
     responseLength: text.length,
+    inputTokens: usage.inputTokens,
+    outputTokens: usage.outputTokens,
   });
 
-  return text;
+  return { text, usage };
 }
 
 async function generateWithOpenAI(
@@ -120,7 +138,7 @@ async function generateWithOpenAI(
   images?: string[],
   requestId?: string,
   userApiKey?: string | null
-): Promise<string> {
+): Promise<{ text: string; usage: LlmUsage }> {
   // User-provided key takes precedence over env variable
   const apiKey = userApiKey || process.env.OPENAI_API_KEY;
   if (!apiKey) {
@@ -187,13 +205,21 @@ async function generateWithOpenAI(
     throw new Error("No text in OpenAI response");
   }
 
+  // === LIKELYFAD CUSTOM === (capture usage from OpenAI response)
+  const usage: LlmUsage = {
+    inputTokens: data.usage?.prompt_tokens ?? 0,
+    outputTokens: data.usage?.completion_tokens ?? 0,
+  };
+
   logger.info('api.llm', 'OpenAI API response received', {
     requestId,
     duration,
     responseLength: text.length,
+    inputTokens: usage.inputTokens,
+    outputTokens: usage.outputTokens,
   });
 
-  return text;
+  return { text, usage };
 }
 
 async function generateWithAnthropic(
@@ -204,7 +230,7 @@ async function generateWithAnthropic(
   images?: string[],
   requestId?: string,
   userApiKey?: string | null
-): Promise<string> {
+): Promise<{ text: string; usage: LlmUsage }> {
   const apiKey = userApiKey || process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     logger.error('api.error', 'ANTHROPIC_API_KEY not configured', { requestId });
@@ -291,13 +317,21 @@ async function generateWithAnthropic(
     throw new Error("No text in Anthropic response");
   }
 
+  // === LIKELYFAD CUSTOM === (capture usage from Anthropic response)
+  const usage: LlmUsage = {
+    inputTokens: data.usage?.input_tokens ?? 0,
+    outputTokens: data.usage?.output_tokens ?? 0,
+  };
+
   logger.info('api.llm', 'Anthropic API response received', {
     requestId,
     duration,
     responseLength: text.length,
+    inputTokens: usage.inputTokens,
+    outputTokens: usage.outputTokens,
   });
 
-  return text;
+  return { text, usage };
 }
 
 export async function POST(request: NextRequest) {
@@ -339,13 +373,14 @@ export async function POST(request: NextRequest) {
     }
 
     let text: string;
+    let usage: LlmUsage;
 
     if (provider === "google") {
-      text = await generateWithGoogle(prompt, model, temperature, maxTokens, images, requestId, geminiApiKey);
+      ({ text, usage } = await generateWithGoogle(prompt, model, temperature, maxTokens, images, requestId, geminiApiKey));
     } else if (provider === "openai") {
-      text = await generateWithOpenAI(prompt, model, temperature, maxTokens, images, requestId, openaiApiKey);
+      ({ text, usage } = await generateWithOpenAI(prompt, model, temperature, maxTokens, images, requestId, openaiApiKey));
     } else if (provider === "anthropic") {
-      text = await generateWithAnthropic(prompt, model, temperature, maxTokens, images, requestId, anthropicApiKey);
+      ({ text, usage } = await generateWithAnthropic(prompt, model, temperature, maxTokens, images, requestId, anthropicApiKey));
     } else {
       logger.warn('api.llm', 'Unknown provider requested', { requestId, provider });
       return NextResponse.json<LLMGenerateResponse>(
@@ -354,14 +389,28 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // === LIKELYFAD CUSTOM === (compute exact dollar cost from captured token counts)
+    const { cost, usedFallback } = computeLlmCost(model, usage.inputTokens, usage.outputTokens);
+    if (usedFallback) {
+      logger.warn('api.llm', 'LLM pricing fallback used — add model to LLM_PRICING', {
+        requestId,
+        model,
+      });
+    }
+
     logger.info('api.llm', 'LLM generation successful', {
       requestId,
       responseLength: text.length,
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      cost,
     });
 
     return NextResponse.json<LLMGenerateResponse>({
       success: true,
       text,
+      usage,
+      cost,
     });
   } catch (error) {
     logger.error('api.error', 'LLM generation error', { requestId }, error instanceof Error ? error : undefined);

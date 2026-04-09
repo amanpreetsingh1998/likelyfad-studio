@@ -27,6 +27,8 @@ export async function executeLlmGenerate(
     updateNodeData,
     signal,
     providerSettings,
+    // === LIKELYFAD CUSTOM === (runtime LLM cost tracking)
+    addIncurredCost,
   } = ctx;
 
   const { useStoredFallback = false } = options;
@@ -123,6 +125,29 @@ export async function executeLlmGenerate(
         status: "complete",
         error: null,
       });
+
+      // === LIKELYFAD CUSTOM START === (track real LLM cost from server-computed dollars)
+      const costAmount: number = typeof result.cost === "number" ? result.cost : 0;
+      const usageInput: number = result.usage?.inputTokens ?? 0;
+      const usageOutput: number = result.usage?.outputTokens ?? 0;
+      console.log(
+        `[cost] LLM ${nodeData.provider}/${nodeData.model}: ` +
+          `${usageInput} in + ${usageOutput} out → $${costAmount.toFixed(6)}`
+      );
+      if (costAmount > 0) {
+        addIncurredCost(costAmount);
+        const { logCostEvent } = await import("@/lib/likelyfad/costEvents");
+        const { useWorkflowStore } = await import("@/store/workflowStore");
+        logCostEvent({
+          projectId: useWorkflowStore.getState().workflowId,
+          nodeId: node.id,
+          nodeType: "llm",
+          modelName: nodeData.model,
+          amount: costAmount,
+        });
+        void useWorkflowStore.getState().saveToFile().catch(() => {});
+      }
+      // === LIKELYFAD CUSTOM END ===
     } else {
       updateNodeData(node.id, {
         status: "error",

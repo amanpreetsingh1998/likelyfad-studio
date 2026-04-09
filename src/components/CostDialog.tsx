@@ -141,6 +141,7 @@ export function CostDialog({ predictedCost, incurredCost, onClose }: CostDialogP
     if (t === "video") return "🎬";
     if (t === "audio") return "🎵";
     if (t === "3d") return "🧊";
+    if (t === "llm") return "💬";
     return "🖼️";
   };
   // === LIKELYFAD CUSTOM END ===

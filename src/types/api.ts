@@ -46,4 +46,11 @@ export interface LLMGenerateResponse {
   success: boolean;
   text?: string;
   error?: string;
+  // === LIKELYFAD CUSTOM === (runtime cost tracking — token usage + dollar cost)
+  usage?: {
+    inputTokens: number;
+    outputTokens: number;
+  };
+  /** USD cost for this single request, computed from usage × LLM_PRICING */
+  cost?: number;
 }
