@@ -29,8 +29,9 @@ export interface PricingOverride {
  */
 export const PRICING_OVERRIDES: Record<string, PricingOverride> = {
   // === fal.ai models ===
-  // Gemini 3 Pro Image Preview on fal.ai — confirm exact price at https://fal.ai/models/fal-ai/gemini-3-pro-image-preview
-  "fal-ai/gemini-3-pro-image-preview": { amount: 0.134, note: "Gemini 3 Pro via fal.ai" },
+  // Gemini 3 Pro Image Preview on fal.ai — $0.15/image, 4K outputs charged at 2x ($0.30)
+  // NOTE: Cost tracker uses standard rate. If you generate at 4K, actual spend will be ~2x what's shown.
+  "fal-ai/gemini-3-pro-image-preview": { amount: 0.15, note: "Gemini 3 Pro via fal.ai ($0.30 at 4K)" },
 
   // Add more entries as needed:
   // "fal-ai/flux/dev": { amount: 0.025 },
