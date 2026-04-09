@@ -41,3 +41,46 @@ Every upstream file edited by Likelyfad Studio is listed here. All changes are w
 - **handleImportJson()**: New function to read JSON file via `<input type="file">` and load as workflow
 - **State A UI**: Added "Import Workflow JSON" button below "Choose folder" with divider
 - **State B footer**: Added "Import JSON" button next to "Open from directory"
+
+### 10. `src/store/execution/generateVideoExecutor.ts`
+- **Import**: Added `uploadImageForGeneration` from cloud-storage
+- **Image upload**: Uploads base64 inputs to Supabase Storage, sends signed URLs in request (avoids Vercel 4.5MB body limit)
+- **Cost tracking**: Tracks cost for ALL providers with `pricing` metadata (previously fal-only)
+
+### 11. `src/store/execution/nanoBananaExecutor.ts`
+- **Import**: Added `uploadImageForGeneration` from cloud-storage
+- **Image upload**: Uploads base64 inputs to Supabase Storage, sends signed URLs
+- **Cost tracking**: Tracks cost for ALL providers with `pricing` metadata (previously fal + Gemini only)
+
+### 12. `src/store/execution/generate3dExecutor.ts`
+- **Import**: Added `uploadImageForGeneration` from cloud-storage
+- **Image upload**: Uploads base64 inputs to Supabase Storage, sends signed URLs
+
+### 13. `src/store/execution/generateAudioExecutor.ts`
+- **Cost tracking**: Broadened to ALL providers with `pricing` metadata (previously fal-only)
+
+### 14. `src/store/execution/llmGenerateExecutor.ts`
+- **Import**: Added `uploadImageForGeneration` from cloud-storage
+- **Image upload**: Uploads base64 vision inputs to Supabase Storage, sends signed URLs
+
+### 15. `src/app/api/generate/providers/gemini.ts`
+- **Image handling**: Fetches HTTP URL image inputs and converts to base64 (Gemini requires inline format)
+
+### 16. `src/app/api/llm/route.ts`
+- **Gemini handler**: Fetches HTTP URL image inputs and converts to base64
+- **Anthropic handler**: Fetches HTTP URL image inputs and converts to base64
+- (OpenAI handler already supports URLs natively — no change needed)
+
+### 17. `src/components/CostIndicator.tsx`
+- **Display logic**: Removed `hasNonGeminiProviders` guard — cost now shown for all providers, displays incurred cost when available
+
+### 18. `src/lib/likelyfad/cloud-storage.ts` (our file, not upstream — but relevant)
+- Added `uploadImageForGeneration()` — uploads base64 to Storage, returns signed URL
+- Added `incurred_cost` to `saveProject()`/`loadProject()` signatures
+- Added `incurred_cost` to `ProjectListEntry` type
+
+### Database schema change
+Run this SQL in Supabase SQL Editor:
+```sql
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS incurred_cost NUMERIC DEFAULT 0;
+```

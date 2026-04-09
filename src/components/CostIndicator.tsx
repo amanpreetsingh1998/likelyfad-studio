@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { useWorkflowStore } from "@/store/workflowStore";
-import { calculatePredictedCost, formatCost, hasNonGeminiProviders } from "@/utils/costCalculator";
+import { calculatePredictedCost, formatCost } from "@/utils/costCalculator";
 import { CostDialog } from "./CostDialog";
 
 export function CostIndicator() {
@@ -14,15 +14,15 @@ export function CostIndicator() {
     return calculatePredictedCost(nodes);
   }, [nodes]);
 
-  const nonGemini = useMemo(() => hasNonGeminiProviders(nodes), [nodes]);
   const hasAnyNodes = predictedCost.nodeCount > 0;
 
-  if (nonGemini || (!hasAnyNodes && incurredCost === 0)) {
+  // === LIKELYFAD CUSTOM START === (show cost for all providers, not just Gemini — we track pricing from model metadata)
+  if (!hasAnyNodes && incurredCost === 0) {
     return null;
   }
-
-  // Always show dollar format (external provider costs not included in total)
-  const displayCost = formatCost(predictedCost.totalCost);
+  // Show incurred cost (actual spend) when available, otherwise show predicted
+  const displayCost = incurredCost > 0 ? formatCost(incurredCost) : formatCost(predictedCost.totalCost);
+  // === LIKELYFAD CUSTOM END ===
 
   return (
     <>

@@ -57,34 +57,33 @@ async function generateWithGoogle(
     promptLength: prompt.length,
   });
 
-  // Build multimodal content if images are provided
+  // === LIKELYFAD CUSTOM START === (fetch URL inputs and convert to base64 for Gemini inline format)
   let contents: string | Array<{ inlineData: { mimeType: string; data: string } } | { text: string }>;
   if (images && images.length > 0) {
-    contents = [
-      ...images.map((img) => {
-        // Extract base64 data and mime type from data URL
+    const imageParts = await Promise.all(
+      images.map(async (img) => {
         const matches = img.match(/^data:(.+?);base64,(.+)$/);
         if (matches) {
-          return {
-            inlineData: {
-              mimeType: matches[1],
-              data: matches[2],
-            },
-          };
+          return { inlineData: { mimeType: matches[1], data: matches[2] } };
         }
-        // Fallback: assume PNG if no data URL prefix
-        return {
-          inlineData: {
-            mimeType: "image/png",
-            data: img,
-          },
-        };
-      }),
-      { text: prompt },
-    ];
+        // URL input — fetch and convert to base64
+        if (img.startsWith("http://") || img.startsWith("https://")) {
+          const res = await fetch(img);
+          if (!res.ok) throw new Error(`Failed to fetch image URL: HTTP ${res.status}`);
+          const mimeType = res.headers.get("content-type") || "image/png";
+          const arrayBuffer = await res.arrayBuffer();
+          const data = Buffer.from(arrayBuffer).toString("base64");
+          return { inlineData: { mimeType, data } };
+        }
+        // Fallback: assume PNG raw base64
+        return { inlineData: { mimeType: "image/png", data: img } };
+      })
+    );
+    contents = [...imageParts, { text: prompt }];
   } else {
     contents = prompt;
   }
+  // === LIKELYFAD CUSTOM END ===
 
   const startTime = Date.now();
   const response = await ai.models.generateContent({
@@ -223,7 +222,7 @@ async function generateWithAnthropic(
     promptLength: prompt.length,
   });
 
-  // Build content blocks
+  // === LIKELYFAD CUSTOM START === (fetch URL inputs and convert to base64 for Anthropic)
   const content: Array<{ type: string; text?: string; source?: { type: string; media_type: string; data: string } }> = [];
 
   if (images && images.length > 0) {
@@ -233,6 +232,17 @@ async function generateWithAnthropic(
         content.push({
           type: "image",
           source: { type: "base64", media_type: matches[1], data: matches[2] },
+        });
+      } else if (img.startsWith("http://") || img.startsWith("https://")) {
+        // URL input — fetch and convert to base64
+        const res = await fetch(img);
+        if (!res.ok) throw new Error(`Failed to fetch image URL: HTTP ${res.status}`);
+        const mimeType = res.headers.get("content-type") || "image/png";
+        const arrayBuffer = await res.arrayBuffer();
+        const data = Buffer.from(arrayBuffer).toString("base64");
+        content.push({
+          type: "image",
+          source: { type: "base64", media_type: mimeType, data },
         });
       } else {
         content.push({
@@ -244,6 +254,7 @@ async function generateWithAnthropic(
   }
 
   content.push({ type: "text", text: prompt });
+  // === LIKELYFAD CUSTOM END ===
 
   const startTime = Date.now();
   const response = await fetch("https://api.anthropic.com/v1/messages", {

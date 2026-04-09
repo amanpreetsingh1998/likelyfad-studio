@@ -13,6 +13,7 @@ export interface ProjectListEntry {
   node_count: number;
   updated_at: string;
   created_at: string;
+  incurred_cost?: number;
 }
 
 // ─── Project CRUD ───────────────────────────────────────────────────
@@ -36,7 +37,8 @@ export async function saveProject(
   name: string,
   workflowJson: Record<string, unknown>,
   edgeStyle: string = "angular",
-  nodeCount: number = 0
+  nodeCount: number = 0,
+  incurredCost: number = 0
 ): Promise<void> {
   const { error } = await supabase.from("projects").upsert(
     {
@@ -45,6 +47,7 @@ export async function saveProject(
       workflow_json: workflowJson,
       edge_style: edgeStyle,
       node_count: nodeCount,
+      incurred_cost: incurredCost,
     },
     { onConflict: "id" }
   );
@@ -57,10 +60,10 @@ export async function saveProject(
 
 export async function loadProject(
   id: string
-): Promise<{ name: string; workflow_json: Record<string, unknown> } | null> {
+): Promise<{ name: string; workflow_json: Record<string, unknown>; incurred_cost?: number } | null> {
   const { data, error } = await supabase
     .from("projects")
-    .select("name, workflow_json")
+    .select("name, workflow_json, incurred_cost")
     .eq("id", id)
     .single();
 
@@ -190,4 +193,63 @@ export async function loadMedia(
   }
 
   throw new Error(`Media not found: ${mediaId} for project ${projectId}`);
+}
+
+/**
+ * Upload a base64 image to Supabase Storage for use as generation API input.
+ * Returns a signed URL that generation providers (fal, Gemini, etc.) can fetch.
+ *
+ * If the input is already an HTTP URL, returns it unchanged.
+ * This is used to bypass Vercel's 4.5MB request body limit — instead of sending
+ * base64 in the request to /api/generate, we upload to Storage and send the URL.
+ */
+export async function uploadImageForGeneration(
+  imageData: string,
+  projectId?: string
+): Promise<string> {
+  // Already an HTTP URL — return as-is
+  if (!imageData.startsWith("data:")) {
+    return imageData;
+  }
+
+  const match = imageData.match(/^data:([^;]+);base64,(.+)$/);
+  if (!match) {
+    throw new Error("Invalid base64 data URL");
+  }
+
+  const mimeType = match[1];
+  const rawBase64 = match[2];
+  const ext = mimeType.split("/")[1]?.replace("jpeg", "jpg") || "png";
+
+  // Store in a generation-inputs folder, scoped to project if available
+  const folder = projectId ? `default/${projectId}/generation-inputs` : "default/anonymous/generation-inputs";
+  const fileName = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
+  const storagePath = `${folder}/${fileName}`;
+
+  // Decode base64 to Uint8Array
+  const binary = Uint8Array.from(atob(rawBase64), (c) => c.charCodeAt(0));
+
+  // Upload to Supabase Storage
+  const { error: uploadError } = await supabase.storage
+    .from(MEDIA_BUCKET)
+    .upload(storagePath, binary, {
+      contentType: mimeType,
+      upsert: false,
+    });
+
+  if (uploadError) {
+    console.error("Failed to upload image for generation:", uploadError);
+    throw new Error(uploadError.message);
+  }
+
+  // Create a signed URL valid for 1 hour (plenty for generation)
+  const { data: signedData, error: signedError } = await supabase.storage
+    .from(MEDIA_BUCKET)
+    .createSignedUrl(storagePath, 3600);
+
+  if (signedError || !signedData) {
+    throw new Error(signedError?.message || "Failed to create signed URL");
+  }
+
+  return signedData.signedUrl;
 }

@@ -35,6 +35,10 @@ export default function Home() {
         workflow.name = data.project.name;
         await loadWorkflow(workflow, data.project.id);
         setWorkflowMetadata(data.project.id, data.project.name, "cloud");
+        // Restore incurred cost from Supabase
+        if (typeof data.project.incurred_cost === "number") {
+          useWorkflowStore.setState({ incurredCost: data.project.incurred_cost });
+        }
         setShowProjectList(false);
       }
     } catch (err) {

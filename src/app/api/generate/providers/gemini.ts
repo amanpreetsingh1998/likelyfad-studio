@@ -34,19 +34,37 @@ export async function generateWithGemini(
 ): Promise<NextResponse<GenerateResponse>> {
   console.log(`[API:${requestId}] Gemini generation - Model: ${model}, Images: ${images?.length || 0}, Prompt: ${prompt?.length || 0} chars`);
 
-  // Extract base64 data and MIME types from data URLs
-  const imageData = (images || []).map((image, idx) => {
-    if (image.includes("base64,")) {
-      const [header, data] = image.split("base64,");
-      // Extract MIME type from header (e.g., "data:image/png;" -> "image/png")
-      const mimeMatch = header.match(/data:([^;]+)/);
-      const mimeType = mimeMatch ? mimeMatch[1] : "image/png";
-      console.log(`[API:${requestId}]   Image ${idx + 1}: ${mimeType}, ${(data.length / 1024).toFixed(1)}KB`);
-      return { data, mimeType };
-    }
-    console.log(`[API:${requestId}]   Image ${idx + 1}: raw, ${(image.length / 1024).toFixed(1)}KB`);
-    return { data: image, mimeType: "image/png" };
-  });
+  // === LIKELYFAD CUSTOM START === (fetch URL inputs and convert to base64 for Gemini inline format)
+  const imageData = await Promise.all(
+    (images || []).map(async (image, idx) => {
+      if (image.startsWith("data:") && image.includes("base64,")) {
+        const [header, data] = image.split("base64,");
+        const mimeMatch = header.match(/data:([^;]+)/);
+        const mimeType = mimeMatch ? mimeMatch[1] : "image/png";
+        console.log(`[API:${requestId}]   Image ${idx + 1}: ${mimeType}, ${(data.length / 1024).toFixed(1)}KB (base64)`);
+        return { data, mimeType };
+      }
+      // URL input — fetch and convert to base64 (Gemini only supports inline base64)
+      if (image.startsWith("http://") || image.startsWith("https://")) {
+        try {
+          const res = await fetch(image);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const mimeType = res.headers.get("content-type") || "image/png";
+          const arrayBuffer = await res.arrayBuffer();
+          const data = Buffer.from(arrayBuffer).toString("base64");
+          console.log(`[API:${requestId}]   Image ${idx + 1}: ${mimeType}, ${(data.length / 1024).toFixed(1)}KB (fetched from URL)`);
+          return { data, mimeType };
+        } catch (err) {
+          console.error(`[API:${requestId}]   Image ${idx + 1}: failed to fetch URL`, err);
+          throw new Error(`Failed to fetch image URL: ${err instanceof Error ? err.message : "unknown error"}`);
+        }
+      }
+      // Fallback: treat as raw base64
+      console.log(`[API:${requestId}]   Image ${idx + 1}: raw, ${(image.length / 1024).toFixed(1)}KB`);
+      return { data: image, mimeType: "image/png" };
+    })
+  );
+  // === LIKELYFAD CUSTOM END ===
 
   // Initialize Gemini client
   const ai = new GoogleGenAI({ apiKey });

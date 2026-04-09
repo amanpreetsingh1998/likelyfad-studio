@@ -11,6 +11,9 @@ import type {
 import { calculateGenerationCost } from "@/utils/costCalculator";
 import { buildGenerateHeaders } from "@/store/utils/buildApiHeaders";
 import type { NodeExecutionContext } from "./types";
+// === LIKELYFAD CUSTOM START ===
+import { uploadImageForGeneration } from "@/lib/likelyfad/cloud-storage";
+// === LIKELYFAD CUSTOM END ===
 
 export interface NanoBananaOptions {
   /** When true, falls back to stored inputImages/inputPrompt if no connections provide them. */
@@ -94,8 +97,30 @@ export async function executeNanoBanana(
   const sanitizedDynamicInputs = { ...dynamicInputs };
   delete sanitizedDynamicInputs.prompt;
 
+  // === LIKELYFAD CUSTOM START === (upload base64 images to Supabase Storage, pass URLs to avoid 4.5MB payload limit)
+  const { useWorkflowStore: _storeForUpload } = await import("@/store/workflowStore");
+  const _workflowIdForUpload = _storeForUpload.getState().workflowId || undefined;
+
+  let uploadedImages = images;
+  try {
+    if (images.length > 0) {
+      uploadedImages = await Promise.all(
+        images.map((img) => uploadImageForGeneration(img, _workflowIdForUpload))
+      );
+    }
+  } catch (err) {
+    console.error("Failed to upload images for generation:", err);
+    updateNodeData(node.id, {
+      status: "error",
+      error: `Failed to upload input images: ${err instanceof Error ? err.message : "Unknown error"}`,
+    });
+    throw err;
+  }
+  // === LIKELYFAD CUSTOM END ===
+
   const requestPayload = {
-    images,
+    // === LIKELYFAD CUSTOM: use uploaded image URLs instead of base64 ===
+    images: uploadedImages,
     prompt: promptText,
     aspectRatio: nodeData.aspectRatio,
     resolution: nodeData.resolution,
@@ -186,13 +211,14 @@ export async function executeNanoBanana(
           }
         });
 
-      // Track cost
-      if (nodeData.selectedModel?.provider === "fal" && nodeData.selectedModel?.pricing) {
+      // === LIKELYFAD CUSTOM START === (track cost for all providers with pricing metadata, fallback to Gemini lookup)
+      if (nodeData.selectedModel?.pricing) {
         addIncurredCost(nodeData.selectedModel.pricing.amount);
       } else if (!nodeData.selectedModel || nodeData.selectedModel.provider === "gemini") {
         const generationCost = calculateGenerationCost(nodeData.model, nodeData.resolution);
         addIncurredCost(generationCost);
       }
+      // === LIKELYFAD CUSTOM END ===
 
       // Auto-save to generations folder if configured
       if (generationsPath) {

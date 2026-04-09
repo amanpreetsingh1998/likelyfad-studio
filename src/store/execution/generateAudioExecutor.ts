@@ -143,10 +143,11 @@ export async function executeGenerateAudio(
         selectedAudioHistoryIndex: 0,
       });
 
-      // Track cost
-      if (nodeData.selectedModel?.provider === "fal" && nodeData.selectedModel?.pricing) {
+      // === LIKELYFAD CUSTOM START === (track cost for ALL providers with pricing metadata)
+      if (nodeData.selectedModel?.pricing) {
         addIncurredCost(nodeData.selectedModel.pricing.amount);
       }
+      // === LIKELYFAD CUSTOM END ===
 
       // Auto-save to generations folder if configured
       if (generationsPath) {

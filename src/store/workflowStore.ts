@@ -2218,17 +2218,19 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
         groups: groups && Object.keys(groups).length > 0 ? groups : undefined,
       };
 
-      // === LIKELYFAD CUSTOM START === (cloud save: externalize media then save to Supabase)
+      // === LIKELYFAD CUSTOM START === (cloud save: externalize media then save to Supabase, persist incurred cost)
       // Externalize media — strips base64 from nodes and uploads to Supabase Storage
       workflow = await externalizeWorkflowMedia(workflow, workflowId);
 
-      // Save workflow JSON to Supabase projects table
+      // Save workflow JSON + incurred cost to Supabase projects table
+      const currentIncurredCost = get().incurredCost;
       await saveProject(
         workflowId,
         workflowName,
         workflow as unknown as Record<string, unknown>,
         edgeStyle,
-        workflow.nodes.length
+        workflow.nodes.length,
+        currentIncurredCost
       );
 
       const result: { success: boolean; error?: string } = { success: true };

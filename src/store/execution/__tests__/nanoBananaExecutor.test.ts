@@ -1,4 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+
+// === LIKELYFAD CUSTOM: mock cloud-storage to avoid Supabase init in tests ===
+vi.mock("@/lib/likelyfad/cloud-storage", () => ({
+  uploadImageForGeneration: vi.fn((img: string) => Promise.resolve(img)),
+}));
+// === LIKELYFAD CUSTOM END ===
+
 import { executeNanoBanana } from "../nanoBananaExecutor";
 import type { NodeExecutionContext } from "../types";
 import type { WorkflowNode } from "@/types";

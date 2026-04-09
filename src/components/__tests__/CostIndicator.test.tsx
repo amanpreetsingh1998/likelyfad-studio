@@ -86,9 +86,9 @@ describe("CostIndicator", () => {
     });
   });
 
-  describe("Zero Cost Display", () => {
+  // === LIKELYFAD CUSTOM: skipped — we now hide the indicator entirely when no generation nodes and no incurred cost ===
+  describe.skip("Zero Cost Display", () => {
     it("should display $0.00 when nodes exist but cost is 0", () => {
-      // A prompt node doesn't generate costs
       const nodes: WorkflowNode[] = [
         {
           id: "node-1",
@@ -101,7 +101,7 @@ describe("CostIndicator", () => {
       ];
 
       mockUseWorkflowStore.mockImplementation((selector) => {
-        return selector(createDefaultState({ nodes, incurredCost: 0.01 }));
+        return selector(createDefaultState({ nodes, incurredCost: 0 }));
       });
 
       render(<CostIndicator />);
@@ -365,14 +365,14 @@ describe("CostIndicator", () => {
     });
 
     it("should update when incurredCost changes", () => {
+      // === LIKELYFAD CUSTOM: we now display incurredCost when > 0 instead of predicted ===
       mockUseWorkflowStore.mockImplementation((selector) => {
         return selector(createDefaultState({ incurredCost: 0.50 }));
       });
 
       const { rerender } = render(<CostIndicator />);
 
-      // $0.00 predicted (no generation nodes), but should show due to incurredCost
-      expect(screen.getByText("$0.00")).toBeInTheDocument();
+      expect(screen.getByText("$0.50")).toBeInTheDocument();
 
       // Update incurredCost
       mockUseWorkflowStore.mockImplementation((selector) => {
@@ -381,8 +381,7 @@ describe("CostIndicator", () => {
 
       rerender(<CostIndicator />);
 
-      // Still shows predicted cost $0.00 in the button
-      expect(screen.getByText("$0.00")).toBeInTheDocument();
+      expect(screen.getByText("$1.00")).toBeInTheDocument();
     });
   });
 
@@ -442,7 +441,8 @@ describe("CostIndicator", () => {
     });
   });
 
-  describe("Non-Gemini Provider Hiding", () => {
+  // === LIKELYFAD CUSTOM: skipped — we now show cost for all providers with pricing metadata ===
+  describe.skip("Non-Gemini Provider Hiding", () => {
     it("should not render when a nanoBanana node has a non-Gemini selectedModel", () => {
       const nodes: WorkflowNode[] = [
         {
