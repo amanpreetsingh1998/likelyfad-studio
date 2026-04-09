@@ -38,8 +38,11 @@ export async function listProjects(): Promise<ProjectListEntry[]> {
  * If the row already exists, this is a no-op (does NOT overwrite workflow_json/name).
  */
 export async function ensureProjectRow(id: string, name: string): Promise<void> {
+  // workflow_json is NOT NULL in the schema, so we must supply an empty object
+  // for the insert path. ignoreDuplicates: true means existing rows are NOT
+  // overwritten — the empty {} is only used when the row doesn't exist yet.
   const { error } = await supabase.from("projects").upsert(
-    { id, name },
+    { id, name, workflow_json: {} },
     { onConflict: "id", ignoreDuplicates: true }
   );
   if (error) {
