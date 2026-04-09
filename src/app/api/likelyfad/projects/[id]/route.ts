@@ -12,7 +12,7 @@ export async function GET(
 
     const { data, error } = await supabase
       .from("projects")
-      .select("id, name, workflow_json, edge_style, node_count, updated_at")
+      .select("id, name, workflow_json, edge_style, node_count, updated_at, incurred_cost")
       .eq("id", id)
       .single();
 
