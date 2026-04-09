@@ -198,19 +198,33 @@ export async function executeGenerateVideo(
         selectedVideoHistoryIndex: 0,
       });
 
-      // === LIKELYFAD CUSTOM START === (track cost + log 48h event for video generation)
-      if (nodeData.selectedModel?.pricing) {
-        const costAmount = nodeData.selectedModel.pricing.amount;
-        addIncurredCost(costAmount);
-        const { logCostEvent } = await import("@/lib/likelyfad/costEvents");
-        const { useWorkflowStore } = await import("@/store/workflowStore");
-        logCostEvent({
-          projectId: useWorkflowStore.getState().workflowId,
+      // === LIKELYFAD CUSTOM START === (track cost + log 48h event + diagnostics for video)
+      {
+        const sel = nodeData.selectedModel;
+        console.log("[cost] video generation complete", {
           nodeId: node.id,
-          nodeType: "video",
-          modelName: nodeData.selectedModel.displayName || nodeData.selectedModel.modelId,
-          amount: costAmount,
+          provider: sel?.provider,
+          modelId: sel?.modelId,
+          hasPricing: !!sel?.pricing,
+          pricingAmount: sel?.pricing?.amount,
         });
+        if (sel?.pricing) {
+          const costAmount = sel.pricing.amount;
+          addIncurredCost(costAmount);
+          const { logCostEvent } = await import("@/lib/likelyfad/costEvents");
+          const { useWorkflowStore } = await import("@/store/workflowStore");
+          console.log(`[cost] +${costAmount} for video ${sel.displayName || sel.modelId}`);
+          logCostEvent({
+            projectId: useWorkflowStore.getState().workflowId,
+            nodeId: node.id,
+            nodeType: "video",
+            modelName: sel.displayName || sel.modelId,
+            amount: costAmount,
+          });
+          void useWorkflowStore.getState().saveToFile().catch(() => {});
+        } else {
+          console.warn(`[cost] NOT tracking video cost for ${sel?.provider}/${sel?.modelId} — no pricing`);
+        }
       }
       // === LIKELYFAD CUSTOM END ===
 

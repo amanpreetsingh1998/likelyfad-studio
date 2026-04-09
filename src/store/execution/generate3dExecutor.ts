@@ -141,19 +141,31 @@ export async function executeGenerate3D(
         error: null,
       });
 
-      // === LIKELYFAD CUSTOM START === (track cost + log 48h event for 3d generation)
-      if (nodeData.selectedModel?.pricing) {
-        const costAmount = nodeData.selectedModel.pricing.amount;
-        addIncurredCost(costAmount);
-        const { logCostEvent } = await import("@/lib/likelyfad/costEvents");
-        const { useWorkflowStore } = await import("@/store/workflowStore");
-        logCostEvent({
-          projectId: useWorkflowStore.getState().workflowId,
+      // === LIKELYFAD CUSTOM START === (track cost + log 48h event + diagnostics for 3d)
+      {
+        const sel = nodeData.selectedModel;
+        console.log("[cost] 3d generation complete", {
           nodeId: node.id,
-          nodeType: "3d",
-          modelName: nodeData.selectedModel.displayName || nodeData.selectedModel.modelId,
-          amount: costAmount,
+          provider: sel?.provider,
+          modelId: sel?.modelId,
+          hasPricing: !!sel?.pricing,
         });
+        if (sel?.pricing) {
+          const costAmount = sel.pricing.amount;
+          addIncurredCost(costAmount);
+          const { logCostEvent } = await import("@/lib/likelyfad/costEvents");
+          const { useWorkflowStore } = await import("@/store/workflowStore");
+          logCostEvent({
+            projectId: useWorkflowStore.getState().workflowId,
+            nodeId: node.id,
+            nodeType: "3d",
+            modelName: sel.displayName || sel.modelId,
+            amount: costAmount,
+          });
+          void useWorkflowStore.getState().saveToFile().catch(() => {});
+        } else {
+          console.warn(`[cost] NOT tracking 3d cost for ${sel?.provider}/${sel?.modelId} — no pricing`);
+        }
       }
       // === LIKELYFAD CUSTOM END ===
 

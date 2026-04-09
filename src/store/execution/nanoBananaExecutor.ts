@@ -216,26 +216,46 @@ export async function executeNanoBanana(
           }
         });
 
-      // === LIKELYFAD CUSTOM START === (track cost + log event to 48h rolling table)
+      // === LIKELYFAD CUSTOM START === (track cost + log event to 48h rolling table + diagnostics)
       {
         let costAmount = 0;
         let modelName: string | undefined;
-        if (nodeData.selectedModel?.pricing) {
-          costAmount = nodeData.selectedModel.pricing.amount;
-          modelName = nodeData.selectedModel.displayName || nodeData.selectedModel.modelId;
+        const sel = nodeData.selectedModel;
+        console.log("[cost] nanoBanana generation complete", {
+          nodeId: node.id,
+          hasSelectedModel: !!sel,
+          provider: sel?.provider,
+          modelId: sel?.modelId,
+          displayName: sel?.displayName,
+          hasPricing: !!sel?.pricing,
+          pricingAmount: sel?.pricing?.amount,
+          legacyModel: nodeData.model,
+        });
+        if (sel?.pricing) {
+          costAmount = sel.pricing.amount;
+          modelName = sel.displayName || sel.modelId;
           addIncurredCost(costAmount);
-        } else if (!nodeData.selectedModel || nodeData.selectedModel.provider === "gemini") {
+        } else if (!sel || sel.provider === "gemini") {
           costAmount = calculateGenerationCost(nodeData.model, nodeData.resolution);
           modelName = nodeData.model;
           addIncurredCost(costAmount);
+        } else {
+          console.warn(
+            `[cost] NOT tracking cost for ${sel.provider}/${sel.modelId} — no pricing metadata attached to selectedModel`
+          );
         }
         if (costAmount > 0) {
+          console.log(`[cost] +${costAmount} for ${modelName}, new total: ${useWorkflowStore.getState().incurredCost}`);
           logCostEvent({
             projectId: useWorkflowStore.getState().workflowId,
             nodeId: node.id,
             nodeType: "image",
             modelName,
             amount: costAmount,
+          });
+          // Force an immediate save so a refresh doesn't lose this cost (auto-save is 30s).
+          void useWorkflowStore.getState().saveToFile().catch((err) => {
+            console.warn("[cost] immediate save after cost update failed:", err);
           });
         }
       }
