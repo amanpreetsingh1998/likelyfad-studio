@@ -221,6 +221,27 @@ export async function trimVideoAsync(
       let segmentMinTimestamp: number | null = null;
       let frameCount = 0;
 
+      // === LIKELYFAD CUSTOM START === (diagnostics for stuck trim — log timing per frame batch + watchdog)
+      const loopStart = performance.now();
+      let lastFrameTime = loopStart;
+      const watchdogMs = 15000;
+      let lastWatchdogReset = loopStart;
+      const watchdog = setInterval(() => {
+        const sinceLast = performance.now() - lastWatchdogReset;
+        if (sinceLast > watchdogMs) {
+          console.warn(
+            `[trim] WATCHDOG: no frame processed for ${(sinceLast / 1000).toFixed(1)}s (frameCount=${frameCount}, lastTs=${highestWrittenTimestamp.toFixed(3)}s) — encoder likely stalled`
+          );
+          lastWatchdogReset = performance.now();
+        }
+      }, 5000);
+
+      console.log(
+        `[trim] starting frame loop: range=[${startTime}, ${endTime}]s (${trimDuration.toFixed(2)}s), source=${safeWidth}x${safeHeight}, profile=${codecProfile}, bitrate=${resolvedBitrate}`
+      );
+      // === LIKELYFAD CUSTOM END ===
+
+      try {
       for await (const sample of sink.samples(startTime, endTime)) {
         const originalTimestamp = sample.timestamp ?? 0;
 
@@ -244,22 +265,50 @@ export async function trimVideoAsync(
 
         sample.setTimestamp(snappedTimestamp);
         sample.setDuration(frameInterval);
-        await videoSource!.add(sample);
+        // === LIKELYFAD CUSTOM START === (catch encoder stalls/errors per frame)
+        try {
+          await videoSource!.add(sample);
+        } catch (encErr) {
+          console.error(
+            `[trim] encoder.add() FAILED at frame ${frameCount}, ts=${snappedTimestamp.toFixed(3)}s:`,
+            encErr
+          );
+          throw encErr;
+        }
+        // === LIKELYFAD CUSTOM END ===
 
         highestWrittenTimestamp = snappedTimestamp;
         sample.close();
         frameCount++;
+        // === LIKELYFAD CUSTOM ===
+        lastWatchdogReset = performance.now();
+        // === END ===
 
         // Update progress: 15% to 85% for frame processing
         if (frameCount % 10 === 0) {
           const estimatedFrames = Math.max(1, Math.round(trimDuration * MAX_OUTPUT_FPS));
           const frameProgress = Math.min(1, frameCount / estimatedFrames);
+          // === LIKELYFAD CUSTOM === (log timing per batch)
+          const now = performance.now();
+          const batchMs = now - lastFrameTime;
+          lastFrameTime = now;
+          console.log(
+            `[trim] frame ${frameCount}/${estimatedFrames} (${(frameProgress * 100).toFixed(0)}%), batch took ${batchMs.toFixed(0)}ms, ts=${snappedTimestamp.toFixed(3)}s`
+          );
+          // === END ===
           updateProgress(
             'processing',
             `Processing frames... (${frameCount} frames)`,
             15 + frameProgress * 70
           );
         }
+      }
+      } finally {
+        // === LIKELYFAD CUSTOM ===
+        clearInterval(watchdog);
+        const totalMs = performance.now() - loopStart;
+        console.log(`[trim] frame loop finished: ${frameCount} frames in ${(totalMs / 1000).toFixed(2)}s`);
+        // === END ===
       }
 
       updateProgress('processing', 'Finalizing output...', 92);

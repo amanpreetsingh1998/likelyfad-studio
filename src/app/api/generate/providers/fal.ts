@@ -230,6 +230,239 @@ export async function uploadImageToFal(base64DataUrl: string, apiKey: string | n
   return fileUrl;
 }
 
+// === LIKELYFAD CUSTOM START === (split fal queue logic into submit/poll/fetch so /api/likelyfad/fal-async can drive long-running video jobs from the browser without blowing Vercel's 60s function timeout)
+export interface FalSubmitOk {
+  success: true;
+  falRequestId: string;
+  statusUrl: string;
+  responseUrl: string;
+}
+export interface FalSubmitErr {
+  success: false;
+  error: string;
+}
+export type FalSubmitResult = FalSubmitOk | FalSubmitErr;
+
+/**
+ * Submit a job to the fal.ai queue. Does NOT poll. Returns the request id and
+ * the status/response URLs. Designed to finish well under any serverless timeout.
+ */
+export async function submitToFalQueue(
+  requestId: string,
+  apiKey: string | null,
+  input: GenerationInput
+): Promise<FalSubmitResult> {
+  const requestBody = await buildFalRequestBody(apiKey, input);
+
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (apiKey) headers["Authorization"] = `Key ${apiKey}`;
+
+  console.log(`[API:${requestId}] [fal-async] submit → ${input.model.id}, inputs: ${Object.keys(requestBody).join(", ")}`);
+  const submitResponse = await fetch(`https://queue.fal.run/${input.model.id}`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(requestBody),
+  });
+
+  if (!submitResponse.ok) {
+    const errorText = await submitResponse.text();
+    let errorDetail = errorText || `HTTP ${submitResponse.status}`;
+    try {
+      const errorJson = JSON.parse(errorText);
+      if (typeof errorJson.error === "object" && errorJson.error?.message) {
+        errorDetail = errorJson.error.message;
+      } else if (errorJson.detail) {
+        if (Array.isArray(errorJson.detail)) {
+          errorDetail = errorJson.detail.map((d: { msg?: string }) => d.msg || JSON.stringify(d)).join("; ");
+        } else {
+          errorDetail = errorJson.detail;
+        }
+      } else if (errorJson.message) {
+        errorDetail = errorJson.message;
+      } else if (typeof errorJson.error === "string") {
+        errorDetail = errorJson.error;
+      }
+    } catch {}
+    if (submitResponse.status === 429) {
+      return { success: false, error: `${input.model.name}: Rate limit exceeded. ${apiKey ? "Try again in a moment." : "Add an API key in settings for higher limits."}` };
+    }
+    return { success: false, error: `${input.model.name}: ${errorDetail}` };
+  }
+
+  const submitResult = await submitResponse.json();
+  const falRequestId = submitResult.request_id;
+  if (!falRequestId) {
+    return { success: false, error: "No request_id in queue response" };
+  }
+
+  const fallbackStatusUrl = `https://queue.fal.run/${input.model.id}/requests/${falRequestId}/status`;
+  const fallbackResponseUrl = `https://queue.fal.run/${input.model.id}/requests/${falRequestId}`;
+  let statusUrl = fallbackStatusUrl;
+  let responseUrl = fallbackResponseUrl;
+  if (submitResult.status_url) {
+    const c = validateMediaUrl(submitResult.status_url);
+    if (c.valid && submitResult.status_url.startsWith("https://queue.fal.run/")) statusUrl = submitResult.status_url;
+  }
+  if (submitResult.response_url) {
+    const c = validateMediaUrl(submitResult.response_url);
+    if (c.valid && submitResult.response_url.startsWith("https://queue.fal.run/")) responseUrl = submitResult.response_url;
+  }
+
+  console.log(`[API:${requestId}] [fal-async] submitted → ${falRequestId}`);
+  return { success: true, falRequestId, statusUrl, responseUrl };
+}
+
+/**
+ * Poll a single status check. Returns the raw fal queue status string.
+ */
+export async function pollFalQueueStatus(
+  statusUrl: string,
+  apiKey: string | null
+): Promise<{ ok: true; status: string; raw: Record<string, unknown> } | { ok: false; error: string }> {
+  // SSRF protection — only accept queue.fal.run URLs
+  if (!statusUrl.startsWith("https://queue.fal.run/")) {
+    return { ok: false, error: "Invalid status URL" };
+  }
+  const res = await fetch(statusUrl, { headers: apiKey ? { Authorization: `Key ${apiKey}` } : {} });
+  if (!res.ok) return { ok: false, error: `Poll failed: HTTP ${res.status}` };
+  const raw = await res.json();
+  return { ok: true, status: raw.status || "UNKNOWN", raw };
+}
+
+/**
+ * Fetch and process the result of a completed fal queue job.
+ * This is the same media-extraction logic as the original generateWithFalQueue.
+ */
+export async function fetchFalQueueResult(
+  requestId: string,
+  apiKey: string | null,
+  responseUrl: string,
+  modelName: string,
+  capabilities: string[]
+): Promise<GenerationOutput> {
+  if (!responseUrl.startsWith("https://queue.fal.run/")) {
+    return { success: false, error: "Invalid response URL" };
+  }
+  const resultResponse = await fetch(responseUrl, { headers: apiKey ? { Authorization: `Key ${apiKey}` } : {} });
+  if (!resultResponse.ok) {
+    return { success: false, error: `Failed to fetch result: ${resultResponse.status}` };
+  }
+  const result = await resultResponse.json();
+
+  let mediaUrl: string | null = null;
+  if (result.model_mesh?.url) mediaUrl = result.model_mesh.url;
+  else if (result.mesh?.url) mediaUrl = result.mesh.url;
+  else if (result.glb?.url) mediaUrl = result.glb.url;
+  else if (result.model_glb?.url) mediaUrl = result.model_glb.url;
+  else if (result.model_urls?.glb?.url) mediaUrl = result.model_urls.glb.url;
+  else if (result.video && result.video.url) mediaUrl = result.video.url;
+  else if (result.audio && result.audio.url) mediaUrl = result.audio.url;
+  else if (result.images && Array.isArray(result.images) && result.images.length > 0) mediaUrl = result.images[0].url;
+  else if (result.image && result.image.url) mediaUrl = result.image.url;
+  else if (result.output && typeof result.output === "string") mediaUrl = result.output;
+
+  if (!mediaUrl) {
+    console.error(`[API:${requestId}] [fal-async] No media URL in result. keys: ${Object.keys(result).join(", ")}`);
+    return { success: false, error: "No media URL in response" };
+  }
+
+  const is3DModel = capabilities.some((c) => c.includes("3d"));
+  const isVideoModel = capabilities.some((c) => c.includes("video"));
+  const isAudioModel = capabilities.some((c) => c.includes("audio"));
+
+  if (is3DModel) {
+    return { success: true, outputs: [{ type: "3d", data: "", url: mediaUrl }] };
+  }
+
+  const mediaUrlCheck = validateMediaUrl(mediaUrl);
+  if (!mediaUrlCheck.valid) return { success: false, error: `Invalid media URL: ${mediaUrlCheck.error}` };
+
+  const mediaResponse = await fetch(mediaUrl);
+  if (!mediaResponse.ok) return { success: false, error: `Failed to fetch output: ${mediaResponse.status}` };
+
+  const rawContentType = mediaResponse.headers.get("content-type") || "";
+  const isAudioResponse = rawContentType.startsWith("audio/") || (!rawContentType.startsWith("video/") && !rawContentType.startsWith("image/") && isAudioModel);
+
+  if (isAudioResponse) {
+    const audioContentType = rawContentType.startsWith("audio/") ? rawContentType : "audio/mpeg";
+    const audioBuffer = await mediaResponse.arrayBuffer();
+    const audioBase64 = Buffer.from(audioBuffer).toString("base64");
+    return { success: true, outputs: [{ type: "audio", data: `data:${audioContentType};base64,${audioBase64}`, url: mediaUrl }] };
+  }
+
+  const contentType = rawContentType || (isVideoModel ? "video/mp4" : "image/png");
+  const isVideo = contentType.startsWith("video/");
+  const mediaArrayBuffer = await mediaResponse.arrayBuffer();
+  const mediaSizeBytes = mediaArrayBuffer.byteLength;
+  const mediaSizeMB = mediaSizeBytes / (1024 * 1024);
+
+  console.log(`[API:${requestId}] [fal-async] output: ${contentType}, ${mediaSizeMB.toFixed(2)}MB`);
+
+  // Likelyfad note: we always return URL for video — the browser fetches it via uploadImageForGeneration on next save.
+  // This avoids Vercel's 4.5MB response body limit on serverless functions.
+  if (isVideo) {
+    return { success: true, outputs: [{ type: "video", data: "", url: mediaUrl }] };
+  }
+
+  const mediaBase64 = Buffer.from(mediaArrayBuffer).toString("base64");
+  return { success: true, outputs: [{ type: "image", data: `data:${contentType};base64,${mediaBase64}`, url: mediaUrl }] };
+}
+
+/**
+ * Build the fal queue request body from a GenerationInput.
+ * Extracted from generateWithFalQueue so submitToFalQueue can reuse it.
+ */
+async function buildFalRequestBody(apiKey: string | null, input: GenerationInput): Promise<Record<string, unknown>> {
+  const { paramMap, arrayParams, schemaArrayParams, parameterTypes } = await getFalInputMapping(input.model.id, apiKey);
+  const requestBody: Record<string, unknown> = {};
+  const hasDynamicInputs = input.dynamicInputs && Object.keys(input.dynamicInputs).length > 0;
+
+  const uploadImage = async (value: string | string[]): Promise<string | string[]> => {
+    if (Array.isArray(value)) {
+      return Promise.all(value.map((v) => (typeof v === "string" && v.startsWith("data:") ? uploadImageToFal(v, apiKey) : Promise.resolve(v))));
+    }
+    if (typeof value === "string" && value.startsWith("data:")) return uploadImageToFal(value, apiKey);
+    return value;
+  };
+
+  if (hasDynamicInputs) {
+    Object.assign(requestBody, coerceParameterTypes(input.parameters, parameterTypes));
+    const filteredInputs: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(input.dynamicInputs!)) {
+      if (value !== null && value !== undefined && value !== "") {
+        let processedValue: unknown = value;
+        if (typeof value === "string" || Array.isArray(value)) processedValue = await uploadImage(value);
+        if (schemaArrayParams.has(key) && !Array.isArray(processedValue)) filteredInputs[key] = [processedValue];
+        else if (!schemaArrayParams.has(key) && Array.isArray(processedValue)) {
+          if (processedValue.length > 0) filteredInputs[key] = processedValue[0];
+        } else filteredInputs[key] = processedValue;
+      }
+    }
+    Object.assign(requestBody, filteredInputs);
+    const promptParam = paramMap.prompt || "prompt";
+    if (input.prompt && !requestBody[promptParam]) requestBody[promptParam] = input.prompt;
+  } else {
+    if (input.prompt) {
+      const promptParam = paramMap.prompt || "prompt";
+      requestBody[promptParam] = input.prompt;
+    }
+    if (input.images && input.images.length > 0) {
+      const uploadedImages = await Promise.all(input.images.map((img) => uploadImageToFal(img, apiKey)));
+      const imageParam = paramMap.image || "image_url";
+      if (arrayParams.has("image")) requestBody[imageParam] = uploadedImages;
+      else requestBody[imageParam] = uploadedImages[0];
+    }
+    const coercedParams = coerceParameterTypes(input.parameters, parameterTypes);
+    for (const [key, value] of Object.entries(coercedParams)) {
+      const mappedKey = paramMap[key] || key;
+      requestBody[mappedKey] = value;
+    }
+  }
+
+  return requestBody;
+}
+// === LIKELYFAD CUSTOM END ===
+
 /**
  * Generate using fal.ai Queue API
  * Uses async queue submission + polling (1s interval) instead of blocking fal.run.

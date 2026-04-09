@@ -105,6 +105,22 @@ Every upstream file edited by Likelyfad Studio is listed here. All changes are w
 ### Additional executor edits (sections 10/11/12 also updated)
 - All four generation executors (video, nanoBanana, 3D) now also upload base64 found in `dynamicInputs` (not just the `images` array). This was the cause of the 413 on Kling Video v2.6 — the upstream image was sent through both `images[]` AND `dynamicInputs.image_url`, and only the former was being uploaded.
 
+### 20. `src/app/api/generate/providers/fal.ts`
+- **New exports** (wrapped in LIKELYFAD CUSTOM markers): `submitToFalQueue`, `pollFalQueueStatus`, `fetchFalQueueResult`, plus internal `buildFalRequestBody` helper
+- These split the fal queue lifecycle into 3 short calls so the browser can drive long-running video jobs without hitting Vercel's 60s function timeout
+- The original `generateWithFalQueue` is **untouched** — image gen path is byte-identical
+
+### 21. `src/app/api/likelyfad/fal-async/route.ts` (new file, our route)
+- POST endpoint with three actions: `submit`, `poll`, `fetch-result`
+- Each call finishes well under 60s (submit: ~5s, poll: <2s, fetch-result: <30s)
+- API key stays server-side via `X-Fal-API-Key` header / `FAL_API_KEY` env
+- Returns the same response shape as `/api/generate` so executors can parse identically
+
+### 22. `src/store/execution/generateVideoExecutor.ts` (additional edit)
+- When `provider === "fal"`, routes through `runFalAsyncVideo()` helper instead of `/api/generate`
+- `runFalAsyncVideo()` (added at bottom of file, wrapped in LIKELYFAD CUSTOM markers) does submit → poll every 2s (15 min cap) → fetch-result, returning a synthetic Response so the rest of the executor parses identically
+- Fixes Kling Video v2.6 (and any fal video model >60s) silently dying mid-generation when the Vercel function times out
+
 ### Database schema change
 Run this SQL in Supabase SQL Editor:
 ```sql

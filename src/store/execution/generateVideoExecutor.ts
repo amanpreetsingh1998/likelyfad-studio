@@ -126,13 +126,34 @@ export async function executeGenerateVideo(
     mediaType: "video" as const,
   };
 
+  // === LIKELYFAD CUSTOM START === (route fal video through async submit→poll→fetch endpoint to bypass Vercel 60s function timeout for long jobs like Kling Video v2.6)
+  const useFalAsync = provider === "fal";
+  // === LIKELYFAD CUSTOM END ===
+
   try {
-    const response = await fetch("/api/generate", {
-      method: "POST",
-      headers,
-      body: JSON.stringify(requestPayload),
-      ...(signal ? { signal } : {}),
-    });
+    // === LIKELYFAD CUSTOM START === (async fal video path)
+    let response: Response;
+    if (useFalAsync) {
+      response = await runFalAsyncVideo({
+        headers,
+        signal,
+        modelId: nodeData.selectedModel.modelId,
+        modelName: nodeData.selectedModel.displayName || nodeData.selectedModel.modelId,
+        capabilities: ["text-to-video"],
+        prompt: text || "",
+        images: uploadedImages,
+        parameters: nodeData.parameters,
+        dynamicInputs: uploadedDynamicInputs,
+      });
+    } else {
+      response = await fetch("/api/generate", {
+        method: "POST",
+        headers,
+        body: JSON.stringify(requestPayload),
+        ...(signal ? { signal } : {}),
+      });
+    }
+    // === LIKELYFAD CUSTOM END ===
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -248,3 +269,105 @@ export async function executeGenerateVideo(
     throw new Error(errorMessage);
   }
 }
+
+// === LIKELYFAD CUSTOM START === (browser-driven async fal queue runner — bypasses Vercel function timeout for long video jobs)
+interface RunFalAsyncVideoArgs {
+  headers: Record<string, string>;
+  signal?: AbortSignal;
+  modelId: string;
+  modelName: string;
+  capabilities: string[];
+  prompt: string;
+  images: string[];
+  parameters?: Record<string, unknown>;
+  dynamicInputs?: Record<string, string | string[]>;
+}
+
+/**
+ * Drives the fal queue from the browser via three short calls to /api/likelyfad/fal-async.
+ * Returns a synthetic Response so callers can `await response.json()` like a normal fetch.
+ *
+ * Polling interval starts at 2s and stays there — fal jobs take seconds to minutes,
+ * and the cost of an extra poll is negligible vs. user-perceived latency on completion.
+ */
+async function runFalAsyncVideo(args: RunFalAsyncVideoArgs): Promise<Response> {
+  const { headers, signal, modelId, modelName, capabilities, prompt, images, parameters, dynamicInputs } = args;
+
+  const post = async (body: Record<string, unknown>): Promise<Response> => {
+    return fetch("/api/likelyfad/fal-async", {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+      ...(signal ? { signal } : {}),
+    });
+  };
+
+  // 1. Submit
+  const submitRes = await post({
+    action: "submit",
+    modelId,
+    modelName,
+    capabilities,
+    prompt,
+    images,
+    parameters,
+    dynamicInputs,
+  });
+  if (!submitRes.ok) {
+    return submitRes;
+  }
+  const submitJson = await submitRes.json();
+  if (!submitJson.success) {
+    return new Response(JSON.stringify(submitJson), { status: 500, headers: { "Content-Type": "application/json" } });
+  }
+  const { statusUrl, responseUrl } = submitJson;
+  console.log(`[fal-async] submitted → request id ${submitJson.falRequestId}`);
+
+  // 2. Poll until COMPLETED or FAILED. Hard cap at 15 minutes.
+  const startTime = Date.now();
+  const maxWait = 15 * 60 * 1000;
+  const pollInterval = 2000;
+  let lastStatus = "";
+
+  while (true) {
+    if (signal?.aborted) {
+      throw new DOMException("Aborted", "AbortError");
+    }
+    if (Date.now() - startTime > maxWait) {
+      const body = { success: false, error: `${modelName}: timed out after 15 minutes` };
+      return new Response(JSON.stringify(body), { status: 504, headers: { "Content-Type": "application/json" } });
+    }
+    await new Promise((r) => setTimeout(r, pollInterval));
+
+    const pollRes = await post({ action: "poll", statusUrl });
+    if (!pollRes.ok) {
+      // Transient poll error — log and keep trying
+      console.warn(`[fal-async] poll HTTP ${pollRes.status}, retrying`);
+      continue;
+    }
+    const pollJson = await pollRes.json();
+    if (!pollJson.success) {
+      console.warn(`[fal-async] poll error: ${pollJson.error}, retrying`);
+      continue;
+    }
+    if (pollJson.status !== lastStatus) {
+      console.log(`[fal-async] status: ${pollJson.status}`);
+      lastStatus = pollJson.status;
+    }
+    if (pollJson.status === "COMPLETED") break;
+    if (pollJson.status === "FAILED") {
+      const body = { success: false, error: `${modelName}: generation failed` };
+      return new Response(JSON.stringify(body), { status: 500, headers: { "Content-Type": "application/json" } });
+    }
+  }
+
+  // 3. Fetch result
+  const resultRes = await post({
+    action: "fetch-result",
+    responseUrl,
+    modelName,
+    capabilities,
+  });
+  return resultRes;
+}
+// === LIKELYFAD CUSTOM END ===
