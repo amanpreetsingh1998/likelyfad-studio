@@ -1,0 +1,136 @@
+{
+  "version": 1,
+  "id": "wf_1776800000000_imgpromptgen",
+  "name": "Image-Prompt-Generate-Output",
+  "directoryPath": "",
+  "nodes": [
+    {
+      "id": "imageInput-1",
+      "type": "imageInput",
+      "position": { "x": 0, "y": 0 },
+      "style": { "width": 300, "height": 280 },
+      "measured": { "width": 300, "height": 280 },
+      "className": "",
+      "selected": false,
+      "data": {
+        "image": null,
+        "filename": null,
+        "dimensions": null
+      }
+    },
+    {
+      "id": "imageInput-2",
+      "type": "imageInput",
+      "position": { "x": 0, "y": 320 },
+      "style": { "width": 300, "height": 280 },
+      "measured": { "width": 300, "height": 280 },
+      "className": "",
+      "selected": false,
+      "data": {
+        "image": null,
+        "filename": null,
+        "dimensions": null
+      }
+    },
+    {
+      "id": "prompt-1",
+      "type": "prompt",
+      "position": { "x": 0, "y": 640 },
+      "style": { "width": 320, "height": 220 },
+      "measured": { "width": 320, "height": 220 },
+      "className": "",
+      "selected": false,
+      "data": {
+        "prompt": "Combine the reference images into a single cinematic composition. Keep the subject's identity and wardrobe consistent, place them in the environment from the second image, and match the lighting across both. Photographic realism, shallow depth of field, soft directional light."
+      }
+    },
+    {
+      "id": "nanoBanana-1",
+      "type": "nanoBanana",
+      "position": { "x": 440, "y": 210 },
+      "style": { "width": 300, "height": 300 },
+      "measured": { "width": 300, "height": 300 },
+      "className": "",
+      "selected": false,
+      "data": {
+        "inputImages": [],
+        "inputPrompt": null,
+        "outputImage": null,
+        "aspectRatio": "1:1",
+        "resolution": "1K",
+        "model": "nano-banana-pro",
+        "selectedModel": {
+          "provider": "gemini",
+          "modelId": "nano-banana-pro",
+          "displayName": "Nano Banana Pro"
+        },
+        "useGoogleSearch": false,
+        "useImageSearch": false,
+        "status": "idle",
+        "error": null,
+        "imageHistory": [],
+        "selectedHistoryIndex": 0
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": { "x": 880, "y": 200 },
+      "style": { "width": 320, "height": 320 },
+      "measured": { "width": 320, "height": 320 },
+      "className": "",
+      "selected": false,
+      "data": {
+        "image": null,
+        "outputFilename": "final-render"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "type": "editable",
+      "animated": false,
+      "source": "imageInput-1",
+      "sourceHandle": "image",
+      "target": "nanoBanana-1",
+      "targetHandle": "image",
+      "id": "edge-imageInput-1-nanoBanana-1-image-image",
+      "data": { "createdAt": 1776800000001 },
+      "selected": false
+    },
+    {
+      "type": "editable",
+      "animated": false,
+      "source": "imageInput-2",
+      "sourceHandle": "image",
+      "target": "nanoBanana-1",
+      "targetHandle": "image",
+      "id": "edge-imageInput-2-nanoBanana-1-image-image",
+      "data": { "createdAt": 1776800000002 },
+      "selected": false
+    },
+    {
+      "type": "editable",
+      "animated": false,
+      "source": "prompt-1",
+      "sourceHandle": "text",
+      "target": "nanoBanana-1",
+      "targetHandle": "text",
+      "id": "edge-prompt-1-nanoBanana-1-text-text",
+      "data": { "createdAt": 1776800000003 },
+      "selected": false
+    },
+    {
+      "type": "editable",
+      "animated": false,
+      "source": "nanoBanana-1",
+      "sourceHandle": "image",
+      "target": "output-1",
+      "targetHandle": "image",
+      "id": "edge-nanoBanana-1-output-1-image-image",
+      "data": { "createdAt": 1776800000004 },
+      "selected": false
+    }
+  ],
+  "edgeStyle": "curved"
+}

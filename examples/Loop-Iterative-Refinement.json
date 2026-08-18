@@ -1,0 +1,158 @@
+{
+  "version": 1,
+  "id": "wf_1776810000000_loopdemo",
+  "name": "Loop-Iterative-Refinement",
+  "directoryPath": "",
+  "nodes": [
+    {
+      "id": "imageInput-1",
+      "type": "imageInput",
+      "position": { "x": 0, "y": 140 },
+      "style": { "width": 300, "height": 280 },
+      "measured": { "width": 300, "height": 280 },
+      "className": "",
+      "selected": false,
+      "data": {
+        "image": null,
+        "filename": null,
+        "dimensions": null,
+        "customTitle": "Seed / current frame",
+        "comment": "Load the starting image here. The loop edge overwrites this field with each generated result, so every pass refines the previous one."
+      }
+    },
+    {
+      "id": "prompt-1",
+      "type": "prompt",
+      "position": { "x": 0, "y": 480 },
+      "style": { "width": 320, "height": 220 },
+      "measured": { "width": 320, "height": 220 },
+      "className": "",
+      "selected": false,
+      "data": {
+        "prompt": "Push this image one step further: deepen the contrast, add a little more atmospheric haze, and strengthen the rim light on the subject. Keep the composition and subject identity unchanged.",
+        "customTitle": "Refinement step",
+        "comment": "Runs once as prefix — the same instruction is reapplied on every iteration."
+      }
+    },
+    {
+      "id": "nanoBanana-1",
+      "type": "nanoBanana",
+      "position": { "x": 470, "y": 220 },
+      "style": { "width": 300, "height": 300 },
+      "measured": { "width": 300, "height": 300 },
+      "className": "",
+      "selected": false,
+      "data": {
+        "inputImages": [],
+        "inputPrompt": null,
+        "outputImage": null,
+        "aspectRatio": "1:1",
+        "resolution": "1K",
+        "model": "nano-banana-pro",
+        "selectedModel": {
+          "provider": "gemini",
+          "modelId": "nano-banana-pro",
+          "displayName": "Nano Banana Pro"
+        },
+        "useGoogleSearch": false,
+        "useImageSearch": false,
+        "status": "idle",
+        "error": null,
+        "imageHistory": [],
+        "selectedHistoryIndex": 0
+      }
+    },
+    {
+      "id": "outputGallery-1",
+      "type": "outputGallery",
+      "position": { "x": 920, "y": 60 },
+      "style": { "width": 320, "height": 360 },
+      "measured": { "width": 320, "height": 360 },
+      "className": "",
+      "selected": false,
+      "data": {
+        "images": [],
+        "videos": [],
+        "customTitle": "Every iteration",
+        "comment": "Inside the loop body, so it runs on each pass and accumulates one image per iteration."
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "position": { "x": 920, "y": 500 },
+      "style": { "width": 320, "height": 320 },
+      "measured": { "width": 320, "height": 320 },
+      "className": "",
+      "selected": false,
+      "data": {
+        "image": null,
+        "outputFilename": "refined-final",
+        "customTitle": "Final pass",
+        "comment": "Overwritten each iteration, so it ends up holding the last result."
+      }
+    }
+  ],
+  "edges": [
+    {
+      "type": "editable",
+      "animated": false,
+      "source": "imageInput-1",
+      "sourceHandle": "image",
+      "target": "nanoBanana-1",
+      "targetHandle": "image",
+      "id": "edge-imageInput-1-nanoBanana-1-image-image",
+      "data": { "createdAt": 1776810000001 },
+      "selected": false
+    },
+    {
+      "type": "editable",
+      "animated": false,
+      "source": "prompt-1",
+      "sourceHandle": "text",
+      "target": "nanoBanana-1",
+      "targetHandle": "text",
+      "id": "edge-prompt-1-nanoBanana-1-text-text",
+      "data": { "createdAt": 1776810000002 },
+      "selected": false
+    },
+    {
+      "type": "editable",
+      "animated": false,
+      "source": "nanoBanana-1",
+      "sourceHandle": "image",
+      "target": "outputGallery-1",
+      "targetHandle": "image",
+      "id": "edge-nanoBanana-1-outputGallery-1-image-image",
+      "data": { "createdAt": 1776810000003 },
+      "selected": false
+    },
+    {
+      "type": "editable",
+      "animated": false,
+      "source": "nanoBanana-1",
+      "sourceHandle": "image",
+      "target": "output-1",
+      "targetHandle": "image",
+      "id": "edge-nanoBanana-1-output-1-image-image",
+      "data": { "createdAt": 1776810000004 },
+      "selected": false
+    },
+    {
+      "type": "editable",
+      "animated": false,
+      "source": "nanoBanana-1",
+      "sourceHandle": "image",
+      "target": "imageInput-1",
+      "targetHandle": "reference",
+      "id": "edge-nanoBanana-1-imageInput-1-image-reference",
+      "data": {
+        "createdAt": 1776810000005,
+        "isLoop": true,
+        "loopCount": 5
+      },
+      "selected": false
+    }
+  ],
+  "edgeStyle": "curved"
+}
