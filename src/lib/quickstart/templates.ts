@@ -249,11 +249,8 @@ const TEMPLATE_CONTENT: Record<string, Record<ContentLevel, TemplateContent>> = 
   },
 };
 
-// Preset templates (originals backed up in community-workflows-backup/preset-templates/)
-// Add your custom templates here
-export const PRESET_TEMPLATES: PresetTemplate[] = [];
-
-const _REMOVED_TEMPLATES = [
+// Preset templates
+export const PRESET_TEMPLATES: PresetTemplate[] = [
   {
     id: "product-shot",
     name: "Product Shot",

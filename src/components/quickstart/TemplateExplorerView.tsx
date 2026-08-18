@@ -6,6 +6,14 @@ import { getAllPresets, PRESET_TEMPLATES } from "@/lib/quickstart/templates";
 import { QuickstartBackButton } from "./QuickstartBackButton";
 import { TemplateCard } from "./TemplateCard";
 import { CommunityWorkflowMeta, TemplateCategory, TemplateMetadata } from "@/types/quickstart";
+// === LIKELYFAD CUSTOM START === (cloud templates)
+import {
+  fetchCloudTemplates,
+  fetchCloudTemplate,
+  deleteCloudTemplate,
+  type CloudTemplate,
+} from "@/lib/likelyfad/templatesCloud";
+// === LIKELYFAD CUSTOM END ===
 
 interface TemplateExplorerViewProps {
   onBack: () => void;
@@ -18,32 +26,7 @@ const CATEGORY_OPTIONS: { id: CategoryFilter; label: string }[] = [
   { id: "all", label: "All" },
   { id: "simple", label: "Simple" },
   { id: "advanced", label: "Advanced" },
-  { id: "community", label: "Community" },
 ];
-
-// Static preset list (getAllPresets is pure/deterministic) — hoisted so its
-// identity is stable across renders and downstream useMemos stay cached.
-const PRESETS = getAllPresets();
-
-// Primary thumbnails (resized content images - 288px for 2x retina)
-const primaryThumbnails: Record<string, string> = {
-  "product-shot": "/template-thumbnails/primary/product-shot.jpg",
-  "model-product": "/template-thumbnails/primary/model-product.jpg",
-  "color-variations": "/template-thumbnails/primary/color-variations.jpg",
-  "background-swap": "/template-thumbnails/primary/background-swap.jpg",
-  "style-transfer": "/template-thumbnails/primary/style-transfer.jpg",
-  "scene-composite": "/template-thumbnails/primary/scene-composite.jpg",
-};
-
-// Hover thumbnails (workflow screenshots - 288px)
-const hoverThumbnails: Record<string, string> = {
-  "product-shot": "/template-thumbnails/product-shot.png",
-  "model-product": "/template-thumbnails/model-product.png",
-  "color-variations": "/template-thumbnails/color-variations.png",
-  "background-swap": "/template-thumbnails/background-swap.png",
-  "style-transfer": "/template-thumbnails/style-transfer.png",
-  "scene-composite": "/template-thumbnails/scene-composite.png",
-};
 
 export function TemplateExplorerView({
   onBack,
@@ -60,6 +43,24 @@ export function TemplateExplorerView({
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
   const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const presets = getAllPresets();
+
+  // === LIKELYFAD CUSTOM START === (cloud templates list)
+  const [cloudTemplates, setCloudTemplates] = useState<CloudTemplate[]>([]);
+  const [isLoadingCloud, setIsLoadingCloud] = useState(true);
+
+  const refreshCloudTemplates = useCallback(async () => {
+    setIsLoadingCloud(true);
+    const list = await fetchCloudTemplates();
+    setCloudTemplates(list);
+    setIsLoadingCloud(false);
+  }, []);
+
+  useEffect(() => {
+    void refreshCloudTemplates();
+  }, [refreshCloudTemplates]);
+  // === LIKELYFAD CUSTOM END ===
 
   // Debounce search query
   useEffect(() => {
@@ -90,9 +91,29 @@ export function TemplateExplorerView({
     return metadata;
   }, []);
 
+  // Primary thumbnails (resized content images - 288px for 2x retina)
+  const primaryThumbnails: Record<string, string> = {
+    "product-shot": "/template-thumbnails/primary/product-shot.jpg",
+    "model-product": "/template-thumbnails/primary/model-product.jpg",
+    "color-variations": "/template-thumbnails/primary/color-variations.jpg",
+    "background-swap": "/template-thumbnails/primary/background-swap.jpg",
+    "style-transfer": "/template-thumbnails/primary/style-transfer.jpg",
+    "scene-composite": "/template-thumbnails/primary/scene-composite.jpg",
+  };
+
+  // Hover thumbnails (workflow screenshots - 288px)
+  const hoverThumbnails: Record<string, string> = {
+    "product-shot": "/template-thumbnails/product-shot.png",
+    "model-product": "/template-thumbnails/model-product.png",
+    "color-variations": "/template-thumbnails/color-variations.png",
+    "background-swap": "/template-thumbnails/background-swap.png",
+    "style-transfer": "/template-thumbnails/style-transfer.png",
+    "scene-composite": "/template-thumbnails/scene-composite.png",
+  };
+
   // Filter presets based on search, category, and tags
   const filteredPresets = useMemo(() => {
-    return PRESETS.filter((preset) => {
+    return presets.filter((preset) => {
       // Search filter: match name or description
       if (debouncedSearch) {
         const searchLower = debouncedSearch.toLowerCase();
@@ -120,7 +141,7 @@ export function TemplateExplorerView({
 
       return true;
     });
-  }, [debouncedSearch, categoryFilter, selectedTags]);
+  }, [presets, debouncedSearch, categoryFilter, selectedTags]);
 
   // Filter community workflows
   const filteredCommunity = useMemo(() => {
@@ -153,14 +174,14 @@ export function TemplateExplorerView({
   // Collect all unique tags from presets and community workflows
   const availableTags = useMemo(() => {
     const tags = new Set<string>();
-    PRESETS.forEach((preset) => {
+    presets.forEach((preset) => {
       preset.tags.forEach((tag) => tags.add(tag));
     });
     communityWorkflows.forEach((workflow) => {
       workflow.tags.forEach((tag) => tags.add(tag));
     });
     return Array.from(tags).sort();
-  }, [communityWorkflows]);
+  }, [presets, communityWorkflows]);
 
   // Toggle tag selection
   const toggleTag = useCallback((tag: string) => {
@@ -183,14 +204,42 @@ export function TemplateExplorerView({
     setSelectedTags(new Set());
   }, []);
 
+  // === LIKELYFAD CUSTOM START === (cloud template filter — declared early for hasNoResults)
+  const filteredCloudTemplates = useMemo(() => {
+    return cloudTemplates.filter((t) => {
+      if (debouncedSearch) {
+        const q = debouncedSearch.toLowerCase();
+        if (
+          !t.name.toLowerCase().includes(q) &&
+          !t.description.toLowerCase().includes(q)
+        ) {
+          return false;
+        }
+      }
+      if (categoryFilter !== "all" && categoryFilter !== "community") {
+        if (t.category !== categoryFilter) return false;
+      }
+      if (categoryFilter === "community") return false;
+      if (selectedTags.size > 0) {
+        const hasMatch = t.tags.some((tag) => selectedTags.has(tag));
+        if (!hasMatch) return false;
+      }
+      return true;
+    });
+  }, [cloudTemplates, debouncedSearch, categoryFilter, selectedTags]);
+  // === LIKELYFAD CUSTOM END ===
+
   // Check if any filters are active
   const hasActiveFilters = searchQuery || categoryFilter !== "all" || selectedTags.size > 0;
 
   // Check if results are empty
   const hasNoResults =
     filteredPresets.length === 0 &&
+    // === LIKELYFAD CUSTOM === (include cloud templates in empty check)
+    filteredCloudTemplates.length === 0 &&
     (categoryFilter === "community" ? filteredCommunity.length === 0 : true) &&
-    !isLoadingList;
+    !isLoadingList &&
+    !isLoadingCloud;
 
   // Fetch community workflows on mount
   useEffect(() => {
@@ -246,6 +295,47 @@ export function TemplateExplorerView({
       }
     },
     [onWorkflowSelected]
+  );
+
+  // === LIKELYFAD CUSTOM START === (cloud template load + delete handlers)
+  const handleCloudSelect = useCallback(
+    async (templateId: string) => {
+      setLoadingWorkflowId(templateId);
+      setError(null);
+      try {
+        const full = await fetchCloudTemplate(templateId);
+        if (!full || !full.workflow_json) {
+          throw new Error("Template not found");
+        }
+        // Clone and give a fresh workflow id so the template becomes a new project
+        const workflow = {
+          ...full.workflow_json,
+          id: `workflow-${Date.now()}`,
+          name: full.name,
+        } as WorkflowFile;
+        onWorkflowSelected(workflow);
+      } catch (err) {
+        console.error("[TemplateExplorer] cloud load failed:", err);
+        setError(err instanceof Error ? err.message : "Failed to load template");
+      } finally {
+        setLoadingWorkflowId(null);
+      }
+    },
+    [onWorkflowSelected]
+  );
+
+  const handleCloudDelete = useCallback(
+    async (templateId: string, templateName: string) => {
+      const ok = window.confirm(`Delete template "${templateName}"? This cannot be undone.`);
+      if (!ok) return;
+      const success = await deleteCloudTemplate(templateId);
+      if (success) {
+        setCloudTemplates((prev) => prev.filter((t) => t.id !== templateId));
+      } else {
+        setError("Failed to delete template");
+      }
+    },
+    []
   );
 
   const handleCommunitySelect = useCallback(
@@ -414,6 +504,62 @@ export function TemplateExplorerView({
             </div>
           )}
 
+          {/* === LIKELYFAD CUSTOM START === (My Templates — cloud) */}
+          {filteredCloudTemplates.length > 0 && (
+            <div className="space-y-3">
+              <h3 className="text-xs font-medium text-neutral-400 uppercase tracking-wider">
+                My Templates
+              </h3>
+              <div className="grid grid-cols-2 gap-3">
+                {filteredCloudTemplates.map((t) => {
+                  // Merge providers + models into a single tag list so the
+                  // card shows both (providers first, then models). Upstream
+                  // TemplateCard already renders the tags array as chips.
+                  const mergedTags = [...t.tags, ...t.models];
+                  return (
+                    <div key={t.id} className="relative group">
+                      <TemplateCard
+                        template={{
+                          id: t.id,
+                          name: t.name,
+                          description: t.description || "No description",
+                          icon: "M12 4.5v15m7.5-7.5h-15",
+                          category: t.category,
+                          tags: mergedTags,
+                        }}
+                        nodeCount={t.node_count}
+                        previewImage={t.thumbnail_url || undefined}
+                        hoverImage={t.hover_url || undefined}
+                        isLoading={loadingWorkflowId === t.id}
+                        onUseWorkflow={() => handleCloudSelect(t.id)}
+                        disabled={isLoading && loadingWorkflowId !== t.id}
+                      />
+                      {/* Estimated cost badge (top-left of thumbnail) */}
+                      {t.estimated_cost > 0 && (
+                        <div className="absolute top-6 left-6 px-1.5 py-0.5 rounded bg-black/70 text-[10px] font-mono text-green-300 pointer-events-none">
+                          ${t.estimated_cost.toFixed(t.estimated_cost < 1 ? 3 : 2)}/run
+                        </div>
+                      )}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void handleCloudDelete(t.id, t.name);
+                        }}
+                        className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded bg-neutral-900/80 text-neutral-400 hover:text-red-400 hover:bg-neutral-900 opacity-0 group-hover:opacity-100 transition-opacity"
+                        title="Delete template"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                        </svg>
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          {/* === LIKELYFAD CUSTOM END === */}
+
           {/* Quick Start Templates */}
           {filteredPresets.length > 0 && (
             <div className="space-y-3">
@@ -437,79 +583,7 @@ export function TemplateExplorerView({
             </div>
           )}
 
-          {/* Divider */}
-          {filteredPresets.length > 0 && (filteredCommunity.length > 0 || (isLoadingList && categoryFilter !== "community")) && (
-            <div className="border-t border-neutral-700" />
-          )}
-
-          {/* Community Workflows */}
-          {(filteredCommunity.length > 0 || (isLoadingList && (categoryFilter === "all" || categoryFilter === "community"))) && (
-            <div className="space-y-3">
-              <h3 className="text-xs font-medium text-neutral-400 uppercase tracking-wider">
-                Community Workflows
-              </h3>
-
-              {isLoadingList ? (
-                <div className="flex items-center justify-center py-8">
-                  <svg
-                    className="w-5 h-5 text-neutral-500 animate-spin"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    />
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    />
-                  </svg>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-3">
-                  {filteredCommunity.map((workflow) => (
-                    <TemplateCard
-                      key={workflow.id}
-                      template={{
-                        id: workflow.id,
-                        name: workflow.name,
-                        description: workflow.description,
-                        icon: "M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z",
-                        category: "community",
-                        tags: workflow.tags,
-                      }}
-                      nodeCount={workflow.nodeCount}
-                      previewImage={workflow.previewImage}
-                      hoverImage={workflow.hoverImage}
-                      isLoading={loadingWorkflowId === workflow.id}
-                      onUseWorkflow={() => handleCommunitySelect(workflow.id)}
-                      disabled={isLoading && loadingWorkflowId !== workflow.id}
-                    />
-                  ))}
-                </div>
-              )}
-
-              {/* Discord CTA */}
-              <p className="text-xs text-neutral-500 mt-3">
-                Want to share your workflow?{" "}
-                <a
-                  href="https://discord.com/invite/89Nr6EKkTf"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-purple-400 hover:text-purple-300 underline"
-                >
-                  Join our Discord
-                </a>{" "}
-                to submit it to the community templates.
-              </p>
-            </div>
-          )}
+          {/* Community workflows removed — available locally in community-workflows-backup/ */}
 
           {/* Error */}
           {error && (
