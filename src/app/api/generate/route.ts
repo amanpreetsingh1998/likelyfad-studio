@@ -21,7 +21,7 @@ import { generateWithWaveSpeed } from "./providers/wavespeed";
 import { generateWithOpenAI } from "./providers/openai";
 import { buildMediaResponse } from "./shared";
 
-export const maxDuration = 600; // 10 minute timeout for video generation polling
+export const maxDuration = 300; // 5 min — Vercel's hobby-plan ceiling; video generation polls via /api/generate/poll
 export const dynamic = 'force-dynamic'; // Ensure this route is always dynamic
 
 
