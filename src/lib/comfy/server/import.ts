@@ -10,7 +10,7 @@
  *   stores widget values positionally, so converting it needs a node catalog
  *   from a reachable engine.
  *
- * Node Banana therefore accepts the file users already have, and reaches out to
+ * Likelyfad Studio therefore accepts the file users already have, and reaches out to
  * the configured engine to interpret it — no "export it a different way" step.
  */
 
@@ -138,7 +138,7 @@ export async function prepareWorkflow(
     }
     if (unsupportedInputs.length > 0) {
       warnings.push(
-        `This Blueprint expects ${unsupportedInputs.join(", ")} to be wired inside ComfyUI. Node Banana cannot supply those, so it will not run as-is.`
+        `This Blueprint expects ${unsupportedInputs.join(", ")} to be wired inside ComfyUI. Likelyfad Studio cannot supply those, so it will not run as-is.`
       );
     }
     return {

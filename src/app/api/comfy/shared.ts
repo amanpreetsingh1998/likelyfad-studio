@@ -95,7 +95,7 @@ export interface DecodedMedia {
 /**
  * Decode a `data:` URL into bytes.
  *
- * Node Banana passes media between nodes as data URLs, so this is how a
+ * Likelyfad Studio passes media between nodes as data URLs, so this is how a
  * connected image reaches the engine. Returns null for anything else (a remote
  * URL, a blob: URL that never survived serialization) so the caller can report
  * which input could not be read.
@@ -132,5 +132,5 @@ export function uploadFilename(name: string, contentType: string, bytes: Uint8Ar
   const ext = /^[a-zA-Z0-9]{1,8}$/.test(subtype) ? subtype.toLowerCase() : "bin";
   const slug = name.replace(/[^a-zA-Z0-9._-]+/g, "-").slice(0, 24) || "input";
   const hash = createHash("sha256").update(bytes).digest("hex").slice(0, 16);
-  return `node-banana-${slug}-${hash}.${ext}`;
+  return `likelyfad-studio-${slug}-${hash}.${ext}`;
 }

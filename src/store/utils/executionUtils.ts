@@ -9,7 +9,7 @@ import { WorkflowNode, WorkflowEdge, WorkflowNodeData } from "@/types";
 import { getSourceOutput } from "./connectedInputs";
 
 // Concurrency settings
-export const CONCURRENCY_SETTINGS_KEY = "node-banana-concurrency-limit";
+export const CONCURRENCY_SETTINGS_KEY = "likelyfad-studio-concurrency-limit";
 export const DEFAULT_MAX_CONCURRENT_CALLS = 3;
 
 /**

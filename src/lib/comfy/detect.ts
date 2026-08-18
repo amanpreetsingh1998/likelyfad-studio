@@ -9,7 +9,7 @@
  */
 
 /** Our own save: nodes and edges, stamped with a format version. */
-export function isNodeBananaWorkflow(raw: unknown): boolean {
+export function isLikelyfadStudioWorkflow(raw: unknown): boolean {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return false;
   const file = raw as Record<string, unknown>;
   return (
@@ -31,7 +31,7 @@ export function isNodeBananaWorkflow(raw: unknown): boolean {
  */
 export function isComfyWorkflow(raw: unknown): boolean {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return false;
-  if (isNodeBananaWorkflow(raw)) return false;
+  if (isLikelyfadStudioWorkflow(raw)) return false;
   const file = raw as Record<string, unknown>;
 
   if (Array.isArray(file.nodes)) {

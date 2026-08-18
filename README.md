@@ -1,6 +1,6 @@
 <div align="center">
 
-<img width="full" alt="Node Banana" src="public/node-banana.png" />
+<img width="full" alt="Likelyfad Studio" src="public/likelyfad-studio.png" />
 
 ### An Open Visual Workflow Editor for AI APIs
 
@@ -23,7 +23,7 @@ Multi-provider support. Dynamic prompting features. Local, private, MIT, BYOK.
 
 ## Build Complex AI Pipelines Visually
 
-Node Banana is a node-based workflow editor for AI media generation. Drag nodes onto an infinite canvas, connect them with typed handles, and execute pipelines that call AI APIs in dependency order.
+Likelyfad Studio is a node-based workflow editor for AI media generation. Drag nodes onto an infinite canvas, connect them with typed handles, and execute pipelines that call AI APIs in dependency order.
 
 - **Build dynamic prompts** with variables, LLM/VLM-powered prompt construction, and reusable prompt chains
 - **Generate workflows from natural language** or choose from preset templates
@@ -71,7 +71,7 @@ Node Banana is a node-based workflow editor for AI media generation. Drag nodes 
 
 ```bash
 git clone https://github.com/shrimbly/node-banana.git
-cd node-banana
+cd likelyfad-studio
 npm install
 npm run dev
 ```
@@ -101,7 +101,7 @@ Drop any ComfyUI workflow onto the canvas and it becomes a node. `Shift + C`
 adds an empty ComfyUI node and opens the same dialog to pick a workflow for it.
 If the workflow was set up as an app in ComfyUI — using **App Mode** to pick
 its inputs and outputs — those selections become the node's handles and
-settings directly; otherwise Node Banana detects them and asks you to confirm.
+settings directly; otherwise Likelyfad Studio detects them and asks you to confirm.
 The **Blueprints** tab lists the ready-made pipelines your ComfyUI already
 ships, so there is nothing to upload at all.
 

@@ -216,7 +216,7 @@ describe("nodeDefaults utilities", () => {
         useGoogleSearch: true,
       };
       localStorageMock.setItem(
-        "node-banana-nanoBanana-defaults",
+        "likelyfad-studio-nanoBanana-defaults",
         JSON.stringify(customSettings)
       );
 
@@ -237,7 +237,7 @@ describe("nodeDefaults utilities", () => {
         },
       };
       localStorageMock.setItem(
-        "node-banana-node-defaults",
+        "likelyfad-studio-node-defaults",
         JSON.stringify(nodeDefaultsConfig)
       );
 
@@ -259,7 +259,7 @@ describe("nodeDefaults utilities", () => {
         },
       };
       localStorageMock.setItem(
-        "node-banana-node-defaults",
+        "likelyfad-studio-node-defaults",
         JSON.stringify(nodeDefaultsConfig)
       );
 
@@ -288,7 +288,7 @@ describe("nodeDefaults utilities", () => {
         },
       };
       localStorageMock.setItem(
-        "node-banana-node-defaults",
+        "likelyfad-studio-node-defaults",
         JSON.stringify(nodeDefaultsConfig)
       );
 
@@ -316,7 +316,7 @@ describe("nodeDefaults utilities", () => {
         },
       };
       localStorageMock.setItem(
-        "node-banana-node-defaults",
+        "likelyfad-studio-node-defaults",
         JSON.stringify(nodeDefaultsConfig)
       );
 

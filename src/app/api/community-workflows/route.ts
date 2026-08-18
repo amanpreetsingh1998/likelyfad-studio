@@ -6,7 +6,7 @@ const COMMUNITY_WORKFLOWS_API_URL =
 /**
  * GET: List all community workflows from the remote API
  *
- * This proxies to the node-banana-pro hosted service which stores
+ * This proxies to the likelyfad-studio-pro hosted service which stores
  * community workflows in R2 storage.
  */
 export async function GET() {

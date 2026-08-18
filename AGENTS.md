@@ -24,7 +24,7 @@ KIE_API_KEY=your_kie_api_key        # Optional, for Kie.ai models (Sora, Veo, Kl
 
 ## Architecture Overview
 
-Node Banana is a node-based visual workflow editor for AI image generation. Users drag nodes onto a React Flow canvas, connect them via typed handles, and execute pipelines that call AI APIs.
+Likelyfad Studio is a node-based visual workflow editor for AI image generation. Users drag nodes onto a React Flow canvas, connect them via typed handles, and execute pipelines that call AI APIs.
 
 ### Core Stack
 - **Next.js 16** (App Router) with TypeScript
@@ -214,9 +214,9 @@ All routes in `src/app/api/`:
 
 ## localStorage Keys
 
-- `node-banana-workflow-configs` - Project metadata (paths)
-- `node-banana-workflow-costs` - Cost tracking per workflow
-- `node-banana-nanoBanana-defaults` - Sticky generation settings
+- `likelyfad-studio-workflow-configs` - Project metadata (paths)
+- `likelyfad-studio-workflow-costs` - Cost tracking per workflow
+- `likelyfad-studio-nanoBanana-defaults` - Sticky generation settings
 
 ## Git Workflow
 

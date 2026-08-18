@@ -176,7 +176,7 @@ export class LegacyComfyEngine implements ComfyEngine {
       headers: this.headers({ "Content-Type": "application/json" }),
       body: JSON.stringify({
         prompt: graph,
-        client_id: `node-banana-${crypto.randomUUID()}`,
+        client_id: `likelyfad-studio-${crypto.randomUUID()}`,
         ...(options.orgApiKey
           ? { extra_data: { api_key_comfy_org: options.orgApiKey } }
           : {}),

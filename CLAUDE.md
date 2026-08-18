@@ -24,7 +24,7 @@ KIE_API_KEY=your_kie_api_key        # Optional, for Kie.ai models (Sora, Veo, Kl
 
 ## Architecture Overview
 
-Node Banana is a node-based visual workflow editor for AI image generation. Users drag nodes onto a React Flow canvas, connect them via typed handles, and execute pipelines that call AI APIs.
+Likelyfad Studio is a node-based visual workflow editor for AI image generation. Users drag nodes onto a React Flow canvas, connect them via typed handles, and execute pipelines that call AI APIs.
 
 ### Core Stack
 - **Next.js 16** (App Router) with TypeScript
@@ -204,14 +204,14 @@ If the model uses different endpoints than `/api/v1/jobs/createTask` and `/api/v
 
 ## ComfyUI Integration
 
-Node Banana can run a ComfyUI workflow as a node (`comfyApp`). The workflow's
+Likelyfad Studio can run a ComfyUI workflow as a node (`comfyApp`). The workflow's
 **App Mode** (linear mode) configuration defines the node's surface: the
 author's chosen inputs become typed handles, their widgets become inline
 settings, and their output nodes become typed output handles.
 
 ### Backends
 
-Chosen in Settings → ComfyUI, stored in `node-banana-comfy-settings` and
+Chosen in Settings → ComfyUI, stored in `likelyfad-studio-comfy-settings` and
 forwarded per request as `X-Comfy-*` headers (so no server config is needed):
 
 | Mode | Transport | Notes |
@@ -300,7 +300,7 @@ is a real published Blueprint that once broke it in a different way.
 | Command | Cost | What it covers |
 |---------|------|----------------|
 | `npx vitest run src/lib/comfy/__tests__/catalog.test.ts` | none | Hermetic. Runs the real conversion over recorded workflows and a recorded node catalog. Runs in CI. |
-| `npm run comfy:smoke` | credits | Real renders end to end, through Node Banana's own routes. Needs a dev server and `COMFY_SMOKE_KEY`. |
+| `npm run comfy:smoke` | credits | Real renders end to end, through Likelyfad Studio's own routes. Needs a dev server and `COMFY_SMOKE_KEY`. |
 | `npm run comfy:record` | none | Re-record the corpus when Comfy Cloud's catalog moves. |
 
 Point the live tier at a local ComfyUI with
@@ -326,11 +326,11 @@ All routes in `src/app/api/`:
 
 ## localStorage Keys
 
-- `node-banana-workflow-configs` - Project metadata (paths)
-- `node-banana-workflow-costs` - Cost tracking per workflow
-- `node-banana-nanoBanana-defaults` - Sticky generation settings
-- `node-banana-comfy-settings` - ComfyUI backend (cloud/local/remote), keys, job timeout
-- `node-banana-comfy-apps` - Saved Comfy nodes (workflow + contract + settings)
+- `likelyfad-studio-workflow-configs` - Project metadata (paths)
+- `likelyfad-studio-workflow-costs` - Cost tracking per workflow
+- `likelyfad-studio-nanoBanana-defaults` - Sticky generation settings
+- `likelyfad-studio-comfy-settings` - ComfyUI backend (cloud/local/remote), keys, job timeout
+- `likelyfad-studio-comfy-apps` - Saved Comfy nodes (workflow + contract + settings)
 
 ## Git Workflow
 

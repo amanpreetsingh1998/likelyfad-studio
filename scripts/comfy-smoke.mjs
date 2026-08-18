@@ -22,9 +22,9 @@
  *   COMFY_SMOKE_MODE   cloud | local | remote          (default cloud)
  *   COMFY_SMOKE_URL    base URL                        (default per mode)
  *   COMFY_SMOKE_KEY    API key; required for cloud
- *   COMFY_SMOKE_BASE   Node Banana dev server          (default localhost:3000)
+ *   COMFY_SMOKE_BASE   Likelyfad Studio dev server          (default localhost:3000)
  *
- * `run` drives Node Banana's own API routes rather than the engine directly, so
+ * `run` drives Likelyfad Studio's own API routes rather than the engine directly, so
  * it exercises the same path the browser does — the import pipeline, the run
  * graph builder, and output collection included.
  */
@@ -94,7 +94,7 @@ const nbHeaders = () => ({
   ...(KEY ? { "X-Comfy-Api-Key": KEY, "X-Comfy-Org-Key": KEY } : {}),
 });
 
-/** Auth for a direct call to the engine, bypassing Node Banana. */
+/** Auth for a direct call to the engine, bypassing Likelyfad Studio. */
 const engineHeaders = () =>
   KEY ? (USE_SDK ? { Authorization: `Bearer ${KEY}` } : { "X-API-Key": KEY }) : {};
 
@@ -371,7 +371,7 @@ async function run() {
   const timeoutMs = Number(flag("timeout-ms", 900_000));
 
   console.log(`Running ${ids.length} blueprint(s) against ${ENGINE_URL} (${MODE})`);
-  console.log(`through Node Banana at ${NB_BASE}\n`);
+  console.log(`through Likelyfad Studio at ${NB_BASE}\n`);
 
   const results = [];
   for (const id of ids) {
@@ -404,7 +404,7 @@ Options
   --mode cloud|local|remote   engine kind                (COMFY_SMOKE_MODE, default cloud)
   --url  <base>               engine URL                 (COMFY_SMOKE_URL)
   --key  <key>                engine API key             (COMFY_SMOKE_KEY)
-  --base <url>                Node Banana dev server     (COMFY_SMOKE_BASE, default :3000)
+  --base <url>                Likelyfad Studio dev server     (COMFY_SMOKE_BASE, default :3000)
   --only a,b                  run just these blueprints
   --timeout-ms <n>            per-run limit              (default 900000)
   --api-v2                    local/remote endpoint speaks Comfy API v2

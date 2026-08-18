@@ -540,7 +540,7 @@ describe("blueprints", () => {
     // positional argument: 'codec'" after the render had already been paid for.
     const { workflow } = liftWithOutput("VIDEO");
     const sink = workflow.nodes.find((n) => n.type === "SaveVideo");
-    expect(sink?.widgets_values).toEqual(["node-banana", "auto", "auto"]);
+    expect(sink?.widgets_values).toEqual(["likelyfad-studio", "auto", "auto"]);
   });
 
   it("writes text to a file rather than previewing it", () => {
@@ -549,7 +549,7 @@ describe("blueprints", () => {
     const { workflow } = liftWithOutput("STRING");
     expect(workflow.nodes.some((n) => n.type === "PreviewAny")).toBe(false);
     const sink = workflow.nodes.find((n) => n.type === "SaveText");
-    expect(sink?.widgets_values).toEqual(["node-banana", "txt"]);
+    expect(sink?.widgets_values).toEqual(["likelyfad-studio", "txt"]);
   });
 
   it("saves a mesh boundary output", () => {

@@ -381,7 +381,7 @@ export function inspectWorkflow(
   }
   if (outputs.length === 0) {
     warnings.push(
-      "This workflow has no Save or Preview node, so it produces nothing Node Banana can display."
+      "This workflow has no Save or Preview node, so it produces nothing Likelyfad Studio can display."
     );
   }
   if (inputs.length === 0) {

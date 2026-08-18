@@ -3,7 +3,7 @@
  *
  * ComfyUI serves its saved subgraphs — Blueprints — from `/api/global_subgraphs`,
  * both on Comfy Cloud and on a local install. Each one is a ready-made pipeline
- * with declared inputs and outputs, so listing them gives Node Banana a catalog
+ * with declared inputs and outputs, so listing them gives Likelyfad Studio a catalog
  * of ComfyUI apps the user can drop straight onto the canvas.
  *
  * `GET`  → the catalog (id, name, node pack).

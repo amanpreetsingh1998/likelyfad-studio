@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 
-import { isComfyWorkflow, isNodeBananaWorkflow } from "../detect";
+import { isComfyWorkflow, isLikelyfadStudioWorkflow } from "../detect";
 
-/** A Node Banana save, trimmed to the fields the canvas checks. */
+/** A Likelyfad Studio save, trimmed to the fields the canvas checks. */
 const ourWorkflow = {
   version: 1,
   name: "Product shots",
@@ -27,19 +27,19 @@ const apiExport = {
   "9": { class_type: "SaveImage", inputs: { images: ["8", 0] } },
 };
 
-describe("isNodeBananaWorkflow", () => {
+describe("isLikelyfadStudioWorkflow", () => {
   it("recognises our own save", () => {
-    expect(isNodeBananaWorkflow(ourWorkflow)).toBe(true);
+    expect(isLikelyfadStudioWorkflow(ourWorkflow)).toBe(true);
   });
 
   it("rejects both ComfyUI formats", () => {
-    expect(isNodeBananaWorkflow(editorSave)).toBe(false);
-    expect(isNodeBananaWorkflow(apiExport)).toBe(false);
+    expect(isLikelyfadStudioWorkflow(editorSave)).toBe(false);
+    expect(isLikelyfadStudioWorkflow(apiExport)).toBe(false);
   });
 
   it("rejects a partial file rather than half-loading it", () => {
     const { edges: _edges, ...noEdges } = ourWorkflow;
-    expect(isNodeBananaWorkflow(noEdges)).toBe(false);
+    expect(isLikelyfadStudioWorkflow(noEdges)).toBe(false);
   });
 });
 

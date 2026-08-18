@@ -58,7 +58,7 @@ describe("uploadFilename", () => {
   it("names the file after the input, the content and its type", () => {
     const name = uploadFilename("product", "image/png", bytes);
 
-    expect(name).toMatch(/^node-banana-product-[0-9a-f]{16}\.png$/);
+    expect(name).toMatch(/^likelyfad-studio-product-[0-9a-f]{16}\.png$/);
   });
 
   it("gives the same bytes the same name, and different bytes a different one", () => {

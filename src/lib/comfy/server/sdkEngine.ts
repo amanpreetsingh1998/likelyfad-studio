@@ -131,7 +131,7 @@ export function envelopeNodeId(bytes: Uint8Array): string | null {
 }
 
 /**
- * Map the v2 output type onto a Node Banana handle type.
+ * Map the v2 output type onto a Likelyfad Studio handle type.
  *
  * The content type is advisory: Comfy Cloud returns it empty for outputs a
  * workflow saved itself, so the filename is the fallback signal — without it a
@@ -166,7 +166,7 @@ export class SdkComfyEngine implements ComfyEngine {
         this.connection.baseUrl,
         this.connection.apiKey ?? undefined,
         {
-          clientInfo: "node-banana",
+          clientInfo: "likelyfad-studio",
           timeoutMs: SDK_TIMEOUT_MS,
           fetch: createEngineFetch(),
         }
@@ -179,7 +179,7 @@ export class SdkComfyEngine implements ComfyEngine {
     if (!this.client) {
       this.client = new Comfy(this.connection.baseUrl, {
         ...(this.connection.apiKey ? { apiKey: this.connection.apiKey } : {}),
-        clientInfo: "node-banana",
+        clientInfo: "likelyfad-studio",
         timeoutMs: SDK_TIMEOUT_MS,
         // The SDK retries nothing below its API layer, so one connection that
         // never opened would end an upload, a submit or a poll — and with it a

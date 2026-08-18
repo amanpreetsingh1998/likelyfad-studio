@@ -9,7 +9,7 @@ import { ProviderType, RecentModel } from "@/types";
 import { ProviderModel, ModelCapability } from "@/lib/providers/types";
 
 // localStorage cache for models (persists across dev server restarts)
-const MODELS_CACHE_KEY = "node-banana-models-cache";
+const MODELS_CACHE_KEY = "likelyfad-studio-models-cache";
 const MODELS_CACHE_TTL = 48 * 60 * 60 * 1000; // 48 hours
 // Cap the number of cached entries to avoid unbounded localStorage growth.
 // Entries are pruned LRU-style (oldest timestamp first) on write.
@@ -360,7 +360,7 @@ export function ModelSearchDialog({
       // Clear localStorage model cache
       localStorage.removeItem(MODELS_CACHE_KEY);
       // Clear localStorage schema cache (keep in sync with ModelParameters.tsx)
-      localStorage.removeItem("node-banana-schema-cache");
+      localStorage.removeItem("likelyfad-studio-schema-cache");
       // Clear in-memory deduplicatedFetch cache
       clearFetchCache();
       // Re-fetch with cache bypass

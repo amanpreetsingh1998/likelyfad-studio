@@ -1,7 +1,7 @@
 /**
  * The engine interface.
  *
- * Node Banana drives ComfyUI over two different wire protocols and hides the
+ * Likelyfad Studio drives ComfyUI over two different wire protocols and hides the
  * difference behind this one interface:
  *
  * - {@link import("./legacyEngine").LegacyComfyEngine} speaks the classic

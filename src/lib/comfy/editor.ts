@@ -888,19 +888,19 @@ interface BoundarySink {
 }
 
 const SINK_FOR_SLOT_TYPE: Record<string, BoundarySink> = {
-  IMAGE: { classType: "SaveImage", inputName: "images", widgets: ["node-banana"] },
+  IMAGE: { classType: "SaveImage", inputName: "images", widgets: ["likelyfad-studio"] },
   // filename_prefix, format, codec.
-  VIDEO: { classType: "SaveVideo", inputName: "video", widgets: ["node-banana", "auto", "auto"] },
-  AUDIO: { classType: "SaveAudio", inputName: "audio", widgets: ["node-banana"] },
+  VIDEO: { classType: "SaveVideo", inputName: "video", widgets: ["likelyfad-studio", "auto", "auto"] },
+  AUDIO: { classType: "SaveAudio", inputName: "audio", widgets: ["likelyfad-studio"] },
   // `PreviewAny` renders in the ComfyUI web client and writes nothing, so a
   // text-producing blueprint ran and then reported that it had produced no
   // output. `SaveText` writes a file the run can actually collect.
-  STRING: { classType: "SaveText", inputName: "text", widgets: ["node-banana", "txt"] },
-  MESH: { classType: "SaveGLB", inputName: "mesh", widgets: ["node-banana"] },
+  STRING: { classType: "SaveText", inputName: "text", widgets: ["likelyfad-studio", "txt"] },
+  MESH: { classType: "SaveGLB", inputName: "mesh", widgets: ["likelyfad-studio"] },
   MASK: {
     classType: "SaveImage",
     inputName: "images",
-    widgets: ["node-banana"],
+    widgets: ["likelyfad-studio"],
     adapter: { classType: "MaskToImage", inputName: "mask", outputType: "IMAGE", widgets: [] },
   },
   // A gaussian splat is a scene, not a mesh, and no sink takes one directly.
@@ -909,7 +909,7 @@ const SINK_FOR_SLOT_TYPE: Record<string, BoundarySink> = {
   SPLAT: {
     classType: "SaveGLB",
     inputName: "mesh",
-    widgets: ["node-banana"],
+    widgets: ["likelyfad-studio"],
     adapter: {
       classType: "SplatToFile3D",
       inputName: "splat",
@@ -967,7 +967,7 @@ const LOADER_FOR_SLOT_TYPE: Record<string, BoundaryLoader> = {
  * an image-to-video blueprint declares its frame as `IMAGE,MASK`, meaning either
  * will do. Matching the union string as a whole finds nothing, which silently
  * cost those blueprints the very input they exist for — so each member is tried
- * in the author's declared order and the first one Node Banana can supply wins.
+ * in the author's declared order and the first one Likelyfad Studio can supply wins.
  */
 function materializableType(
   raw: string | undefined,

@@ -536,7 +536,7 @@ export function patchGraph(graph: ComfyGraph, params: PatchGraphParams): ComfyGr
     const replacement = PREVIEW_TO_SAVE[node.class_type];
     if (replacement) {
       node.class_type = replacement;
-      node.inputs = { images: node.inputs.images, filename_prefix: "node-banana" };
+      node.inputs = { images: node.inputs.images, filename_prefix: "likelyfad-studio" };
     }
     // Sinks that name their own file get a fresh one per run — see `runTag`.
     // A sink with no `filename_prefix` (a text or 3D preview) has nothing safe

@@ -1,5 +1,5 @@
 /**
- * Bridging a Comfy app contract to Node Banana's dynamic-handle machinery.
+ * Bridging a Comfy app contract to Likelyfad Studio's dynamic-handle machinery.
  *
  * Generation nodes already declare variable handles through `inputSchema`
  * (`ModelInputDef[]`), and `getConnectedInputs` uses that list to map an

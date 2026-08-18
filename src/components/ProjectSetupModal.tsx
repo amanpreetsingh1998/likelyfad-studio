@@ -339,8 +339,8 @@ export function ProjectSetupModal({
     }
     // Clear model/schema caches so the next fetch reflects updated provider keys
     clearFetchCache();
-    localStorage.removeItem("node-banana-models-cache");
-    localStorage.removeItem("node-banana-schema-cache");
+    localStorage.removeItem("likelyfad-studio-models-cache");
+    localStorage.removeItem("likelyfad-studio-schema-cache");
     onClose();
   };
 

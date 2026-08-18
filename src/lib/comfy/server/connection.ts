@@ -2,7 +2,7 @@
  * Reading a ComfyUI connection off an incoming request.
  *
  * The browser holds the user's engine settings (same as every other provider
- * key in Node Banana) and forwards them per request, so an API route never
+ * key in Likelyfad Studio) and forwards them per request, so an API route never
  * needs server-side configuration to reach the right engine. Environment
  * variables act as a fallback for a headless / shared deployment.
  */

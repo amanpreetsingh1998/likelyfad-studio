@@ -48,7 +48,7 @@ export interface FTUXState {
   loadTutorialSampleImage: () => Promise<void>;
 }
 
-const FTUX_COMPLETED_KEY = "node-banana-ftux-completed";
+const FTUX_COMPLETED_KEY = "likelyfad-studio-ftux-completed";
 
 /**
  * Marks FTUX as completed in localStorage.

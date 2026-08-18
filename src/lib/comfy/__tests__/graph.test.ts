@@ -274,7 +274,7 @@ describe("patchGraph", () => {
     const patched = patchGraph(graph, { media: [], assignments: [], outputNodeIds: ["1"] });
     expect(patched["1"]?.class_type).toBe("SaveImage");
     expect(patched["1"]?.inputs.images).toEqual(["2", 0]);
-    expect(patched["1"]?.inputs.filename_prefix).toBe("node-banana");
+    expect(patched["1"]?.inputs.filename_prefix).toBe("likelyfad-studio");
   });
 
   it("gives each run its own output filename so a repeat run is not served from cache", () => {
@@ -312,7 +312,7 @@ describe("patchGraph", () => {
       runTag: "ccc333",
     });
     expect(patched["1"]?.class_type).toBe("SaveImage");
-    expect(patched["1"]?.inputs.filename_prefix).toBe("node-banana_ccc333");
+    expect(patched["1"]?.inputs.filename_prefix).toBe("likelyfad-studio_ccc333");
   });
 
   it("leaves filenames alone without a run tag, and never invents one", () => {

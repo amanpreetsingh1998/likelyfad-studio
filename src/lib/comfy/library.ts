@@ -7,7 +7,7 @@
  * the way it was when you decided it was worth keeping.
  *
  * Entries live in localStorage beside the other Comfy settings. That caps the
- * library at the browser's ~5MB, shared with everything else Node Banana keeps
+ * library at the browser's ~5MB, shared with everything else Likelyfad Studio keeps
  * there, which is why a failed write is reported rather than swallowed: a save
  * that quietly did nothing is worse than no save at all.
  */

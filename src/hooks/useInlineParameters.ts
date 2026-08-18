@@ -1,6 +1,6 @@
 import { useSyncExternalStore, useCallback } from "react";
 
-const INLINE_PARAMS_KEY = "node-banana-inline-parameters";
+const INLINE_PARAMS_KEY = "likelyfad-studio-inline-parameters";
 
 // Subscribers for reactive updates
 const subscribers = new Set<() => void>();

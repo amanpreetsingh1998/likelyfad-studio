@@ -1,7 +1,7 @@
 /**
  * ComfyUI backend settings.
  *
- * Node Banana can drive three surfaces: **Comfy Cloud** (the default — no GPU
+ * Likelyfad Studio can drive three surfaces: **Comfy Cloud** (the default — no GPU
  * required), a **local** ComfyUI on this machine, and a **remote** ComfyUI
  * elsewhere on the network. Settings live in localStorage next to the other
  * provider settings and are forwarded to the API routes per request, so
@@ -10,8 +10,8 @@
 
 import type { ComfyBackendMode, ComfyConnection } from "./types";
 
-export const COMFY_SETTINGS_KEY = "node-banana-comfy-settings";
-export const COMFY_APPS_KEY = "node-banana-comfy-apps";
+export const COMFY_SETTINGS_KEY = "likelyfad-studio-comfy-settings";
+export const COMFY_APPS_KEY = "likelyfad-studio-comfy-apps";
 
 /** Comfy Cloud's hosted deployment. */
 export const COMFY_CLOUD_URL = "https://cloud.comfy.org";
@@ -68,7 +68,7 @@ export interface ComfySettings {
   /**
    * Whether the local / remote endpoint speaks the Comfy API v2 (i.e. it is
    * `comfy-api-proxy` or a serverless deployment rather than stock ComfyUI).
-   * Stock ComfyUI only has the legacy `/api/prompt` surface, which Node Banana
+   * Stock ComfyUI only has the legacy `/api/prompt` surface, which Likelyfad Studio
    * drives directly.
    */
   localUsesApiV2: boolean;
@@ -196,7 +196,7 @@ export const COMFY_HEADERS = {
 /**
  * Headers carrying the user's ComfyUI connection to an API route.
  *
- * Keys are held client-side (like every other provider key in Node Banana) and
+ * Keys are held client-side (like every other provider key in Likelyfad Studio) and
  * forwarded per request rather than read from the server environment, so a user
  * can point at a different engine without touching `.env.local`.
  */

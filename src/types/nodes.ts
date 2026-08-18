@@ -660,7 +660,7 @@ export interface GLBViewerNodeData extends BaseNodeData {
  * target handles, `app.params` become inline settings, and `app.outputs`
  * become typed source handles.
  *
- * The whole `app` is embedded rather than referenced, so a saved Node Banana
+ * The whole `app` is embedded rather than referenced, so a saved Likelyfad Studio
  * workflow stays runnable without the original ComfyUI file — and so sharing a
  * workflow shares the pipeline with it.
  */

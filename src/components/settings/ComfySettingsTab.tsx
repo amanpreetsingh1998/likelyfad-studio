@@ -31,7 +31,7 @@ const MODES: Array<{ value: ComfyBackendMode; label: string; hint: string }> = [
 ];
 
 /**
- * How Node Banana runs ComfyUI workflows.
+ * How Likelyfad Studio runs ComfyUI workflows.
  *
  * Cloud is the default because it works with nothing installed; local and
  * remote are there for people who already run their own ComfyUI and have the
@@ -359,7 +359,7 @@ function ApiV2Toggle({
       </label>
       <p className="text-[10px] text-neutral-500 mt-1">
         Turn on only if this endpoint serves the Comfy API v2. A stock ComfyUI does not —
-        leave it off and Node Banana drives it directly.
+        leave it off and Likelyfad Studio drives it directly.
       </p>
     </div>
   );

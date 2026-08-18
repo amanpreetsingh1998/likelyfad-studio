@@ -75,12 +75,12 @@ describe("Header", () => {
   describe("Basic Rendering", () => {
     it("should render the app title", () => {
       render(<Header />);
-      expect(screen.getByText("Node Banana")).toBeInTheDocument();
+      expect(screen.getByText("Likelyfad Studio")).toBeInTheDocument();
     });
 
     it("should render the banana icon", () => {
       render(<Header />);
-      const icon = screen.getByAltText("Banana");
+      const icon = screen.getByAltText("Likelyfad Studio");
       expect(icon).toBeInTheDocument();
       expect(icon).toHaveAttribute("src", "/banana_icon.png");
     });

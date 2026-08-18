@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to Node Banana will be documented in this file.
+All notable changes to Likelyfad Studio will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
@@ -9,14 +9,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [1.9.0] - 2026-08-06
 
 The ComfyUI release. A ComfyUI workflow becomes a node on the canvas, wired to
-the rest of a Node Banana pipeline.
+the rest of a Likelyfad Studio pipeline.
 
 > Note: 1.7.0 and 1.8.0 shipped without entries here. Their notes are on the
 > [releases page](https://github.com/shrimbly/node-banana/releases).
 
 ### Added
 
-- **Run a ComfyUI workflow as a node** — Drop a workflow onto the canvas and it becomes a `comfyApp` node. If it was set up in ComfyUI's **App Mode**, the author's chosen inputs become typed handles, their widgets become inline settings, and their output nodes become typed outputs. Otherwise Node Banana detects them and asks you to confirm. Both upload formats work: the normal editor save and the API export.
+- **Run a ComfyUI workflow as a node** — Drop a workflow onto the canvas and it becomes a `comfyApp` node. If it was set up in ComfyUI's **App Mode**, the author's chosen inputs become typed handles, their widgets become inline settings, and their output nodes become typed outputs. Otherwise Likelyfad Studio detects them and asks you to confirm. Both upload formats work: the normal editor save and the API export.
 - **Three backends** — Comfy Cloud (the default, nothing to install), a ComfyUI on this machine, or one elsewhere on the network. Chosen in Settings → ComfyUI and sent per request, so no server configuration is needed.
 - **Blueprints** — The ready-made pipelines your ComfyUI already ships, listed in their own tab. Importing one materialises a loader per media input and a sink per output, so there is nothing to upload at all.
 - **Saved nodes** — Keep a configured Comfy node and it comes back set up, not merely attached: the workflow, the contract, and the values it was running. Saved nodes appear in the canvas double-click search, in the connection-drop menus for any handle type they match, and in the dialog's own tab.

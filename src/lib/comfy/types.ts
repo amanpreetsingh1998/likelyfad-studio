@@ -1,7 +1,7 @@
 /**
  * ComfyUI Integration Types
  *
- * A "Comfy App" is a ComfyUI workflow bound as a Node Banana node: its
+ * A "Comfy App" is a ComfyUI workflow bound as a Likelyfad Studio node: its
  * author-curated inputs become typed handles, its widgets become inline
  * parameters, and its output nodes become typed output handles.
  *

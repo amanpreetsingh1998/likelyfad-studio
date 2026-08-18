@@ -593,10 +593,10 @@ describe("GenerateImageNode", () => {
   describe("Fallback Settings Tab", () => {
     beforeEach(() => {
       // Enable inline parameters for tab bar tests
-      localStorage.setItem("node-banana-inline-parameters", "true");
+      localStorage.setItem("likelyfad-studio-inline-parameters", "true");
     });
     afterEach(() => {
-      localStorage.removeItem("node-banana-inline-parameters");
+      localStorage.removeItem("likelyfad-studio-inline-parameters");
     });
 
     it("shows tab bar when fallbackModel is set", () => {

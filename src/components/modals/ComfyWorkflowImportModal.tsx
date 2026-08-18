@@ -1712,10 +1712,10 @@ function HelpPanel() {
         <h3 className="text-sm font-medium text-neutral-100">App Mode gives the best result</h3>
         <p className="text-xs text-neutral-400 leading-relaxed">
           App Mode is part of the ComfyUI editor. In App Mode, you select the inputs and the outputs
-          of the graph. Node Banana keeps those selections, so the node arrives ready to run.
+          of the graph. Likelyfad Studio keeps those selections, so the node arrives ready to run.
         </p>
         <p className="text-xs text-neutral-400 leading-relaxed">
-          Without App Mode, Node Banana finds the inputs and the outputs itself. You confirm them
+          Without App Mode, Likelyfad Studio finds the inputs and the outputs itself. You confirm them
           here, and you can change them later.
         </p>
       </section>

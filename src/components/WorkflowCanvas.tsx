@@ -63,7 +63,7 @@ import { EdgeToolbar } from "./EdgeToolbar";
 import { GlobalImageHistory } from "./GlobalImageHistory";
 import { GroupBackgroundsPortal, GroupControlsOverlay } from "./GroupsOverlay";
 import { NodeType, NanoBananaNodeData, HandleType, PromptNodeData, LLMGenerateNodeData, PromptConstructorNodeData, AvailableVariable, WorkflowNodeData } from "@/types";
-import { isComfyWorkflow, isNodeBananaWorkflow } from "@/lib/comfy/detect";
+import { isComfyWorkflow, isLikelyfadStudioWorkflow } from "@/lib/comfy/detect";
 import { getSavedComfyNode, seedFromSavedComfyNode } from "@/lib/comfy/library";
 import { appInputHandles } from "@/lib/comfy/nodeSchema";
 import { ComfyWordmark } from "./icons/ComfyWordmark";
@@ -2124,7 +2124,7 @@ export function WorkflowCanvas() {
             alert("Failed to parse workflow file");
             return;
           }
-          if (isNodeBananaWorkflow(parsed)) {
+          if (isLikelyfadStudioWorkflow(parsed)) {
             // Reported the same way the parse failure above is: without this the
             // rejection is unhandled and the canvas simply does not change.
             try {

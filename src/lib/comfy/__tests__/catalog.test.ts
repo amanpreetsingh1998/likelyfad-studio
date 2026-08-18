@@ -1,7 +1,7 @@
 /**
  * The recorded-Blueprint corpus.
  *
- * Every published ComfyUI Blueprint in here once broke Node Banana in a
+ * Every published ComfyUI Blueprint in here once broke Likelyfad Studio in a
  * different way, and each break shared a property: the import succeeded, the
  * node looked fine, and the damage only showed up in a render — sometimes not
  * even then, because the run returned a plausible picture made from the wrong

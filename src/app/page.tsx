@@ -11,6 +11,10 @@ import { useWorkflowStore } from "@/store/workflowStore";
 import { FTUXModal } from "@/components/onboarding/FTUXModal";
 import { getFTUXCompleted, setFTUXCompleted } from "@/store/utils/localStorage";
 import { useFTUXStore } from "@/store/ftuxStore";
+import { migrateLegacyStorageKeys } from "@/store/utils/storageMigration";
+
+// Runs before any component reads storage, so the rename keeps existing data.
+migrateLegacyStorageKeys();
 
 export default function Home() {
   const initializeAutoSave = useWorkflowStore(
