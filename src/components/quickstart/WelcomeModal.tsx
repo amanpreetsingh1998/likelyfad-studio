@@ -7,7 +7,6 @@ import { QuickstartInitialView } from "./QuickstartInitialView";
 import { TemplateExplorerView } from "./TemplateExplorerView";
 import { PromptWorkflowView } from "./PromptWorkflowView";
 import { WorkflowBrowserView } from "./WorkflowBrowserView";
-import { requireAuth } from "@/store/authGateStore";
 
 interface WelcomeModalProps {
   onWorkflowGenerated: (workflow: WorkflowFile, directoryPath?: string) => void;
@@ -26,20 +25,12 @@ export function WelcomeModal({
     onNewProject();
   }, [onNewProject]);
 
-  // The two views below need an account — the template library is a Supabase
-  // read, and prompting a workflow bills a Gemini call. "New project" and
-  // loading a local file stay open, so there is still something to do here
-  // signed out.
   const handleSelectTemplates = useCallback(() => {
-    const show = () => setCurrentView("templates");
-    if (!requireAuth("browse templates", show)) return;
-    show();
+    setCurrentView("templates");
   }, []);
 
   const handleSelectVibe = useCallback(() => {
-    const show = () => setCurrentView("vibe");
-    if (!requireAuth("generate a workflow", show)) return;
-    show();
+    setCurrentView("vibe");
   }, []);
 
   const handleSelectLoad = useCallback(() => {

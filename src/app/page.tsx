@@ -16,27 +16,22 @@ import { migrateLegacyStorageKeys } from "@/store/utils/storageMigration";
 import { ProjectListModal } from "@/components/likelyfad/ProjectListModal";
 import { loadProject } from "@/lib/likelyfad/cloud-storage";
 import type { WorkflowFile } from "@/store/workflowStore";
-import { AuthProvider } from "@/components/auth/AuthProvider";
-import { SignInModal } from "@/components/auth/SignInModal";
-import { requireAuth } from "@/store/authGateStore";
 // === LIKELYFAD CUSTOM END ===
 
 // Runs before any component reads storage, so the rename keeps existing data.
 migrateLegacyStorageKeys();
 
 /**
- * The studio renders for everyone. Signing in is asked for at the point an
- * action needs an account — running a graph, saving, reaching cloud projects —
- * via requireAuth(), which raises <SignInModal> over the canvas rather than
- * replacing it. See src/store/authGateStore.ts.
+ * The studio. Reaching this page at all means there is a session — proxy.ts
+ * redirects a signed-out request to /signin before it is ever rendered, so
+ * there is no gate to repeat here.
+ *
+ * The requireAuth() checks in workflowStore.ts stay as a backstop for the one
+ * case the middleware cannot catch: a session that expires while the tab is
+ * already open, with no navigation to trigger a fresh check.
  */
 export default function Home() {
-  return (
-    <AuthProvider>
-      <Studio />
-      <SignInModal />
-    </AuthProvider>
-  );
+  return <Studio />;
 }
 
 function Studio() {
@@ -58,16 +53,9 @@ function Studio() {
   // upstream Header stays free of app-level state.
   useEffect(() => {
     const w = window as unknown as Record<string, unknown>;
-    const openProjectList = () => {
+    w.__openProjectList = () => {
       setProjectError(null);
       setShowProjectList(true);
-    };
-    w.__openProjectList = () => {
-      // The list reads the caller's Supabase rows, so it is empty by
-      // definition while signed out. Gating here covers every entry point
-      // rather than the Header button alone.
-      if (!requireAuth("reach your projects", openProjectList)) return;
-      openProjectList();
     };
     return () => {
       delete w.__openProjectList;

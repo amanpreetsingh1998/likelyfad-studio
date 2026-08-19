@@ -6,6 +6,7 @@ import { Node } from "@xyflow/react";
 import { useWorkflowStore, saveNanoBananaDefaults, useProviderApiKeys } from "@/store/workflowStore";
 import { NodeType, NanoBananaNodeData, LLMGenerateNodeData, GenerateVideoNodeData, Generate3DNodeData, GenerateAudioNodeData, EaseCurveNodeData, ConditionalSwitchNodeData, AspectRatio, Resolution, ProviderType, SelectedModel, LLMProvider, LLMModelType, MatchMode, ConditionalSwitchRule, GEMINI_IMAGE_MODELS } from "@/types";
 import { ProviderModel, ModelCapability } from "@/lib/providers/types";
+import { toSelectedModel } from "@/lib/providers/selectedModel";
 import { ModelSearchDialog } from "@/components/modals/ModelSearchDialog";
 import { ModelParameters } from "./ModelParameters";
 import { CubicBezierEditor } from "@/components/CubicBezierEditor";
@@ -536,12 +537,7 @@ function Generate3DControls({ node }: { node: Node }) {
 
   const handleBrowseModelSelect = useCallback((model: ProviderModel) => {
     updateNodeData(node.id, {
-      selectedModel: {
-        provider: model.provider,
-        modelId: model.id,
-        displayName: model.name,
-        capabilities: model.capabilities,
-      },
+      selectedModel: toSelectedModel(model),
       parameters: {}
     });
     setIsBrowseDialogOpen(false);

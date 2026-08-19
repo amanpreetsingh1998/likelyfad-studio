@@ -1,4 +1,6 @@
-import { ModelType, Resolution, MODEL_DISPLAY_NAMES, NanoBananaNodeData, GenerateVideoNodeData, Generate3DNodeData, WorkflowNode, ProviderType } from "@/types";
+import { ModelType, Resolution, MODEL_DISPLAY_NAMES, NanoBananaNodeData, GenerateVideoNodeData, Generate3DNodeData, WorkflowNode, ProviderType, SelectedModel } from "@/types";
+import { PRICING_OVERRIDES } from "@/lib/likelyfad/pricing-overrides";
+import type { CustomPrice } from "@/store/modelPricingStore";
 
 // Pricing in USD per image (Gemini API)
 export const PRICING = {
@@ -27,6 +29,62 @@ export const PRICING = {
     "4K": 0.034,
   },
 } as const;
+
+/**
+ * Per-run cost estimates for LLM models (USD, single turn), assuming roughly
+ * 2K input + 1K output tokens.
+ *
+ * An estimate rather than a measurement: /api/llm does not return token usage,
+ * so there is nothing exact to multiply. src/lib/likelyfad/llm-pricing.ts holds
+ * the real per-token rate cards for when it does.
+ *
+ * The longest matching key wins, so "gpt-4o-mini" beats "gpt-4o".
+ */
+const LLM_RUN_ESTIMATES: Record<string, number> = {
+  "gemini-3-pro": 0.025,
+  "gemini-3-flash": 0.005,
+  "gemini-2.5-pro": 0.015,
+  "gemini-2.5-flash": 0.002,
+  "gemini-2.0-flash": 0.0015,
+  "gemini-1.5-pro": 0.01,
+  "gemini-1.5-flash": 0.001,
+  "gpt-5": 0.03,
+  "gpt-4.1": 0.02,
+  "gpt-4o-mini": 0.002,
+  "gpt-4o": 0.015,
+  "gpt-4": 0.04,
+  "o1": 0.05,
+  "o3": 0.04,
+  "claude-opus-4": 0.06,
+  "claude-sonnet-4": 0.02,
+  "claude-haiku-4": 0.003,
+  "claude-3-5-sonnet": 0.018,
+  "claude-3-5-haiku": 0.003,
+  "claude-3-opus": 0.06,
+  "claude-3-sonnet": 0.018,
+  "claude-3-haiku": 0.002,
+};
+
+/** Used when an LLM model is not in the table — mid-range, never zero. */
+const LLM_FALLBACK_RUN_COST = 0.01;
+
+/**
+ * Seconds assumed for a per-second model when the node carries no duration.
+ * Most video models default to a 5s clip.
+ */
+export const ASSUMED_VIDEO_SECONDS = 5;
+
+export function estimateLlmRunCost(model: string | undefined): number {
+  if (!model) return LLM_FALLBACK_RUN_COST;
+  const key = model.toLowerCase();
+  let best: { match: string; cost: number } | null = null;
+  for (const [k, cost] of Object.entries(LLM_RUN_ESTIMATES)) {
+    if (key.includes(k) && (!best || k.length > best.match.length)) {
+      best = { match: k, cost };
+    }
+  }
+  return best?.cost ?? LLM_FALLBACK_RUN_COST;
+}
 
 export function calculateGenerationCost(model: ModelType, resolution: Resolution): number {
   // nano-banana and nano-banana-2-lite only support 1K resolution (flat pricing)
@@ -91,19 +149,33 @@ export interface LegacyCostBreakdownItem {
   subtotal: number;
 }
 
+export interface PredictedCostOptions {
+  /**
+   * Prices the user typed in themselves, by modelId. Highest priority, because
+   * for fal and Replicate models it is usually the only price that exists.
+   *
+   * Passed in rather than read from the store: this stays a pure function of
+   * its arguments, so callers control when the number changes and the result
+   * is trivially testable.
+   */
+  customPrices?: Record<string, CustomPrice>;
+  /** Externally fetched pricing by modelId. */
+  modelPricing?: Map<string, ModelPricing>;
+}
+
 /**
- * Calculate predicted cost for all generation nodes in the workflow.
- * Handles nanoBanana (image) and generateVideo (video) nodes.
+ * Cost of running every credit-spending node in the workflow once.
  *
- * @param nodes - Workflow nodes to analyze
- * @param modelPricing - Optional map of modelId -> pricing for external providers.
- *                       If not provided, only Gemini models get pricing.
- * @returns PredictedCostResult with total cost, breakdown, and counts
+ * Covers image, video, audio and 3D generation plus LLM nodes. ComfyUI runs
+ * are excluded — their cost depends on the backend, and nothing reports it.
+ *
+ * @returns total, a per-model breakdown, and how many nodes had no price
  */
 export function calculatePredictedCost(
   nodes: WorkflowNode[],
-  modelPricing?: Map<string, ModelPricing>
+  options: PredictedCostOptions = {}
 ): PredictedCostResult {
+  const { customPrices, modelPricing } = options;
   // Group by provider + modelId for breakdown
   const breakdown: Map<string, CostBreakdownItem> = new Map();
   let nodeCount = 0;
@@ -145,17 +217,55 @@ export function calculatePredictedCost(
   }
 
   /**
-   * Get pricing for a model.
-   * First checks modelPricing map, then falls back to hardcoded Gemini pricing.
+   * Price for one run of a model, in the order the sources can be trusted.
+   *
+   * 1. A price the user typed in the cost dialog. Beats everything — fal and
+   *    Replicate publish no prices at all, so for most of their catalogue this
+   *    is the only source there will ever be.
+   * 2. The node's own `selectedModel.pricing`, captured from the registry when
+   *    the model was picked. The only fetched source that survives into a
+   *    saved workflow.
+   * 3. PRICING_OVERRIDES, the prices checked into the repo.
+   * 4. The caller's map, if one was passed.
+   * 5. The hardcoded Gemini table, which is all the legacy `data.model` path
+   *    has to go on.
+   *
+   * A per-second model is converted to a per-run figure here, because the
+   * caller wants "what does one run cost", not a rate.
    */
   function getPricing(
     provider: ProviderType,
     modelId: string,
-    resolution?: Resolution
+    resolution?: Resolution,
+    selected?: SelectedModel,
+    seconds?: number
   ): { unitCost: number; unit: string } | null {
-    // Check external pricing map first
+    const perSecondToRun = (amount: number) => ({
+      unitCost: amount * (seconds ?? ASSUMED_VIDEO_SECONDS),
+      unit: "run",
+    });
+
+    const custom = customPrices?.[modelId];
+    if (custom && isFinite(custom.amount)) {
+      return custom.type === "per-second"
+        ? perSecondToRun(custom.amount)
+        : { unitCost: custom.amount, unit: "run" };
+    }
+
+    if (selected?.pricing) {
+      return selected.pricing.type === "per-second"
+        ? perSecondToRun(selected.pricing.amount)
+        : { unitCost: selected.pricing.amount, unit: "run" };
+    }
+
+    const override = PRICING_OVERRIDES[modelId];
+    if (override) return { unitCost: override.amount, unit: "run" };
+
     if (modelPricing?.has(modelId)) {
-      return modelPricing.get(modelId)!;
+      const external = modelPricing.get(modelId)!;
+      return external.unit === "second"
+        ? perSecondToRun(external.unitCost)
+        : external;
     }
 
     // Fallback to hardcoded Gemini pricing for legacy models
@@ -181,6 +291,14 @@ export function calculatePredictedCost(
     return null;
   }
 
+  /** Seconds a per-second model would bill for, if the node says. */
+  function durationOf(data: Record<string, unknown>): number | undefined {
+    const params = data.parameters as Record<string, unknown> | undefined;
+    const raw = params?.duration ?? params?.duration_seconds ?? params?.seconds;
+    const n = typeof raw === "string" ? Number(raw) : raw;
+    return typeof n === "number" && isFinite(n) && n > 0 ? n : undefined;
+  }
+
   nodes.forEach((node) => {
     // Handle nanoBanana (image generation) nodes
     if (node.type === "nanoBanana") {
@@ -204,34 +322,66 @@ export function calculatePredictedCost(
       }
 
       const resolution = data.model === "nano-banana" ? "1K" : data.resolution;
-      const pricing = getPricing(provider, modelId, resolution);
+      const pricing = getPricing(provider, modelId, resolution, data.selectedModel);
       const unitCost = pricing?.unitCost ?? null;
       const unit = pricing?.unit ?? "image";
 
       addToBreakdown(provider, modelId, modelName, unit, unitCost);
     }
 
-    // Handle generateVideo nodes
-    if (node.type === "generateVideo") {
-      const data = node.data as GenerateVideoNodeData;
+    // Video, audio and 3D all price the same way: whatever the registry
+    // recorded on selectedModel, converted to a per-run figure.
+    if (
+      node.type === "generateVideo" ||
+      node.type === "generateAudio" ||
+      node.type === "generate3d"
+    ) {
+      const data = node.data as GenerateVideoNodeData | Generate3DNodeData;
+      const selected = data.selectedModel;
+      // No model chosen yet means nothing to price — and nothing will run.
+      if (!selected) return;
 
-      // generateVideo requires selectedModel (no legacy fallback)
-      if (data.selectedModel) {
-        const provider = data.selectedModel.provider;
-        const modelId = data.selectedModel.modelId;
-        const modelName = data.selectedModel.displayName;
+      const pricing = getPricing(
+        selected.provider,
+        selected.modelId,
+        undefined,
+        selected,
+        durationOf(node.data as Record<string, unknown>)
+      );
+      const fallbackUnit =
+        node.type === "generateVideo" ? "video" : node.type === "generateAudio" ? "clip" : "model";
 
-        const pricing = getPricing(provider, modelId);
-        const unitCost = pricing?.unitCost ?? null;
-        const unit = pricing?.unit ?? "video";
+      addToBreakdown(
+        selected.provider,
+        selected.modelId,
+        selected.displayName,
+        pricing?.unit ?? fallbackUnit,
+        pricing?.unitCost ?? null
+      );
+    }
 
-        addToBreakdown(provider, modelId, modelName, unit, unitCost);
-      }
+    // LLM nodes bill per token, and /api/llm does not report usage, so this is
+    // an explicit per-run estimate rather than a price. Counted anyway: a graph
+    // full of LLM calls is not free, and showing $0 for it would be a lie.
+    if (node.type === "llmGenerate") {
+      const data = node.data as { model?: string; provider?: string };
+      const model = data.model || "unknown";
+      const provider: ProviderType = model.startsWith("gpt") || model.startsWith("o1") || model.startsWith("o3")
+        ? "openai"
+        : model.startsWith("claude")
+          ? "anthropic"
+          : "gemini";
+
+      addToBreakdown(provider, model, model, "run", estimateLlmRunCost(data.model));
     }
 
     // SplitGrid cell nodes are real nodes on the canvas (materialized from the
     // cell template), so any generate nodes they contain are already counted
     // above — no separate splitGrid estimate needed.
+    //
+    // comfyApp runs are deliberately absent: a Comfy graph's cost depends on
+    // the backend it runs against (free on a local GPU, credits on Cloud), and
+    // nothing in the contract reports a price.
   });
 
   const breakdownArray = Array.from(breakdown.values());

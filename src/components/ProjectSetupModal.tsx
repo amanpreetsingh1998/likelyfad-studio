@@ -8,6 +8,7 @@ import { EnvStatusResponse } from "@/app/api/env-status/route";
 import { loadNodeDefaults, saveNodeDefaults, getLastProjectBaseDir, setLastProjectBaseDir } from "@/store/utils/localStorage";
 import { clearFetchCache } from "@/utils/deduplicatedFetch";
 import { ProviderModel } from "@/lib/providers/types";
+import { toSelectedModel } from "@/lib/providers/selectedModel";
 import { ModelSearchDialog } from "@/components/modals/ModelSearchDialog";
 import { ComfySettingsTab, useComfySettingsDraft } from "@/components/settings/ComfySettingsTab";
 import { saveComfySettings } from "@/lib/comfy/settings";
@@ -1292,11 +1293,7 @@ export function ProjectSetupModal({
               ...prev,
               generateImage: {
                 ...prev.generateImage,
-                selectedModel: {
-                  provider: model.provider,
-                  modelId: model.id,
-                  displayName: model.name,
-                }
+                selectedModel: toSelectedModel(model)
               }
             }));
             setShowImageModelDialog(false);
@@ -1313,11 +1310,7 @@ export function ProjectSetupModal({
               ...prev,
               generateVideo: {
                 ...prev.generateVideo,
-                selectedModel: {
-                  provider: model.provider,
-                  modelId: model.id,
-                  displayName: model.name,
-                }
+                selectedModel: toSelectedModel(model)
               }
             }));
             setShowVideoModelDialog(false);

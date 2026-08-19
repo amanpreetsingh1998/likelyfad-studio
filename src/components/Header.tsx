@@ -10,7 +10,6 @@ import { WorkflowBrowserModal } from "./WorkflowBrowserModal";
 // === LIKELYFAD CUSTOM START === (Save as Template modal)
 import { SaveTemplateModal } from "./likelyfad/SaveTemplateModal";
 import { AccountButton } from "./auth/AccountButton";
-import { requireAuth } from "@/store/authGateStore";
 // === LIKELYFAD CUSTOM END ===
 
 function CommentsNavigationIcon() {
@@ -165,15 +164,6 @@ export function Header() {
     }
   };
 
-
-  // === LIKELYFAD CUSTOM START === (auth gate)
-  // A template is a row in the shared library owned by whoever saved it.
-  const handleSaveTemplate = useCallback(() => {
-    const openModal = () => setShowSaveTemplate(true);
-    if (!requireAuth("save a template", openModal)) return;
-    openModal();
-  }, []);
-  // === LIKELYFAD CUSTOM END ===
 
   const handleRevertAIChanges = useCallback(() => {
     const confirmed = window.confirm(
@@ -346,7 +336,7 @@ export function Header() {
                   </button>
                   {/* === LIKELYFAD CUSTOM START === (Save as Template button) */}
                   <button
-                    onClick={handleSaveTemplate}
+                    onClick={() => setShowSaveTemplate(true)}
                     className="p-1.5 text-neutral-400 hover:text-amber-300 hover:bg-neutral-800 rounded transition-colors"
                     title="Save as Template"
                   >

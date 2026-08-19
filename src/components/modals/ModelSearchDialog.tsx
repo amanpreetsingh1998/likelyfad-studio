@@ -7,6 +7,7 @@ import { deduplicatedFetch, clearFetchCache } from "@/utils/deduplicatedFetch";
 import { useReactFlow } from "@xyflow/react";
 import { ProviderType, RecentModel } from "@/types";
 import { ProviderModel, ModelCapability } from "@/lib/providers/types";
+import { toSelectedModel } from "@/lib/providers/selectedModel";
 
 // localStorage cache for models (persists across dev server restarts)
 const MODELS_CACHE_KEY = "likelyfad-studio-models-cache";
@@ -415,12 +416,7 @@ export function ModelSearchDialog({
       const nodeType = isVideoModel ? "generateVideo" : is3DModel ? "generate3d" : isAudioModel ? "generateAudio" : "nanoBanana";
 
       addNode(nodeType, position, {
-        selectedModel: {
-          provider: model.provider,
-          modelId: model.id,
-          displayName: model.name,
-          capabilities: model.capabilities,
-        },
+        selectedModel: toSelectedModel(model),
       });
 
       onClose();

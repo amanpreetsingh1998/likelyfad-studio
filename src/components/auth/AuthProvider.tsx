@@ -80,7 +80,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       signInWithGoogle: async () => {
         const supabase = getBrowserSupabase();
-        const next = window.location.pathname + window.location.search;
+        // Come back to where they were — except on /signin, where "where they
+        // were" is the sign-in page itself. Returning there would land them on
+        // a page whose only job is to bounce them onward.
+        const next =
+          window.location.pathname === "/signin"
+            ? new URLSearchParams(window.location.search).get("next") || "/"
+            : window.location.pathname + window.location.search;
         const { error } = await supabase.auth.signInWithOAuth({
           provider: "google",
           options: {

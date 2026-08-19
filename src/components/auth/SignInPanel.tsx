@@ -8,19 +8,8 @@ type Mode = "signin" | "signup" | "reset";
 const INPUT_CLASS =
   "w-full rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 placeholder-neutral-600 outline-none transition-colors focus:border-neutral-500";
 
-interface SignInPanelProps {
-  /**
-   * What the visitor was trying to do, phrased to complete "Sign in to …".
-   * Present when the gate raised this; absent on the standalone screen.
-   */
-  reason?: string | null;
-}
-
-/**
- * The sign-in form itself, with no opinion about the frame around it.
- * SignInScreen puts it on a full page; SignInModal puts it over the canvas.
- */
-export function SignInPanel({ reason }: SignInPanelProps) {
+/** The sign-in form, with no opinion about the frame around it. */
+export function SignInPanel() {
   const { signInWithGoogle, signInWithPassword, signUpWithPassword, sendPasswordReset } =
     useAuth();
 
@@ -82,9 +71,7 @@ export function SignInPanel({ reason }: SignInPanelProps) {
       ? "Create an account to get started."
       : mode === "reset"
         ? "We'll email you a link to set a new password."
-        : reason
-          ? `Sign in to ${reason}.`
-          : "Sign in to reach your projects.";
+        : "Sign in to reach your projects.";
 
   return (
     <div className="flex flex-col items-center gap-6">

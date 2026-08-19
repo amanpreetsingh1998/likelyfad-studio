@@ -5,6 +5,7 @@ import { FTUXStepProps } from "@/types/ftux";
 import { NodeDefaultsConfig } from "@/types";
 import { ModelSearchDialog } from "@/components/modals/ModelSearchDialog";
 import { ProviderModel } from "@/lib/providers/types";
+import { toSelectedModel } from "@/lib/providers/selectedModel";
 import { loadNodeDefaults, saveNodeDefaults } from "@/store/utils/localStorage";
 
 // Provider icons
@@ -179,11 +180,7 @@ export function FTUXModelDefaultsStep({}: FTUXStepProps) {
               ...localDefaults,
               generateImage: {
                 ...localDefaults.generateImage,
-                selectedModel: {
-                  provider: model.provider,
-                  modelId: model.id,
-                  displayName: model.name,
-                },
+                selectedModel: toSelectedModel(model),
               },
             };
             setLocalDefaults(updatedDefaults);
@@ -202,11 +199,7 @@ export function FTUXModelDefaultsStep({}: FTUXStepProps) {
               ...localDefaults,
               generateVideo: {
                 ...localDefaults.generateVideo,
-                selectedModel: {
-                  provider: model.provider,
-                  modelId: model.id,
-                  displayName: model.name,
-                },
+                selectedModel: toSelectedModel(model),
               },
             };
             setLocalDefaults(updatedDefaults);

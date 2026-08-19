@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useWorkflowStore } from "@/store/workflowStore";
+import { useModelPricingStore, type PricingUnit } from "@/store/modelPricingStore";
 import { PredictedCostResult, CostBreakdownItem, formatCost } from "@/utils/costCalculator";
 import { ProviderType } from "@/types/providers";
 
@@ -91,8 +92,60 @@ function ExternalLinkIcon() {
   );
 }
 
+/**
+ * Lets the user supply the price for a model nobody publishes one for.
+ *
+ * fal.ai and Replicate return catalogues with no pricing field at all, so for
+ * most of their models this input is the only way the number can ever become
+ * right. Deliberately placed on the row that reads "price?" — the moment you
+ * notice the gap is the moment you can close it.
+ */
+function PriceInput({ modelId, unit }: { modelId: string; unit: string }) {
+  const setPrice = useModelPricingStore((s) => s.setPrice);
+  const [value, setValue] = useState("");
+  const [type, setType] = useState<PricingUnit>(
+    unit === "second" || unit === "video" ? "per-second" : "per-run"
+  );
+
+  const commit = () => {
+    const amount = Number(value);
+    if (!value.trim() || !isFinite(amount) || amount < 0) return;
+    setPrice(modelId, { type, amount });
+    setValue("");
+  };
+
+  return (
+    <span className="flex items-center gap-1 shrink-0">
+      <span className="text-neutral-600">$</span>
+      <input
+        type="number"
+        min="0"
+        step="0.001"
+        value={value}
+        placeholder="price?"
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") commit();
+        }}
+        className="w-16 rounded border border-neutral-700 bg-neutral-950 px-1 py-0.5 text-right text-xs text-neutral-200 outline-none focus:border-neutral-500"
+      />
+      <select
+        value={type}
+        onChange={(e) => setType(e.target.value as PricingUnit)}
+        className="rounded border border-neutral-700 bg-neutral-950 px-1 py-0.5 text-xs text-neutral-400 outline-none focus:border-neutral-500"
+      >
+        <option value="per-run">/run</option>
+        <option value="per-second">/sec</option>
+      </select>
+    </span>
+  );
+}
+
 export function CostDialog({ predictedCost, incurredCost, onClose }: CostDialogProps) {
   const resetIncurredCost = useWorkflowStore((state) => state.resetIncurredCost);
+  const customPrices = useModelPricingStore((s) => s.prices);
+  const clearPrice = useModelPricingStore((s) => s.clearPrice);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -110,28 +163,26 @@ export function CostDialog({ predictedCost, incurredCost, onClose }: CostDialogP
     }
   };
 
-  // Separate Gemini (reliable pricing) from external providers (unreliable pricing)
-  const geminiItems = predictedCost.breakdown.filter((item) => item.provider === "gemini");
-  const externalItems = predictedCost.breakdown.filter(
-    (item) => item.provider !== "gemini"
-  );
-
-  // Group external items by provider
-  const externalByProvider = new Map<ProviderType, CostBreakdownItem[]>();
-  externalItems.forEach((item) => {
-    const existing = externalByProvider.get(item.provider);
-    if (existing) {
-      existing.push(item);
-    } else {
-      externalByProvider.set(item.provider, [item]);
-    }
+  // Grouped by provider — no longer split into "Gemini" and "the rest", since
+  // every provider is priced now. What separates an item is whether we have a
+  // price for it at all.
+  const byProvider = new Map<ProviderType, CostBreakdownItem[]>();
+  predictedCost.breakdown.forEach((item) => {
+    const existing = byProvider.get(item.provider);
+    if (existing) existing.push(item);
+    else byProvider.set(item.provider, [item]);
   });
 
-  const geminiTotal = geminiItems.reduce((sum, item) => sum + (item.subtotal ?? 0), 0);
-  const externalNodeCount = externalItems.reduce((sum, item) => sum + item.count, 0);
+  // Providers carrying a known price sort first; the priced part of the total
+  // is the number people act on.
+  const providerEntries = Array.from(byProvider.entries()).sort(
+    (a, b) =>
+      b[1].reduce((s, i) => s + (i.subtotal ?? 0), 0) -
+      a[1].reduce((s, i) => s + (i.subtotal ?? 0), 0)
+  );
 
-  const hasGemini = geminiItems.length > 0;
-  const hasExternal = externalItems.length > 0;
+  const hasAny = predictedCost.breakdown.length > 0;
+  const unknownCount = predictedCost.unknownPricingCount;
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50">
@@ -151,79 +202,96 @@ export function CostDialog({ predictedCost, incurredCost, onClose }: CostDialogP
         </div>
 
         <div className="space-y-4">
-          {/* Gemini Cost Section - prices are reliable */}
-          {hasGemini && (
+          {/* Full-run estimate — the number shown next to the project title */}
+          {hasAny && (
             <div className="bg-neutral-900 rounded-lg p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <ProviderIcon provider="gemini" />
-                <span className="text-sm text-neutral-300">Gemini Cost</span>
-                <span className="ml-auto text-lg font-semibold text-green-400">
-                  {formatCost(geminiTotal)}
+              <div className="flex items-baseline justify-between mb-1">
+                <span className="text-sm text-neutral-300">One full run</span>
+                <span className="text-lg font-semibold text-green-400">
+                  {formatCost(predictedCost.totalCost)}
+                  {unknownCount > 0 && "+"}
                 </span>
               </div>
-
-              <div className="space-y-1 pl-7">
-                {geminiItems.map((item, idx) => (
-                  <div key={idx} className="flex justify-between text-xs">
-                    <span className="text-neutral-500">
-                      {item.count}x {item.modelName}
-                    </span>
-                    <span className="text-neutral-400">
-                      {item.subtotal !== null ? formatCost(item.subtotal) : "—"}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* External Providers Section - show model links instead of prices */}
-          {hasExternal && (
-            <div className="bg-neutral-900 rounded-lg p-4">
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-sm text-neutral-300">External Providers</span>
-                <span className="text-xs text-neutral-500">
-                  {externalNodeCount} node{externalNodeCount !== 1 ? "s" : ""}
-                </span>
-              </div>
+              <p className="text-xs text-neutral-500 mb-3">
+                {predictedCost.nodeCount} node{predictedCost.nodeCount !== 1 ? "s" : ""} that
+                spend API credits, counted once each
+              </p>
 
               <div className="space-y-3">
-                {Array.from(externalByProvider.entries()).map(([provider, items]) => (
-                  <div key={provider}>
-                    <div className="flex items-center gap-2 text-xs text-neutral-400 mb-1">
-                      <ProviderIcon provider={provider} />
-                      <span>{getProviderDisplayName(provider)}</span>
+                {providerEntries.map(([provider, items]) => {
+                  const providerTotal = items.reduce(
+                    (sum, item) => sum + (item.subtotal ?? 0),
+                    0
+                  );
+                  return (
+                    <div key={provider}>
+                      <div className="flex items-center gap-2 text-xs text-neutral-400 mb-1">
+                        <ProviderIcon provider={provider} />
+                        <span>{getProviderDisplayName(provider)}</span>
+                        <span className="ml-auto text-neutral-300">
+                          {formatCost(providerTotal)}
+                        </span>
+                      </div>
+                      <div className="space-y-1 pl-7">
+                        {items.map((item, idx) => {
+                          const modelUrl = getModelUrl(provider, item.modelId);
+                          return (
+                            <div
+                              key={idx}
+                              className="flex items-center justify-between gap-2 text-xs"
+                            >
+                              <span className="text-neutral-500 truncate">
+                                {item.count}x {item.modelName}
+                              </span>
+                              {item.subtotal !== null ? (
+                                <span className="flex items-center gap-1.5 shrink-0">
+                                  <span className="text-neutral-400">
+                                    {formatCost(item.subtotal)}
+                                  </span>
+                                  {customPrices[item.modelId] && (
+                                    <button
+                                      type="button"
+                                      onClick={() => clearPrice(item.modelId)}
+                                      title="You set this price — click to clear it"
+                                      className="text-[10px] text-neutral-600 hover:text-red-400 transition-colors"
+                                    >
+                                      yours ×
+                                    </button>
+                                  )}
+                                </span>
+                              ) : (
+                                <span className="flex items-center gap-1.5 shrink-0">
+                                  {modelUrl && (
+                                    <a
+                                      href={modelUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      title="Look up this model's price"
+                                      className="text-blue-400 hover:text-blue-300 shrink-0"
+                                    >
+                                      <ExternalLinkIcon />
+                                    </a>
+                                  )}
+                                  <PriceInput modelId={item.modelId} unit={item.unit} />
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-                    <div className="space-y-1 pl-7">
-                      {items.map((item, idx) => {
-                        const modelUrl = getModelUrl(provider, item.modelId);
-                        return (
-                          <div key={idx} className="flex items-center justify-between text-xs">
-                            <span className="text-neutral-500">
-                              {item.count}x {item.modelName}
-                            </span>
-                            {modelUrl && (
-                              <a
-                                href={modelUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-blue-400 hover:text-blue-300 flex items-center gap-1"
-                              >
-                                View model
-                                <ExternalLinkIcon />
-                              </a>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
-              <p className="text-xs text-neutral-600 mt-3">
-                Pricing varies by model, hardware, and usage. Check provider for details.
-              </p>
+              {unknownCount > 0 && (
+                <p className="text-xs text-amber-500/80 mt-3">
+                  {unknownCount} node{unknownCount !== 1 ? "s" : ""} use a model whose
+                  provider publishes no price — fal.ai and Replicate return no pricing
+                  at all. Type one above and it sticks, for this and every future
+                  workflow.
+                </p>
+              )}
             </div>
           )}
 
@@ -231,21 +299,22 @@ export function CostDialog({ predictedCost, incurredCost, onClose }: CostDialogP
           {predictedCost.nodeCount === 0 && (
             <div className="bg-neutral-900 rounded-lg p-4">
               <p className="text-xs text-neutral-500">
-                No generation nodes in workflow
+                No nodes in this workflow spend API credits
               </p>
             </div>
           )}
 
-          {/* Incurred Cost Section - Gemini only */}
+          {/* Actual spend, accumulated as generations complete */}
           <div className="bg-neutral-900 rounded-lg p-4">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-neutral-400">Incurred Cost</span>
+              <span className="text-sm text-neutral-400">Spent so far</span>
               <span className="text-lg font-semibold text-green-400">
                 {formatCost(incurredCost)}
               </span>
             </div>
             <p className="text-xs text-neutral-500">
-              Actual API spend from Gemini generations
+              Charged as each generation completes. LLM and ComfyUI runs are not
+              counted here.
             </p>
 
             {incurredCost > 0 && (
@@ -260,7 +329,10 @@ export function CostDialog({ predictedCost, incurredCost, onClose }: CostDialogP
 
           {/* Pricing Note */}
           <div className="text-xs text-neutral-600">
-            <p>Gemini pricing: $0.034-$0.24/image. External providers not tracked.</p>
+            <p>
+              Estimates assume one run per node. Batch runs, re-runs, 4K output and
+              long videos all cost more.
+            </p>
           </div>
         </div>
       </div>

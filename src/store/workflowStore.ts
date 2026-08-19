@@ -1594,16 +1594,9 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
   executeWorkflow: async (startFromNodeId?: string) => {
     // === LIKELYFAD CUSTOM START === (auth gate)
     // A run spends API credits and writes its media under the caller's id.
-    // Asking here turns a signed-out Run into one sign-in prompt instead of a
-    // graph full of "Not signed in" node errors, and the retry replays the
-    // same run — same start node — once the session lands.
-    if (
-      !requireAuth("run this workflow", () => {
-        void get().executeWorkflow(startFromNodeId);
-      })
-    ) {
-      return;
-    }
+    // The click interceptor catches the Run button; this catches the paths it
+    // does not see — a programmatic call, or a shortcut that slips past it.
+    if (!requireAuth()) return;
     // === LIKELYFAD CUSTOM END ===
 
     // Resume support: if Run is pressed with no explicit start node while the
@@ -2815,12 +2808,9 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
 
   saveToFile: async () => {
     // === LIKELYFAD CUSTOM START === (auth gate)
-    // Every save path lands here — the Header button, the project modal and
-    // auto-save alike — so this one check covers the lot. Auto-save never
-    // reaches it while signed out; see initializeAutoSave.
-    if (!requireAuth("save this project", () => void get().saveToFile())) {
-      return false;
-    }
+    // Every save path lands here, so this one check covers the lot. Auto-save
+    // never reaches it while signed out; see initializeAutoSave.
+    if (!requireAuth()) return false;
     // === LIKELYFAD CUSTOM END ===
 
     let {
@@ -3098,9 +3088,9 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
         state.autoSaveEnabled &&
         // === LIKELYFAD CUSTOM START === (auth gate)
         // Silent, not requireAuth(): this fires on a timer, so gating it would
-        // throw the sign-in modal over whatever the visitor is doing every 30
-        // seconds. The interval keeps running, so saves resume by themselves
-        // the moment a session exists.
+        // navigate the visitor to /signin from under whatever they were doing.
+        // The interval keeps running, so saves resume by themselves the moment
+        // a session exists.
         isSignedIn() &&
         // === LIKELYFAD CUSTOM END ===
         state.hasUnsavedChanges &&

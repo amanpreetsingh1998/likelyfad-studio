@@ -12,6 +12,7 @@ import {
   KNOWN_PROVIDERS,
 } from "@/lib/likelyfad/templatesCloud";
 import { fileToResizedDataUrl } from "@/lib/likelyfad/imageResize";
+import { useModelPricingStore } from "@/store/modelPricingStore";
 
 interface SaveTemplateModalProps {
   isOpen: boolean;
@@ -40,9 +41,13 @@ export function SaveTemplateModal({ isOpen, onClose }: SaveTemplateModalProps) {
   const hoverInputRef = useRef<HTMLInputElement>(null);
 
   // Auto-detected values from the current workflow
+  const customPrices = useModelPricingStore((s) => s.prices);
   const autoProviders = useMemo(() => deriveProviderTags(nodes), [nodes]);
   const autoModels = useMemo(() => deriveModelsUsed(nodes), [nodes]);
-  const estimatedCost = useMemo(() => estimateWorkflowCost(nodes), [nodes]);
+  const estimatedCost = useMemo(
+    () => estimateWorkflowCost(nodes, customPrices),
+    [nodes, customPrices]
+  );
   const nodeCount = nodes.length;
 
   // On modal open, pre-check everything that was auto-detected and prefill the name

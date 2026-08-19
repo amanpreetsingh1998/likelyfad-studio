@@ -2,7 +2,8 @@
 
 import type { WorkflowFile } from "@/store/workflowStore";
 import type { WorkflowNode } from "@/types";
-import { PRICING_OVERRIDES } from "./pricing-overrides";
+import { calculatePredictedCost } from "@/utils/costCalculator";
+import type { CustomPrice } from "@/store/modelPricingStore";
 
 export interface CloudTemplate {
   id: string;
@@ -252,97 +253,18 @@ export function deriveModelsUsed(nodes: WorkflowNode[]): string[] {
 }
 
 /**
- * Rough per-run cost estimates for LLM models (USD, single turn).
- * Assumes ~2K input + 1K output tokens as a midpoint for template estimates.
- * LLM nodes don't currently track runtime cost, so this map is used only for
- * the template gallery's "estimated cost per run" preview.
+ * Dollar cost of one full run of the workflow.
  *
- * Keys match the `model` string stored on LLMGenerateNodeData. The first
- * substring match wins, so you can use loose keys like "gpt-4o".
+ * Delegates to calculatePredictedCost so the template gallery and the cost
+ * indicator next to the project title can never disagree about what a
+ * workflow costs — they used to be two separate implementations, and only
+ * one of them knew about non-Gemini providers.
  */
-const LLM_RUN_ESTIMATES: Record<string, number> = {
-  // Google / Gemini
-  "gemini-3-pro": 0.025,
-  "gemini-3-flash": 0.005,
-  "gemini-2.5-pro": 0.015,
-  "gemini-2.5-flash": 0.002,
-  "gemini-2.0-flash": 0.0015,
-  "gemini-1.5-pro": 0.01,
-  "gemini-1.5-flash": 0.001,
-  // OpenAI
-  "gpt-5": 0.03,
-  "gpt-4.1": 0.02,
-  "gpt-4o-mini": 0.002,
-  "gpt-4o": 0.015,
-  "gpt-4": 0.04,
-  "o1": 0.05,
-  "o3": 0.04,
-  // Anthropic
-  "claude-opus-4": 0.06,
-  "claude-sonnet-4": 0.02,
-  "claude-haiku-4": 0.003,
-  "claude-3-5-sonnet": 0.018,
-  "claude-3-5-haiku": 0.003,
-  "claude-3-opus": 0.06,
-  "claude-3-sonnet": 0.018,
-  "claude-3-haiku": 0.002,
-};
-
-/** Fallback per-run cost for LLM models we don't recognize (~midrange). */
-const LLM_FALLBACK_RUN_COST = 0.01;
-
-function estimateLlmRunCost(model: string | undefined): number {
-  if (!model) return LLM_FALLBACK_RUN_COST;
-  const key = model.toLowerCase();
-  // Prefer the longest matching key so "gpt-4o-mini" wins over "gpt-4o"
-  let best: { match: string; cost: number } | null = null;
-  for (const [k, cost] of Object.entries(LLM_RUN_ESTIMATES)) {
-    if (key.includes(k) && (!best || k.length > best.match.length)) {
-      best = { match: k, cost };
-    }
-  }
-  return best?.cost ?? LLM_FALLBACK_RUN_COST;
-}
-
-/**
- * Estimate the dollar cost of one full run of the workflow by summing the
- * pricing of EVERY node that consumes API credits. This includes:
- *   - Image/video/audio/3d generation nodes (via selectedModel.pricing +
- *     pricing-overrides fallback)
- *   - LLM generate nodes (via LLM_RUN_ESTIMATES — runtime cost tracking
- *     doesn't exist for LLMs yet, so this is an explicit per-run estimate)
- *
- * This is a lower-bound estimate for a single run — real costs can be higher
- * for 4K outputs, long videos, batch runs, or large LLM context windows.
- */
-export function estimateWorkflowCost(nodes: WorkflowNode[]): number {
-  let total = 0;
-  for (const node of nodes) {
-    const data = node.data as Record<string, unknown>;
-
-    // LLM generate nodes — per-run estimate by model name
-    if (node.type === "llmGenerate") {
-      const model = (data?.model as string | undefined) || undefined;
-      total += estimateLlmRunCost(model);
-      continue;
-    }
-
-    // Image / video / audio / 3d generation nodes — selectedModel.pricing
-    const sel = data?.selectedModel as
-      | { modelId?: string; pricing?: { amount?: number } }
-      | undefined;
-    if (!sel) continue;
-    if (typeof sel.pricing?.amount === "number") {
-      total += sel.pricing.amount;
-      continue;
-    }
-    if (sel.modelId) {
-      const override = PRICING_OVERRIDES[sel.modelId];
-      if (override) {
-        total += override.amount;
-      }
-    }
-  }
+export function estimateWorkflowCost(
+  nodes: WorkflowNode[],
+  customPrices?: Record<string, CustomPrice>
+): number {
+  const { totalCost } = calculatePredictedCost(nodes, { customPrices });
   // Round to 4 decimals to avoid floating point noise in the DB column
-  return Math.round(total * 10000) / 10000;
+  return Math.round(totalCost * 10000) / 10000;
 }

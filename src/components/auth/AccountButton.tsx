@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "./AuthProvider";
-import { useAuthGateStore } from "@/store/authGateStore";
+import { redirectToSignIn } from "@/store/authGateStore";
 
 export function AccountButton() {
   const { user, loading, signOut } = useAuth();
@@ -29,16 +29,14 @@ export function AccountButton() {
   // swaps to an avatar a moment later reads as a glitch.
   if (loading) return null;
 
-  // Signed out the studio is still usable, so this is an invitation rather
-  // than a wall. Actions that do need an account raise the same modal
-  // themselves through requireAuth().
+  // A signed-out visitor can see the studio but not use it, so the header says
+  // plainly how to get in. Any other click lands them in the same place via
+  // the interceptor in src/app/page.tsx.
   if (!user) {
     return (
       <button
         type="button"
-        onClick={() =>
-          useAuthGateStore.getState().open("reach your projects")
-        }
+        onClick={redirectToSignIn}
         className="px-2 py-1 text-xs font-medium text-neutral-300 hover:text-neutral-100 hover:bg-neutral-800 rounded transition-colors"
       >
         Sign in
