@@ -21,12 +21,18 @@ begin;
 -- The DO guards make the conversion a no-op on a second run.
 -- ---------------------------------------------------------------------------
 
+-- Both columns carry DEFAULT 'default'. Postgres refuses to cast an existing
+-- default to the new type ("default for column ... cannot be cast
+-- automatically to type uuid"), so it has to go first. Nothing replaces it:
+-- the app stamps user_id explicitly on every write, and the RLS check below
+-- rejects a row that omits it rather than letting it default to someone.
 do $$
 begin
   if (select data_type from information_schema.columns
       where table_schema = 'public' and table_name = 'projects'
         and column_name = 'user_id') = 'text'
   then
+    alter table public.projects alter column user_id drop default;
     alter table public.projects
       alter column user_id type uuid using nullif(user_id, 'default')::uuid;
   end if;
@@ -38,6 +44,7 @@ begin
       where table_schema = 'public' and table_name = 'media'
         and column_name = 'user_id') = 'text'
   then
+    alter table public.media alter column user_id drop default;
     alter table public.media
       alter column user_id type uuid using nullif(user_id, 'default')::uuid;
   end if;
