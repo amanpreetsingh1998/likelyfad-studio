@@ -31,6 +31,9 @@ import { UndoManager, UndoSnapshot, clonePreservingStrings } from "./undoHistory
 import { useToast } from "@/components/Toast";
 import { logger } from "@/utils/logger";
 import { externalizeWorkflowMedia, hydrateWorkflowMedia } from "@/utils/mediaStorage";
+// === LIKELYFAD CUSTOM START === (cloud persistence)
+import { ensureProjectRow, saveProject } from "@/lib/likelyfad/cloud-storage";
+// === LIKELYFAD CUSTOM END ===
 import { EditOperation, applyEditOperations as executeEditOps } from "@/lib/chat/editOperations";
 import { findNearestFreePosition } from "@/utils/spatialLayout";
 import {
@@ -2797,9 +2800,15 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
       imageRefBasePath,
     } = get();
 
-    if (!workflowId || !workflowName || !saveDirectoryPath) {
+    // === LIKELYFAD CUSTOM START === (cloud persistence)
+    // Cloud projects have no directory. A null path, or the "cloud" sentinel
+    // ProjectSetupModal writes, both mean "persist to Supabase".
+    if (!workflowId || !workflowName) {
       return false;
     }
+    const isCloudSave = !saveDirectoryPath || saveDirectoryPath === "cloud";
+    const effectiveDirectory = saveDirectoryPath ?? "cloud";
+    // === LIKELYFAD CUSTOM END ===
 
     set({ isSaving: true });
 
@@ -2821,7 +2830,11 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
 
       // If saving to a different directory than where refs point, clear refs
       // so images will be re-saved to the new location
-      const isNewDirectory = useExternalImageStorage && (
+      // === LIKELYFAD CUSTOM START === (cloud persistence)
+      // Cloud saves must never take this branch: with no directory to compare
+      // against, the heuristic fires on every auto-save once refs exist and
+      // mints a fresh workflowId, duplicating the project row each time.
+      const isNewDirectory = !isCloudSave && useExternalImageStorage && (
         // Case 1: Known different directory
         (imageRefBasePath !== null && imageRefBasePath !== saveDirectoryPath) ||
         // Case 2: Has refs but unknown where they came from - treat as new directory to be safe
@@ -2857,29 +2870,58 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
         version: 1,
         id: workflowId,
         name: workflowName,
-        directoryPath: saveDirectoryPath,
+        directoryPath: effectiveDirectory,
         nodes: currentNodes,
         edges,
         edgeStyle,
         groups: groups && Object.keys(groups).length > 0 ? groups : undefined,
       };
 
+      // === LIKELYFAD CUSTOM START === (cloud persistence)
+      // The project row must exist before externalization, because uploading
+      // media inserts rows whose project_id FK points back at it.
+      if (isCloudSave) {
+        await ensureProjectRow(workflowId, workflowName);
+      }
+      // === LIKELYFAD CUSTOM END ===
+
       // If external media storage is enabled, externalize media before saving
       if (useExternalImageStorage) {
-        workflow = await externalizeWorkflowMedia(workflow, saveDirectoryPath);
+        workflow = await externalizeWorkflowMedia(workflow, effectiveDirectory);
       }
 
-      const response = await fetch("/api/workflow", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          directoryPath: saveDirectoryPath,
-          filename: workflowName,
-          workflow,
-        }),
-      });
-
-      const result = await response.json();
+      // === LIKELYFAD CUSTOM START === (cloud persistence)
+      let result: { success?: boolean; error?: string };
+      if (isCloudSave) {
+        try {
+          await saveProject(
+            workflowId,
+            workflowName,
+            workflow as unknown as Record<string, unknown>,
+            edgeStyle,
+            currentNodes.length,
+            get().incurredCost
+          );
+          result = { success: true };
+        } catch (err) {
+          result = {
+            success: false,
+            error: err instanceof Error ? err.message : "Cloud save failed",
+          };
+        }
+      } else {
+        const response = await fetch("/api/workflow", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            directoryPath: effectiveDirectory,
+            filename: workflowName,
+            workflow,
+          }),
+        });
+        result = await response.json();
+      }
+      // === LIKELYFAD CUSTOM END ===
 
       if (result.success) {
         const timestamp = Date.now();
@@ -2954,7 +2996,7 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
         saveSaveConfig({
           workflowId,
           name: workflowName,
-          directoryPath: saveDirectoryPath,
+          directoryPath: effectiveDirectory,
           generationsPath: get().generationsPath,
           lastSavedAt: timestamp,
           useExternalImageStorage,
@@ -3015,12 +3057,14 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
         state.hasUnsavedChanges &&
         state.workflowId &&
         state.workflowName &&
-        state.saveDirectoryPath &&
+        // === LIKELYFAD CUSTOM START === (cloud persistence)
+        // No saveDirectoryPath check — cloud projects don't have one.
+        // === LIKELYFAD CUSTOM END ===
         !state.isSaving
       ) {
         await state.saveToFile();
       }
-    }, 90 * 1000); // 90 seconds
+    }, 30 * 1000); // 30 seconds
   },
 
   cleanupAutoSave: () => {
