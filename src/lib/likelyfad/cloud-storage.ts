@@ -3,7 +3,22 @@
  * All persistence goes through Supabase (PostgreSQL + Storage).
  */
 
-import { supabase, MEDIA_BUCKET } from "./supabase";
+import { supabase, getSupabase, MEDIA_BUCKET } from "./supabase";
+import { folderPrefix, mediaObjectPath } from "./storagePaths";
+
+/**
+ * The signed-in user's id, used as the first storage path segment and as the
+ * owner column on every row written here. Throws when signed out rather than
+ * falling back to a shared prefix — a silent fallback would write data the
+ * storage RLS policy then refuses to read back.
+ */
+async function currentOwnerId(): Promise<string> {
+  const { data, error } = await getSupabase().auth.getUser();
+  if (error || !data.user) {
+    throw new Error("Not signed in — cannot read or write cloud storage");
+  }
+  return data.user.id;
+}
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -42,7 +57,7 @@ export async function ensureProjectRow(id: string, name: string): Promise<void> 
   // for the insert path. ignoreDuplicates: true means existing rows are NOT
   // overwritten — the empty {} is only used when the row doesn't exist yet.
   const { error } = await supabase.from("projects").upsert(
-    { id, name, workflow_json: {} },
+    { id, name, workflow_json: {}, user_id: await currentOwnerId() },
     { onConflict: "id", ignoreDuplicates: true }
   );
   if (error) {
@@ -66,6 +81,7 @@ export async function saveProject(
       edge_style: edgeStyle,
       node_count: nodeCount,
       incurred_cost: incurredCost,
+      user_id: await currentOwnerId(),
     },
     { onConflict: "id" }
   );
@@ -96,11 +112,12 @@ export async function loadProject(
 
 export async function deleteProject(id: string): Promise<void> {
   // Walk Storage by prefix instead of relying on the (often-empty) media table.
-  // We delete every file under default/<id>/{generations,inputs,generation-inputs}.
+  // We delete every file under <owner>/<id>/{generations,inputs,generation-inputs}.
+  const ownerId = await currentOwnerId();
   const folders = ["generations", "inputs", "generation-inputs"];
   const allPaths: string[] = [];
   for (const folder of folders) {
-    const prefix = `default/${id}/${folder}`;
+    const prefix = folderPrefix(ownerId, id, folder);
     const { data: files, error: listErr } = await supabase.storage
       .from(MEDIA_BUCKET)
       .list(prefix, { limit: 1000 });
@@ -153,7 +170,8 @@ export async function uploadMedia(
   const mimeType = match[1];
   const rawBase64 = match[2];
   const ext = mimeType.split("/")[1]?.replace("jpeg", "jpg") || "png";
-  const storagePath = `default/${projectId}/${folder}/${mediaId}.${ext}`;
+  const ownerId = await currentOwnerId();
+  const storagePath = mediaObjectPath(ownerId, projectId, folder, mediaId, ext);
 
   // Decode base64 to Uint8Array
   const binary = Uint8Array.from(atob(rawBase64), (c) => c.charCodeAt(0));
@@ -180,6 +198,7 @@ export async function uploadMedia(
     {
       id: `${projectId}/${folder}/${mediaId}`,
       project_id: projectId,
+      user_id: ownerId,
       storage_path: storagePath,
       mime_type: mimeType,
       size_bytes: binary.length,
@@ -211,11 +230,12 @@ export async function loadMedia(
         : ["mp3", "wav", "ogg", "m4a"];
 
   console.log(`[cloud-storage] loadMedia start → project=${projectId} mediaId=${mediaId} type=${mediaType}`);
+  const ownerId = await currentOwnerId();
   const attempts: string[] = [];
 
   for (const folder of folders) {
     for (const ext of extensions) {
-      const storagePath = `default/${projectId}/${folder}/${mediaId}.${ext}`;
+      const storagePath = mediaObjectPath(ownerId, projectId, folder, mediaId, ext);
       attempts.push(storagePath);
       const { data, error } = await supabase.storage
         .from(MEDIA_BUCKET)
@@ -307,7 +327,8 @@ export async function uploadImageForGeneration(
   const ext = mimeType.split("/")[1]?.replace("jpeg", "jpg") || "png";
 
   // Store in a generation-inputs folder, scoped to project if available
-  const folder = projectId ? `default/${projectId}/generation-inputs` : "default/anonymous/generation-inputs";
+  const ownerId = await currentOwnerId();
+  const folder = folderPrefix(ownerId, projectId ?? "anonymous", "generation-inputs");
   const fileName = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
   const storagePath = `${folder}/${fileName}`;
 
@@ -357,6 +378,7 @@ export interface InspectResult {
 }
 
 export async function inspectPersistence(targetProjectId?: string): Promise<InspectResult> {
+  const inspectOwnerId = await currentOwnerId();
   const out: InspectResult = { projects: [] };
 
   const { data: projectRows, error: projErr } = await supabase
@@ -399,9 +421,9 @@ export async function inspectPersistence(targetProjectId?: string): Promise<Insp
     for (const folder of ["generations", "inputs"]) {
       const { data: files, error: listErr } = await supabase.storage
         .from(MEDIA_BUCKET)
-        .list(`default/${row.id}/${folder}`, { limit: 1000 });
+        .list(folderPrefix(inspectOwnerId, row.id, folder), { limit: 1000 });
       if (listErr) {
-        console.warn(`[inspect] list error on default/${row.id}/${folder}:`, listErr.message);
+        console.warn(`[inspect] list error on ${folderPrefix(inspectOwnerId, row.id, folder)}:`, listErr.message);
         continue;
       }
       for (const f of files ?? []) {

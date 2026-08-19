@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServiceClient } from "@/lib/likelyfad/supabase";
+import { getAuthedContext } from "@/lib/supabase/server";
+import { mediaObjectPath } from "@/lib/likelyfad/storagePaths";
 
 const MEDIA_BUCKET = "project-media";
 
@@ -29,12 +30,16 @@ export async function POST(request: NextRequest) {
     const rawBase64 = match[2];
     const ext = mimeType.split("/")[1]?.replace("jpeg", "jpg") || "png";
     const mediaFolder = folder || "inputs";
-    const storagePath = `default/${projectId}/${mediaFolder}/${mediaId}.${ext}`;
+    const auth = await getAuthedContext();
+    if (!auth) {
+      return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+    }
+    const { supabase, user } = auth;
+
+    const storagePath = mediaObjectPath(user.id, projectId, mediaFolder, mediaId, ext);
 
     // Decode base64
     const binary = Buffer.from(rawBase64, "base64");
-
-    const supabase = getServiceClient();
 
     // Upload to storage
     const { error: uploadError } = await supabase.storage
@@ -53,6 +58,7 @@ export async function POST(request: NextRequest) {
       {
         id: `${projectId}/${mediaFolder}/${mediaId}`,
         project_id: projectId,
+        user_id: user.id,
         storage_path: storagePath,
         mime_type: mimeType,
         size_bytes: binary.length,
@@ -84,7 +90,11 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const supabase = getServiceClient();
+    const auth = await getAuthedContext();
+    if (!auth) {
+      return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+    }
+    const { supabase, user } = auth;
 
     const folders = ["generations", "inputs"];
     const extensions =
@@ -96,7 +106,7 @@ export async function GET(request: NextRequest) {
 
     for (const folder of folders) {
       for (const ext of extensions) {
-        const storagePath = `default/${projectId}/${folder}/${mediaId}.${ext}`;
+        const storagePath = mediaObjectPath(user.id, projectId, folder, mediaId, ext);
         const { data, error } = await supabase.storage
           .from(MEDIA_BUCKET)
           .download(storagePath);

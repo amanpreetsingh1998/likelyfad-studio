@@ -1,11 +1,17 @@
 // === LIKELYFAD CUSTOM === (cloud templates API — list + create)
 import { NextRequest, NextResponse } from "next/server";
-import { getServiceClient } from "@/lib/likelyfad/supabase";
+import { getAuthedContext } from "@/lib/supabase/server";
 
 // GET /api/likelyfad/templates — list all templates
 export async function GET() {
   try {
-    const supabase = getServiceClient();
+    const auth = await getAuthedContext();
+    if (!auth) {
+      return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+    }
+    const { supabase } = auth;
+
+    // Templates are readable by any signed-in user; RLS limits writes to the owner.
     const { data, error } = await supabase
       .from("templates")
       .select("id, name, description, category, tags, node_count, thumbnail_url, hover_url, models, estimated_cost, created_at")
@@ -48,7 +54,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const supabase = getServiceClient();
+    const auth = await getAuthedContext();
+    if (!auth) {
+      return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+    }
+    const { supabase, user } = auth;
+
     const { data, error } = await supabase
       .from("templates")
       .insert({
@@ -62,6 +73,7 @@ export async function POST(request: NextRequest) {
         models: models ?? [],
         estimated_cost: estimated_cost ?? 0,
         workflow_json,
+        user_id: user.id,
       })
       .select("id")
       .single();

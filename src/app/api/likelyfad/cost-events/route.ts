@@ -1,6 +1,6 @@
 // === LIKELYFAD CUSTOM START === (cost events — 48h rolling log per project)
 import { NextRequest, NextResponse } from "next/server";
-import { getServiceClient } from "@/lib/likelyfad/supabase";
+import { getAuthedContext } from "@/lib/supabase/server";
 
 // POST /api/likelyfad/cost-events
 // Body: { projectId, nodeId?, nodeType?, modelName?, amount }
@@ -17,11 +17,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const supabase = getServiceClient();
+    const auth = await getAuthedContext();
+    if (!auth) {
+      return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+    }
+    const { supabase, user } = auth;
 
     // Insert the new event
     const { error: insertErr } = await supabase.from("cost_events").insert({
       project_id: projectId,
+      user_id: user.id,
       node_id: nodeId ?? null,
       node_type: nodeType ?? null,
       model_name: modelName ?? null,
@@ -65,7 +70,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "projectId is required" }, { status: 400 });
     }
 
-    const supabase = getServiceClient();
+    const auth = await getAuthedContext();
+    if (!auth) {
+      return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+    }
+    const { supabase } = auth;
+
     const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
 
     const { data, error } = await supabase

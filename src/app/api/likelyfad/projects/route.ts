@@ -1,10 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServiceClient } from "@/lib/likelyfad/supabase";
+import { getAuthedContext } from "@/lib/supabase/server";
 
 // GET /api/likelyfad/projects — list all projects
 export async function GET() {
   try {
-    const supabase = getServiceClient();
+    const auth = await getAuthedContext();
+    if (!auth) {
+      return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+    }
+    const { supabase } = auth;
+
+    // RLS restricts this to the caller's own rows.
     const { data, error } = await supabase
       .from("projects")
       .select("id, name, node_count, updated_at, created_at")
@@ -36,7 +42,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const supabase = getServiceClient();
+    const auth = await getAuthedContext();
+    if (!auth) {
+      return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+    }
+    const { supabase, user } = auth;
+
     const { error } = await supabase.from("projects").upsert(
       {
         id,
@@ -44,6 +55,7 @@ export async function POST(request: NextRequest) {
         workflow_json: workflow_json ?? {},
         edge_style: edge_style ?? "angular",
         node_count: node_count ?? 0,
+        user_id: user.id,
       },
       { onConflict: "id" }
     );

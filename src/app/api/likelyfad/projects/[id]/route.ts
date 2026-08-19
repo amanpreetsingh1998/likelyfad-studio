@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServiceClient } from "@/lib/likelyfad/supabase";
+import { getAuthedContext } from "@/lib/supabase/server";
+import { folderPrefix } from "@/lib/likelyfad/storagePaths";
 
 // GET /api/likelyfad/projects/[id] — load a single project
 export async function GET(
@@ -8,7 +9,11 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const supabase = getServiceClient();
+    const auth = await getAuthedContext();
+    if (!auth) {
+      return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+    }
+    const { supabase } = auth;
 
     const { data, error } = await supabase
       .from("projects")
@@ -39,14 +44,18 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const supabase = getServiceClient();
+    const auth = await getAuthedContext();
+    if (!auth) {
+      return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+    }
+    const { supabase, user } = auth;
 
     // Walk Storage by prefix — the media table is best-effort and may be empty
     // due to FK constraint failures during early saves. Storage is the source of truth.
     const folders = ["generations", "inputs", "generation-inputs"];
     const allPaths: string[] = [];
     for (const folder of folders) {
-      const prefix = `default/${id}/${folder}`;
+      const prefix = folderPrefix(user.id, id, folder);
       const { data: files, error: listErr } = await supabase.storage
         .from("project-media")
         .list(prefix, { limit: 1000 });

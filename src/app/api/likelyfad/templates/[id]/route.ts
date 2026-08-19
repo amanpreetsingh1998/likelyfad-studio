@@ -1,6 +1,6 @@
 // === LIKELYFAD CUSTOM === (cloud templates API — load + delete one)
 import { NextRequest, NextResponse } from "next/server";
-import { getServiceClient } from "@/lib/likelyfad/supabase";
+import { getAuthedContext } from "@/lib/supabase/server";
 
 // GET /api/likelyfad/templates/[id] — load full workflow_json
 export async function GET(
@@ -9,7 +9,12 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const supabase = getServiceClient();
+    const auth = await getAuthedContext();
+    if (!auth) {
+      return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+    }
+    const { supabase } = auth;
+
     const { data, error } = await supabase
       .from("templates")
       .select("id, name, description, category, tags, node_count, thumbnail_url, hover_url, models, estimated_cost, workflow_json, created_at")
@@ -36,7 +41,13 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const supabase = getServiceClient();
+    const auth = await getAuthedContext();
+    if (!auth) {
+      return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+    }
+    const { supabase } = auth;
+
+    // RLS refuses the delete unless the caller owns the row.
     const { error } = await supabase.from("templates").delete().eq("id", id);
 
     if (error) {
