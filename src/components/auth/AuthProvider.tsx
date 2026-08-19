@@ -11,11 +11,24 @@ import {
 import type { User } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "@/lib/supabase/client";
 
+/**
+ * Result of an email sign-up.
+ *
+ * With "Confirm email" off in the Supabase dashboard, signUp returns a session
+ * and the user is straight in. With it on, it returns a user but no session and
+ * nothing happens until they click the link — the caller has to say so rather
+ * than appear to hang.
+ */
+export type SignUpOutcome = { needsConfirmation: boolean };
+
 type AuthState = {
   user: User | null;
   /** True until the first session lookup resolves. */
   loading: boolean;
   signInWithGoogle: () => Promise<void>;
+  signInWithPassword: (email: string, password: string) => Promise<void>;
+  signUpWithPassword: (email: string, password: string) => Promise<SignUpOutcome>;
+  sendPasswordReset: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
 };
 
@@ -55,6 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       user,
       loading,
+
       signInWithGoogle: async () => {
         const supabase = getBrowserSupabase();
         const next = window.location.pathname + window.location.search;
@@ -66,6 +80,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
         if (error) throw error;
       },
+
+      signInWithPassword: async (email, password) => {
+        const { error } = await getBrowserSupabase().auth.signInWithPassword({
+          email,
+          password,
+        });
+        if (error) throw error;
+        // onAuthStateChange sets the user; no navigation needed.
+      },
+
+      signUpWithPassword: async (email, password) => {
+        const { data, error } = await getBrowserSupabase().auth.signUp({
+          email,
+          password,
+          options: {
+            emailRedirectTo: `${window.location.origin}/auth/callback`,
+          },
+        });
+        if (error) throw error;
+        return { needsConfirmation: !data.session };
+      },
+
+      sendPasswordReset: async (email) => {
+        const { error } = await getBrowserSupabase().auth.resetPasswordForEmail(
+          email,
+          {
+            // The link carries a recovery code; the callback trades it for a
+            // session and drops the user on the change-password form.
+            redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent("/auth/reset-password")}`,
+          }
+        );
+        if (error) throw error;
+      },
+
       signOut: async () => {
         await getBrowserSupabase().auth.signOut();
         // Full reload so in-memory workflow state from the previous account
