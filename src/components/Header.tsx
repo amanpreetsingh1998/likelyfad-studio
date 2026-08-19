@@ -9,6 +9,7 @@ import { KeyboardShortcutsDialog } from "./KeyboardShortcutsDialog";
 import { WorkflowBrowserModal } from "./WorkflowBrowserModal";
 // === LIKELYFAD CUSTOM START === (Save as Template modal)
 import { SaveTemplateModal } from "./likelyfad/SaveTemplateModal";
+import { AccountButton } from "./auth/AccountButton";
 // === LIKELYFAD CUSTOM END ===
 
 function CommentsNavigationIcon() {
@@ -193,6 +194,9 @@ export function Header() {
 
   const settingsButtons = (
     <div className="flex items-center gap-0.5 ml-1 pl-1 border-l border-neutral-700/50">
+      {/* === LIKELYFAD CUSTOM START === (account menu) */}
+      <AccountButton />
+      {/* === LIKELYFAD CUSTOM END === */}
       <button
         onClick={handleOpenSettings}
         className="p-1.5 text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 rounded transition-colors"

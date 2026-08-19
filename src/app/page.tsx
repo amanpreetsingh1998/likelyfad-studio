@@ -16,12 +16,43 @@ import { migrateLegacyStorageKeys } from "@/store/utils/storageMigration";
 import { ProjectListModal } from "@/components/likelyfad/ProjectListModal";
 import { loadProject } from "@/lib/likelyfad/cloud-storage";
 import type { WorkflowFile } from "@/store/workflowStore";
+import { AuthProvider, useAuth } from "@/components/auth/AuthProvider";
+import { SignInScreen } from "@/components/auth/SignInScreen";
 // === LIKELYFAD CUSTOM END ===
 
 // Runs before any component reads storage, so the rename keeps existing data.
 migrateLegacyStorageKeys();
 
 export default function Home() {
+  return (
+    <AuthProvider>
+      <AuthGate />
+    </AuthProvider>
+  );
+}
+
+/**
+ * Everything below the gate assumes a signed-in user. Auto-save and the
+ * project list both write to Supabase under the caller's id, so mounting the
+ * studio while signed out would only produce failed writes.
+ */
+function AuthGate() {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-neutral-950">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-neutral-700 border-t-neutral-300" />
+      </div>
+    );
+  }
+
+  if (!user) return <SignInScreen />;
+
+  return <Studio />;
+}
+
+function Studio() {
   const initializeAutoSave = useWorkflowStore(
     (state) => state.initializeAutoSave
   );
