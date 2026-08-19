@@ -2607,7 +2607,18 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
     const savedConfig = workflow.id ? configs[workflow.id] : null;
 
     // Determine the workflow directory path (passed in, from saved config, or embedded in legacy workflow JSON)
-    const directoryPath = workflowPath || savedConfig?.directoryPath || workflow.directoryPath || null;
+    const resolvedPath = workflowPath || savedConfig?.directoryPath || workflow.directoryPath || null;
+
+    // === LIKELYFAD CUSTOM START === (cloud persistence)
+    // Projects saved before the path carried an id recorded the bare "cloud"
+    // sentinel. Media lookups need the project id, so upgrade it here — this
+    // is the one place every load path funnels through, including the call
+    // sites that pass no path at all and fall back to workflow.directoryPath.
+    const directoryPath =
+      resolvedPath === "cloud" && workflow.id
+        ? `cloud:${workflow.id}`
+        : resolvedPath;
+    // === LIKELYFAD CUSTOM END ===
 
     // Hydrate media if we have a directory path and the workflow has media refs
     let hydratedWorkflow = workflow;
