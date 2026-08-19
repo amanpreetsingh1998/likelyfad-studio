@@ -424,7 +424,7 @@ export function ProjectSetupModal({
       >
         <div className="px-8 pt-8 pb-0 shrink-0">
           <div className="flex items-center gap-2 mb-5">
-            <img src="/banana_icon.png" alt="" className="w-6 h-6" />
+            <img src="/ls-icon.png" alt="" className="w-6 h-6" />
             <h2 className="text-xl font-medium text-neutral-100">
               {mode === "new" ? "New Project" : "Project Settings"}
             </h2>
@@ -485,34 +485,7 @@ export function ProjectSetupModal({
               />
             </div>
 
-            <div>
-              <label className="block text-sm text-neutral-400 mb-1">
-                Project Directory{" "}
-                <span className="text-neutral-500">(optional)</span>
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={directoryPath}
-                  onChange={(e) => setDirectoryPath(e.target.value)}
-                  placeholder="/Users/username/projects/my-project"
-                  className="flex-1 px-3 py-2 bg-neutral-900 border border-neutral-600 rounded-lg text-neutral-100 text-sm focus:outline-none focus:border-neutral-500"
-                />
-                <button
-                  type="button"
-                  onClick={handleBrowse}
-                  disabled={isBrowsing}
-                  className="px-3 py-2 bg-neutral-700 hover:bg-neutral-600 disabled:bg-neutral-700 disabled:opacity-50 text-neutral-200 text-sm rounded-lg transition-colors"
-                >
-                  {isBrowsing ? "..." : "Browse"}
-                </button>
-              </div>
-              <p className="text-xs text-neutral-400 mt-1">
-                Leave blank to save this project to the cloud. If you set a path,
-                workflow files and images are written there instead, and
-                subfolders for inputs and generations are auto-created.
-              </p>
-            </div>
+
 
             <div className="pt-2 border-t border-neutral-700">
               <label className="flex items-center justify-between gap-3 cursor-pointer">
