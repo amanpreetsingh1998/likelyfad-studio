@@ -148,56 +148,6 @@ create policy templates_delete_own on public.templates
 
 commit;
 
--- ===========================================================================
--- 5. Storage
---
--- Object keys are <ownerId>/<projectId>/<folder>/<file>, so the first path
--- segment is the owner. storage.foldername(name) splits the key; [1] is that
--- segment. This is why src/lib/likelyfad/storagePaths.ts must be the only
--- place that builds these keys — a wrong prefix here is a 403, not a typo.
---
--- Run separately from the transaction above: on some projects storage.objects
--- is owned by a role your SQL Editor session cannot alter inside a
--- transaction. If these statements error with "must be owner of table
--- objects", create the same four policies from
--- Dashboard → Storage → project-media → Policies instead.
--- ===========================================================================
-
-alter table storage.objects enable row level security;
-
-drop policy if exists project_media_select_own on storage.objects;
-drop policy if exists project_media_insert_own on storage.objects;
-drop policy if exists project_media_update_own on storage.objects;
-drop policy if exists project_media_delete_own on storage.objects;
-
-create policy project_media_select_own on storage.objects
-  for select to authenticated
-  using (
-    bucket_id = 'project-media'
-    and (storage.foldername(name))[1] = auth.uid()::text
-  );
-
-create policy project_media_insert_own on storage.objects
-  for insert to authenticated
-  with check (
-    bucket_id = 'project-media'
-    and (storage.foldername(name))[1] = auth.uid()::text
-  );
-
-create policy project_media_update_own on storage.objects
-  for update to authenticated
-  using (
-    bucket_id = 'project-media'
-    and (storage.foldername(name))[1] = auth.uid()::text
-  )
-  with check (
-    bucket_id = 'project-media'
-    and (storage.foldername(name))[1] = auth.uid()::text
-  );
-
-create policy project_media_delete_own on storage.objects
-  for delete to authenticated
-  using (
-    bucket_id = 'project-media'
-    and (storage.foldername(name))[1] = auth.uid()::text
-  );
+-- Storage policies live in 0002_storage_policies.sql: storage.objects is
+-- owned by a role the SQL Editor cannot alter, so that half needs a different
+-- route and must not abort this migration.
