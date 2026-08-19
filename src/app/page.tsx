@@ -16,40 +16,27 @@ import { migrateLegacyStorageKeys } from "@/store/utils/storageMigration";
 import { ProjectListModal } from "@/components/likelyfad/ProjectListModal";
 import { loadProject } from "@/lib/likelyfad/cloud-storage";
 import type { WorkflowFile } from "@/store/workflowStore";
-import { AuthProvider, useAuth } from "@/components/auth/AuthProvider";
-import { SignInScreen } from "@/components/auth/SignInScreen";
+import { AuthProvider } from "@/components/auth/AuthProvider";
+import { SignInModal } from "@/components/auth/SignInModal";
+import { requireAuth } from "@/store/authGateStore";
 // === LIKELYFAD CUSTOM END ===
 
 // Runs before any component reads storage, so the rename keeps existing data.
 migrateLegacyStorageKeys();
 
+/**
+ * The studio renders for everyone. Signing in is asked for at the point an
+ * action needs an account — running a graph, saving, reaching cloud projects —
+ * via requireAuth(), which raises <SignInModal> over the canvas rather than
+ * replacing it. See src/store/authGateStore.ts.
+ */
 export default function Home() {
   return (
     <AuthProvider>
-      <AuthGate />
+      <Studio />
+      <SignInModal />
     </AuthProvider>
   );
-}
-
-/**
- * Everything below the gate assumes a signed-in user. Auto-save and the
- * project list both write to Supabase under the caller's id, so mounting the
- * studio while signed out would only produce failed writes.
- */
-function AuthGate() {
-  const { user, loading } = useAuth();
-
-  if (loading) {
-    return (
-      <div className="h-screen flex items-center justify-center bg-neutral-950">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-neutral-700 border-t-neutral-300" />
-      </div>
-    );
-  }
-
-  if (!user) return <SignInScreen />;
-
-  return <Studio />;
 }
 
 function Studio() {
@@ -71,9 +58,16 @@ function Studio() {
   // upstream Header stays free of app-level state.
   useEffect(() => {
     const w = window as unknown as Record<string, unknown>;
-    w.__openProjectList = () => {
+    const openProjectList = () => {
       setProjectError(null);
       setShowProjectList(true);
+    };
+    w.__openProjectList = () => {
+      // The list reads the caller's Supabase rows, so it is empty by
+      // definition while signed out. Gating here covers every entry point
+      // rather than the Header button alone.
+      if (!requireAuth("reach your projects", openProjectList)) return;
+      openProjectList();
     };
     return () => {
       delete w.__openProjectList;

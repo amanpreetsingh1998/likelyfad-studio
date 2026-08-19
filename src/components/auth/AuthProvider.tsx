@@ -10,6 +10,7 @@ import {
 } from "react";
 import type { User } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "@/lib/supabase/client";
+import { useAuthGateStore } from "@/store/authGateStore";
 
 /**
  * Result of an email sign-up.
@@ -63,6 +64,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       subscription.subscription.unsubscribe();
     };
   }, []);
+
+  // Mirror the session into the gate store, which is what workflowStore.ts and
+  // the non-React call sites read. Left at "unknown" while the first lookup is
+  // in flight so the gate does not flash a modal at a user who is signed in.
+  useEffect(() => {
+    if (loading) return;
+    useAuthGateStore.getState().setStatus(user ? "signed-in" : "signed-out");
+  }, [user, loading]);
 
   const value = useMemo<AuthState>(
     () => ({

@@ -33,6 +33,7 @@ import { logger } from "@/utils/logger";
 import { externalizeWorkflowMedia, hydrateWorkflowMedia } from "@/utils/mediaStorage";
 // === LIKELYFAD CUSTOM START === (cloud persistence)
 import { ensureProjectRow, saveProject } from "@/lib/likelyfad/cloud-storage";
+import { isSignedIn, requireAuth } from "./authGateStore";
 // === LIKELYFAD CUSTOM END ===
 import { EditOperation, applyEditOperations as executeEditOps } from "@/lib/chat/editOperations";
 import { findNearestFreePosition } from "@/utils/spatialLayout";
@@ -1591,6 +1592,20 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
   }),
 
   executeWorkflow: async (startFromNodeId?: string) => {
+    // === LIKELYFAD CUSTOM START === (auth gate)
+    // A run spends API credits and writes its media under the caller's id.
+    // Asking here turns a signed-out Run into one sign-in prompt instead of a
+    // graph full of "Not signed in" node errors, and the retry replays the
+    // same run — same start node — once the session lands.
+    if (
+      !requireAuth("run this workflow", () => {
+        void get().executeWorkflow(startFromNodeId);
+      })
+    ) {
+      return;
+    }
+    // === LIKELYFAD CUSTOM END ===
+
     // Resume support: if Run is pressed with no explicit start node while the
     // workflow is paused at a node (pause edge), resume from that node instead
     // of restarting the whole graph (which would re-run/re-bill upstream nodes
@@ -2799,6 +2814,15 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
   },
 
   saveToFile: async () => {
+    // === LIKELYFAD CUSTOM START === (auth gate)
+    // Every save path lands here — the Header button, the project modal and
+    // auto-save alike — so this one check covers the lot. Auto-save never
+    // reaches it while signed out; see initializeAutoSave.
+    if (!requireAuth("save this project", () => void get().saveToFile())) {
+      return false;
+    }
+    // === LIKELYFAD CUSTOM END ===
+
     let {
       nodes,
       edges,
@@ -3072,6 +3096,13 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
       const state = get();
       if (
         state.autoSaveEnabled &&
+        // === LIKELYFAD CUSTOM START === (auth gate)
+        // Silent, not requireAuth(): this fires on a timer, so gating it would
+        // throw the sign-in modal over whatever the visitor is doing every 30
+        // seconds. The interval keeps running, so saves resume by themselves
+        // the moment a session exists.
+        isSignedIn() &&
+        // === LIKELYFAD CUSTOM END ===
         state.hasUnsavedChanges &&
         state.workflowId &&
         state.workflowName &&
