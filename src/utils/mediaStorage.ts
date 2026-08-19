@@ -76,6 +76,42 @@ function isDataUrl(str: string | null | undefined): str is string {
  * Extract and save all media from a workflow, replacing base64 data with refs
  * Returns a new workflow object with media refs instead of base64 data
  */
+// === LIKELYFAD CUSTOM START === (cloud media)
+// Cloud projects have no directory, so the store threads "cloud:<projectId>"
+// through the same workflowPath parameter the local path uses. That keeps
+// every intermediate call site untouched — only the leaf save/load functions
+// need to know which backend they are talking to.
+const CLOUD_PATH_PREFIX = "cloud:";
+
+function getCloudProjectId(workflowPath: string): string | null {
+  if (!workflowPath.startsWith(CLOUD_PATH_PREFIX)) return null;
+  return workflowPath.slice(CLOUD_PATH_PREFIX.length) || null;
+}
+
+async function uploadToCloud(
+  projectId: string,
+  mediaId: string,
+  mediaData: string,
+  folder: "inputs" | "generations",
+  timeoutMs?: number
+): Promise<string> {
+  const response = await fetchWithTimeout(
+    "/api/likelyfad/media",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ projectId, mediaId, imageData: mediaData, folder }),
+    },
+    timeoutMs
+  );
+  const result = await response.json();
+  if (!result.success) {
+    throw new Error(result.error || "Cloud media upload failed");
+  }
+  return result.mediaId || mediaId;
+}
+// === LIKELYFAD CUSTOM END ===
+
 export async function externalizeWorkflowMedia(
   workflow: WorkflowFile,
   workflowPath: string
@@ -680,6 +716,15 @@ async function saveImageAndGetId(
   const imageId = existingId || generateImageId();
 
   const savePromise = (async () => {
+    // === LIKELYFAD CUSTOM START === (cloud media)
+    const cloudProjectId = getCloudProjectId(workflowPath);
+    if (cloudProjectId) {
+      await uploadToCloud(cloudProjectId, imageId, imageData, folder);
+      savedImageIds.set(hash, imageId);
+      return imageId;
+    }
+    // === LIKELYFAD CUSTOM END ===
+
     const response = await fetchWithTimeout(
       "/api/workflow-images",
       {
@@ -746,6 +791,21 @@ async function saveVideoAndGetRef(
   const videoId = existingId || generateMediaId("vid");
 
   const savePromise = (async () => {
+    // === LIKELYFAD CUSTOM START === (cloud media)
+    const cloudProjectId = getCloudProjectId(workflowPath);
+    if (cloudProjectId) {
+      const uploadedId = await uploadToCloud(
+        cloudProjectId,
+        videoId,
+        videoData,
+        "generations",
+        60000
+      );
+      savedMediaIds.set(hash, uploadedId);
+      return uploadedId;
+    }
+    // === LIKELYFAD CUSTOM END ===
+
     const response = await fetchWithTimeout(
       "/api/save-generation",
       {
@@ -814,6 +874,21 @@ async function saveAudioAndGetRef(
   const audioId = existingId || generateMediaId("aud");
 
   const savePromise = (async () => {
+    // === LIKELYFAD CUSTOM START === (cloud media)
+    const cloudProjectId = getCloudProjectId(workflowPath);
+    if (cloudProjectId) {
+      const uploadedId = await uploadToCloud(
+        cloudProjectId,
+        audioId,
+        audioData,
+        "generations",
+        60000
+      );
+      savedMediaIds.set(hash, uploadedId);
+      return uploadedId;
+    }
+    // === LIKELYFAD CUSTOM END ===
+
     const response = await fetchWithTimeout(
       "/api/save-generation",
       {
@@ -1289,6 +1364,25 @@ async function loadMediaById(
   if (loadedMedia.has(mediaId)) {
     return loadedMedia.get(mediaId)!;
   }
+
+  // === LIKELYFAD CUSTOM START === (cloud media)
+  const cloudProjectId = getCloudProjectId(workflowPath);
+  if (cloudProjectId) {
+    const params = new URLSearchParams({
+      projectId: cloudProjectId,
+      mediaId,
+      type: mediaType,
+    });
+    const cloudResponse = await fetch(`/api/likelyfad/media?${params.toString()}`);
+    const cloudResult = await cloudResponse.json();
+    if (!cloudResult.success || !cloudResult.image) {
+      console.log(`${mediaType} not found in cloud storage: ${mediaId}`);
+      return "";
+    }
+    loadedMedia.set(mediaId, cloudResult.image);
+    return cloudResult.image;
+  }
+  // === LIKELYFAD CUSTOM END ===
 
   let response: Response;
 

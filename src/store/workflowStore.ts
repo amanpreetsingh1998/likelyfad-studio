@@ -2807,7 +2807,11 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
       return false;
     }
     const isCloudSave = !saveDirectoryPath || saveDirectoryPath === "cloud";
-    const effectiveDirectory = saveDirectoryPath ?? "cloud";
+    // Media externalization only receives this path, so the project id rides
+    // along in it — that is how the leaf upload/load helpers find the project.
+    const effectiveDirectory = isCloudSave
+      ? `cloud:${workflowId}`
+      : saveDirectoryPath;
     // === LIKELYFAD CUSTOM END ===
 
     set({ isSaving: true });
@@ -2981,14 +2985,14 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
             // Keep the workflow dirty if edits landed during the save window.
             hasUnsavedChanges: changedDuringSave,
             // Update imageRefBasePath to reflect new save location
-            imageRefBasePath: saveDirectoryPath,
+            imageRefBasePath: effectiveDirectory,
           });
         } else {
           set({
             lastSavedAt: timestamp,
             hasUnsavedChanges: changedDuringSave,
             // Update imageRefBasePath to reflect save location
-            imageRefBasePath: useExternalImageStorage ? saveDirectoryPath : null,
+            imageRefBasePath: useExternalImageStorage ? effectiveDirectory : null,
           });
         }
 

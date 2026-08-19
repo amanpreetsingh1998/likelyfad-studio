@@ -64,7 +64,7 @@ export default function Home() {
           id: projectId,
           name: project.name,
         };
-        await loadWorkflow(workflow, "cloud");
+        await loadWorkflow(workflow, `cloud:${projectId}`);
         setShowQuickstart(false);
         setShowProjectList(false);
       } catch (err) {
