@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ReactFlowProvider } from "@xyflow/react";
 import { Header } from "@/components/Header";
 import { WorkflowCanvas } from "@/components/WorkflowCanvas";
@@ -12,6 +12,11 @@ import { FTUXModal } from "@/components/onboarding/FTUXModal";
 import { getFTUXCompleted, setFTUXCompleted } from "@/store/utils/localStorage";
 import { useFTUXStore } from "@/store/ftuxStore";
 import { migrateLegacyStorageKeys } from "@/store/utils/storageMigration";
+// === LIKELYFAD CUSTOM START === (cloud project list)
+import { ProjectListModal } from "@/components/likelyfad/ProjectListModal";
+import { loadProject } from "@/lib/likelyfad/cloud-storage";
+import type { WorkflowFile } from "@/store/workflowStore";
+// === LIKELYFAD CUSTOM END ===
 
 // Runs before any component reads storage, so the rename keeps existing data.
 migrateLegacyStorageKeys();
@@ -23,6 +28,62 @@ export default function Home() {
   const cleanupAutoSave = useWorkflowStore((state) => state.cleanupAutoSave);
   const setShowQuickstart = useWorkflowStore((state) => state.setShowQuickstart);
   const [showFTUX, setShowFTUX] = useState(false);
+
+  // === LIKELYFAD CUSTOM START === (cloud project list)
+  const loadWorkflow = useWorkflowStore((state) => state.loadWorkflow);
+  const clearWorkflow = useWorkflowStore((state) => state.clearWorkflow);
+  const [showProjectList, setShowProjectList] = useState(false);
+  const [loadingProjectId, setLoadingProjectId] = useState<string | null>(null);
+  const [projectError, setProjectError] = useState<string | null>(null);
+
+  // Header's Projects button reaches the modal through this bridge, so the
+  // upstream Header stays free of app-level state.
+  useEffect(() => {
+    const w = window as unknown as Record<string, unknown>;
+    w.__openProjectList = () => {
+      setProjectError(null);
+      setShowProjectList(true);
+    };
+    return () => {
+      delete w.__openProjectList;
+    };
+  }, []);
+
+  const handleSelectProject = useCallback(
+    async (projectId: string) => {
+      setLoadingProjectId(projectId);
+      setProjectError(null);
+      try {
+        const project = await loadProject(projectId);
+        if (!project) {
+          setProjectError("Project not found");
+          return;
+        }
+        const workflow = {
+          ...(project.workflow_json as unknown as WorkflowFile),
+          id: projectId,
+          name: project.name,
+        };
+        await loadWorkflow(workflow, "cloud");
+        setShowQuickstart(false);
+        setShowProjectList(false);
+      } catch (err) {
+        setProjectError(
+          err instanceof Error ? err.message : "Failed to load project"
+        );
+      } finally {
+        setLoadingProjectId(null);
+      }
+    },
+    [loadWorkflow, setShowQuickstart]
+  );
+
+  const handleNewProject = useCallback(() => {
+    clearWorkflow();
+    setShowProjectList(false);
+    setShowQuickstart(true);
+  }, [clearWorkflow, setShowQuickstart]);
+  // === LIKELYFAD CUSTOM END ===
 
   useEffect(() => {
     initializeAutoSave();
@@ -108,6 +169,16 @@ export default function Home() {
             onStartTutorial={handleStartTutorial}
           />
         )}
+        {/* === LIKELYFAD CUSTOM START === (cloud project list) */}
+        <ProjectListModal
+          isOpen={showProjectList}
+          onSelectProject={handleSelectProject}
+          onNewProject={handleNewProject}
+          onClose={() => setShowProjectList(false)}
+          loadingProjectId={loadingProjectId}
+          externalError={projectError}
+        />
+        {/* === LIKELYFAD CUSTOM END === */}
       </div>
     </ReactFlowProvider>
   );
