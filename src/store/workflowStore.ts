@@ -2806,7 +2806,10 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
     if (!workflowId || !workflowName) {
       return false;
     }
-    const isCloudSave = !saveDirectoryPath || saveDirectoryPath === "cloud";
+    const isCloudSave =
+      !saveDirectoryPath ||
+      saveDirectoryPath === "cloud" ||
+      saveDirectoryPath.startsWith("cloud:");
     // Media externalization only receives this path, so the project id rides
     // along in it — that is how the leaf upload/load helpers find the project.
     const effectiveDirectory = isCloudSave

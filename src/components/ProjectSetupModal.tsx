@@ -275,10 +275,20 @@ export function ProjectSetupModal({
       return;
     }
 
+    // === LIKELYFAD CUSTOM START === (cloud projects)
+    // An empty directory means a cloud project: persistence goes to Supabase,
+    // so there is no local path to validate and no folders to create. A path
+    // is still honoured for anyone who wants the old on-disk layout.
     if (!directoryPath.trim()) {
-      setError("Project directory is required");
+      const cloudId =
+        mode === "new"
+          ? generateWorkflowId()
+          : useWorkflowStore.getState().workflowId || generateWorkflowId();
+      setUseExternalImageStorage(externalStorage);
+      onSave(cloudId, name.trim(), `cloud:${cloudId}`);
       return;
     }
+    // === LIKELYFAD CUSTOM END ===
 
     const fullProjectPath = ensureProjectSubfolderPath(directoryPath, name);
 
@@ -476,7 +486,8 @@ export function ProjectSetupModal({
 
             <div>
               <label className="block text-sm text-neutral-400 mb-1">
-                Project Directory
+                Project Directory{" "}
+                <span className="text-neutral-500">(optional)</span>
               </label>
               <div className="flex gap-2">
                 <input
@@ -496,7 +507,9 @@ export function ProjectSetupModal({
                 </button>
               </div>
               <p className="text-xs text-neutral-400 mt-1">
-                Workflow files and images will be saved here. Subfolders for inputs and generations will be auto-created.
+                Leave blank to save this project to the cloud. If you set a path,
+                workflow files and images are written there instead, and
+                subfolders for inputs and generations are auto-created.
               </p>
             </div>
 
