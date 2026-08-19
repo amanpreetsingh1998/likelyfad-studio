@@ -1,5 +1,24 @@
 # Modified Upstream Files Registry
 
+> **Status — this file is a plan, not a record.**
+>
+> Most entries below were written against a different working tree and were
+> never committed here. Verify against the source before trusting any entry.
+>
+> **Applied:** 1 (saveToFile + initializeAutoSave), 2 (mediaStorage routing),
+> 3 (ProjectSetupModal), 4 (page.tsx / ProjectListModal), 5 (Header),
+> 7, 8, 9, 17c, 20, 21, and the templates path.
+>
+> **Still outstanding:** 6 (WorkflowCanvas — unnecessary, ProjectSetupModal
+> now emits `cloud:<id>` directly), 10–14 (executors uploading base64 to
+> Storage and returning signed URLs), 15–16 (providers fetching HTTP URL
+> image inputs), 17/17b (cost display), 22 (fal async video), and wiring
+> `costEvents.ts` — it still has no importer, so nothing writes `cost_events`.
+>
+> Cloud mode is keyed off `saveDirectoryPath`: empty, `"cloud"`, or
+> `"cloud:<projectId>"` all mean Supabase. Anything else is an on-disk save.
+
+
 Every upstream file edited by Likelyfad Studio is listed here. All changes are wrapped in `// === LIKELYFAD CUSTOM START/END ===` markers for easy identification during upstream sync.
 
 ## Files Modified
