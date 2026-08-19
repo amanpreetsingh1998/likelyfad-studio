@@ -1,0 +1,196 @@
+-- ===========================================================================
+-- 0001_auth_rls.sql — Google OAuth + per-user isolation
+--
+-- Run in the Supabase dashboard: SQL Editor → New query → paste → Run.
+-- Written to be safe to run more than once.
+--
+-- After this runs, your existing rows have user_id = NULL and are therefore
+-- invisible to everyone (RLS matches on auth.uid() = user_id). That is
+-- deliberate: `node scripts/claim-default-data.mjs --email you@example.com`
+-- assigns them to your account and moves the storage objects. Until then the
+-- data is untouched, just not selectable through the anon/authenticated roles.
+-- ===========================================================================
+
+begin;
+
+-- ---------------------------------------------------------------------------
+-- 1. Owner columns
+--
+-- projects.user_id and media.user_id are `text` today with every row set to
+-- the literal 'default'. Convert to uuid, mapping that placeholder to NULL.
+-- The DO guards make the conversion a no-op on a second run.
+-- ---------------------------------------------------------------------------
+
+do $$
+begin
+  if (select data_type from information_schema.columns
+      where table_schema = 'public' and table_name = 'projects'
+        and column_name = 'user_id') = 'text'
+  then
+    alter table public.projects
+      alter column user_id type uuid using nullif(user_id, 'default')::uuid;
+  end if;
+end $$;
+
+do $$
+begin
+  if (select data_type from information_schema.columns
+      where table_schema = 'public' and table_name = 'media'
+        and column_name = 'user_id') = 'text'
+  then
+    alter table public.media
+      alter column user_id type uuid using nullif(user_id, 'default')::uuid;
+  end if;
+end $$;
+
+-- templates and cost_events have no owner column at all yet.
+alter table public.templates   add column if not exists user_id uuid;
+alter table public.cost_events add column if not exists user_id uuid;
+
+-- ---------------------------------------------------------------------------
+-- 2. Foreign keys — deleting an account takes its data with it.
+-- ---------------------------------------------------------------------------
+
+do $$
+declare
+  t text;
+begin
+  foreach t in array array['projects', 'media', 'templates', 'cost_events'] loop
+    if not exists (
+      select 1 from pg_constraint
+      where conname = t || '_user_id_fkey'
+        and conrelid = ('public.' || t)::regclass
+    ) then
+      execute format(
+        'alter table public.%I add constraint %I
+           foreign key (user_id) references auth.users(id) on delete cascade',
+        t, t || '_user_id_fkey'
+      );
+    end if;
+  end loop;
+end $$;
+
+-- ---------------------------------------------------------------------------
+-- 3. Indexes — every RLS policy below filters on user_id, so each of these
+--    backs a predicate that now runs on every single query.
+-- ---------------------------------------------------------------------------
+
+create index if not exists projects_user_id_idx    on public.projects(user_id);
+create index if not exists media_user_id_idx       on public.media(user_id);
+create index if not exists templates_user_id_idx   on public.templates(user_id);
+create index if not exists cost_events_user_id_idx on public.cost_events(user_id);
+
+-- ---------------------------------------------------------------------------
+-- 4. Row level security
+--
+-- projects / media / cost_events: strictly private to the owner.
+-- templates: readable by any signed-in user (it is a shared library), but only
+--            the owner may modify their own rows.
+--
+-- The service-role key still bypasses all of this by design — that is what the
+-- claim script uses, and why no route may serve a user request with it.
+-- ---------------------------------------------------------------------------
+
+alter table public.projects    enable row level security;
+alter table public.media       enable row level security;
+alter table public.templates   enable row level security;
+alter table public.cost_events enable row level security;
+
+-- Private tables: one policy set each, generated to keep them identical.
+do $$
+declare
+  t text;
+begin
+  foreach t in array array['projects', 'media', 'cost_events'] loop
+    execute format('drop policy if exists %I on public.%I', t || '_select_own', t);
+    execute format('drop policy if exists %I on public.%I', t || '_insert_own', t);
+    execute format('drop policy if exists %I on public.%I', t || '_update_own', t);
+    execute format('drop policy if exists %I on public.%I', t || '_delete_own', t);
+
+    execute format(
+      'create policy %I on public.%I for select to authenticated
+         using (auth.uid() = user_id)', t || '_select_own', t);
+    execute format(
+      'create policy %I on public.%I for insert to authenticated
+         with check (auth.uid() = user_id)', t || '_insert_own', t);
+    execute format(
+      'create policy %I on public.%I for update to authenticated
+         using (auth.uid() = user_id) with check (auth.uid() = user_id)',
+      t || '_update_own', t);
+    execute format(
+      'create policy %I on public.%I for delete to authenticated
+         using (auth.uid() = user_id)', t || '_delete_own', t);
+  end loop;
+end $$;
+
+-- Templates: shared read, owned write.
+drop policy if exists templates_select_all on public.templates;
+drop policy if exists templates_insert_own on public.templates;
+drop policy if exists templates_update_own on public.templates;
+drop policy if exists templates_delete_own on public.templates;
+
+create policy templates_select_all on public.templates
+  for select to authenticated using (true);
+create policy templates_insert_own on public.templates
+  for insert to authenticated with check (auth.uid() = user_id);
+create policy templates_update_own on public.templates
+  for update to authenticated using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+create policy templates_delete_own on public.templates
+  for delete to authenticated using (auth.uid() = user_id);
+
+commit;
+
+-- ===========================================================================
+-- 5. Storage
+--
+-- Object keys are <ownerId>/<projectId>/<folder>/<file>, so the first path
+-- segment is the owner. storage.foldername(name) splits the key; [1] is that
+-- segment. This is why src/lib/likelyfad/storagePaths.ts must be the only
+-- place that builds these keys — a wrong prefix here is a 403, not a typo.
+--
+-- Run separately from the transaction above: on some projects storage.objects
+-- is owned by a role your SQL Editor session cannot alter inside a
+-- transaction. If these statements error with "must be owner of table
+-- objects", create the same four policies from
+-- Dashboard → Storage → project-media → Policies instead.
+-- ===========================================================================
+
+alter table storage.objects enable row level security;
+
+drop policy if exists project_media_select_own on storage.objects;
+drop policy if exists project_media_insert_own on storage.objects;
+drop policy if exists project_media_update_own on storage.objects;
+drop policy if exists project_media_delete_own on storage.objects;
+
+create policy project_media_select_own on storage.objects
+  for select to authenticated
+  using (
+    bucket_id = 'project-media'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+create policy project_media_insert_own on storage.objects
+  for insert to authenticated
+  with check (
+    bucket_id = 'project-media'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+create policy project_media_update_own on storage.objects
+  for update to authenticated
+  using (
+    bucket_id = 'project-media'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  )
+  with check (
+    bucket_id = 'project-media'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+create policy project_media_delete_own on storage.objects
+  for delete to authenticated
+  using (
+    bucket_id = 'project-media'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );

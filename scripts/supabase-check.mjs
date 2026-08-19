@@ -218,12 +218,21 @@ if (DO_WRITE) {
 
 if (DO_APP) {
   head("7. App routes");
+  // These routes require a session. This script holds no cookies, so a 401 is
+  // the correct answer and proves auth is wired — not a failure. Anything that
+  // still answers 200 here would mean the route is not enforcing sign-in.
+  let sawUnauthorized = false;
   const check = async (label, url, init) => {
     try {
       const r = await fetch(url, init);
       const body = await r.text();
       let parsed = null;
       try { parsed = JSON.parse(body); } catch {}
+      if (r.status === 401) {
+        sawUnauthorized = true;
+        ok(`${label} → 401 (auth enforced, as expected without a session)`);
+        return null;
+      }
       if (r.ok && !parsed?.error) ok(`${label} → ${r.status}`);
       else bad(`${label} → ${r.status} ${body.slice(0, 160)}`);
       return parsed;
@@ -266,6 +275,13 @@ if (DO_APP) {
     `${APP_URL}/api/likelyfad/projects/${id}`,
     { method: "DELETE" }
   );
+
+  if (sawUnauthorized) {
+    console.log(
+      "\n        Routes are enforcing sign-in. To exercise them as a real user," +
+      "\n        use the app in a browser — this script cannot hold a session."
+    );
+  }
 }
 
 // ─── summary ────────────────────────────────────────────────────────
