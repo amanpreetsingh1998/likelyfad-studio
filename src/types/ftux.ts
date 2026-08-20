@@ -4,7 +4,7 @@
  * Type definitions for the onboarding modal flow.
  */
 
-export type FTUXStep = 1 | 2 | 3 | 4;
+export type FTUXStep = 1 | 2 | 3;
 
 export interface FTUXModalProps {
   onComplete: () => void;

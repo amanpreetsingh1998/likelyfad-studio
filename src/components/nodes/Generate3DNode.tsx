@@ -4,7 +4,7 @@ import React, { useCallback, useState, useEffect, useMemo } from "react";
 import { Handle, Position, NodeProps, Node, useReactFlow } from "@xyflow/react";
 import { BaseNode } from "./BaseNode";
 import { ModelParameters } from "./ModelParameters";
-import { useWorkflowStore, useProviderApiKeys } from "@/store/workflowStore";
+import { useWorkflowStore } from "@/store/workflowStore";
 import { Generate3DNodeData, ProviderType, SelectedModel, ModelInputDef } from "@/types";
 import { ProviderModel, ModelCapability } from "@/lib/providers/types";
 import { ModelSearchDialog } from "@/components/modals/ModelSearchDialog";
@@ -27,7 +27,6 @@ type Generate3DNodeType = Node<Generate3DNodeData, "generate3d">;
 export function Generate3DNode({ id, data, selected }: NodeProps<Generate3DNodeType>) {
   const nodeData = data;
   const updateNodeData = useWorkflowStore((state) => state.updateNodeData);
-  const { replicateApiKey, falApiKey, kieApiKey } = useProviderApiKeys();
   const [isBrowseDialogOpen, setIsBrowseDialogOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<"primary" | "fallback">("primary");
 

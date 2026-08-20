@@ -3,7 +3,7 @@
 import { useMemo, useState, useCallback, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Node } from "@xyflow/react";
-import { useWorkflowStore, saveNanoBananaDefaults, useProviderApiKeys } from "@/store/workflowStore";
+import { useWorkflowStore, saveNanoBananaDefaults } from "@/store/workflowStore";
 import { NodeType, NanoBananaNodeData, LLMGenerateNodeData, GenerateVideoNodeData, Generate3DNodeData, GenerateAudioNodeData, EaseCurveNodeData, ConditionalSwitchNodeData, AspectRatio, Resolution, ProviderType, SelectedModel, LLMProvider, LLMModelType, MatchMode, ConditionalSwitchRule, GEMINI_IMAGE_MODELS } from "@/types";
 import { ProviderModel, ModelCapability } from "@/lib/providers/types";
 import { toSelectedModel } from "@/lib/providers/selectedModel";
@@ -14,6 +14,7 @@ import { EASING_PRESETS, getEasingBezier } from "@/lib/easing-presets";
 import { getAllEasingNames, getEasingFunction } from "@/lib/easing-functions";
 import { getModelPageUrl, getProviderDisplayName } from "@/utils/providerUrls";
 import { useInlineParameters } from "@/hooks/useInlineParameters";
+import { useAvailableProviders } from "@/store/providerAvailabilityStore";
 
 // List of node types that have configurable parameters
 const CONFIGURABLE_NODE_TYPES: NodeType[] = [
@@ -192,7 +193,7 @@ function GenerateImageControls({ node }: { node: Node }) {
   const updateNodeData = useWorkflowStore((state) => state.updateNodeData);
   const regenerateNode = useWorkflowStore((state) => state.regenerateNode);
   const isRunning = useWorkflowStore((state) => state.isRunning);
-  const { replicateApiKey, kieApiKey, openaiApiKey, replicateEnabled, kieEnabled, openaiEnabled } = useProviderApiKeys();
+  const availableProviders = useAvailableProviders();
   const [isBrowseDialogOpen, setIsBrowseDialogOpen] = useState(false);
 
   const currentProvider: ProviderType = nodeData.selectedModel?.provider || "gemini";
@@ -200,19 +201,14 @@ function GenerateImageControls({ node }: { node: Node }) {
   // Get enabled providers
   const enabledProviders = useMemo(() => {
     const providers: { id: ProviderType; name: string }[] = [];
-    providers.push({ id: "gemini", name: "Gemini" });
-    providers.push({ id: "fal", name: "fal.ai" });
-    if (replicateEnabled && replicateApiKey) {
-      providers.push({ id: "replicate", name: "Replicate" });
-    }
-    if (kieEnabled && kieApiKey) {
-      providers.push({ id: "kie", name: "Kie.ai" });
-    }
-    if (openaiEnabled && openaiApiKey) {
-      providers.push({ id: "openai", name: "OpenAI" });
-    }
+    // A provider is offered when the server holds a key for it.
+    if (availableProviders.gemini) providers.push({ id: "gemini", name: "Gemini" });
+    if (availableProviders.fal) providers.push({ id: "fal", name: "fal.ai" });
+    if (availableProviders.replicate) providers.push({ id: "replicate", name: "Replicate" });
+    if (availableProviders.kie) providers.push({ id: "kie", name: "Kie.ai" });
+    if (availableProviders.openai) providers.push({ id: "openai", name: "OpenAI" });
     return providers;
-  }, [replicateEnabled, replicateApiKey, kieEnabled, kieApiKey, openaiEnabled, openaiApiKey]);
+  }, [availableProviders]);
 
   const handleAspectRatioChange = useCallback(
     (e: React.ChangeEvent<HTMLSelectElement>) => {

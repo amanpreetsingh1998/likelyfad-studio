@@ -3,7 +3,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { ProviderType, ModelInputDef } from "@/types";
 import { ModelParameter } from "@/lib/providers/types";
-import { useProviderApiKeys } from "@/store/workflowStore";
 import { deduplicatedFetch } from "@/utils/deduplicatedFetch";
 
 // localStorage cache for model schemas (persists across dev server restarts)
@@ -85,7 +84,6 @@ function ModelParametersInner({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Use stable selector for API keys to prevent unnecessary re-fetches
-  const { replicateApiKey, falApiKey, kieApiKey, wavespeedApiKey } = useProviderApiKeys();
 
   // Fetch schema when modelId changes
   useEffect(() => {
@@ -117,24 +115,9 @@ function ModelParametersInner({
       setError(null);
 
       try {
-        const headers: HeadersInit = {};
-        if (replicateApiKey) {
-          headers["X-Replicate-Key"] = replicateApiKey;
-        }
-        if (falApiKey) {
-          headers["X-Fal-Key"] = falApiKey;
-        }
-        if (kieApiKey) {
-          headers["X-Kie-Key"] = kieApiKey;
-        }
-        if (wavespeedApiKey) {
-          headers["X-WaveSpeed-Key"] = wavespeedApiKey;
-        }
-
         const encodedModelId = encodeURIComponent(modelId);
         const response = await deduplicatedFetch(
-          `/api/models/${encodedModelId}?provider=${provider}`,
-          { headers }
+          `/api/models/${encodedModelId}?provider=${provider}`
         );
 
         if (!response.ok) {
@@ -173,7 +156,7 @@ function ModelParametersInner({
     return () => {
       cancelled = true;
     };
-  }, [modelId, provider, replicateApiKey, falApiKey, kieApiKey, wavespeedApiKey, onInputsLoaded]);
+  }, [modelId, provider, onInputsLoaded]);
 
   // Pre-populate schema defaults into parameters
   useEffect(() => {

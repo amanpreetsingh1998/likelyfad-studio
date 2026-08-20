@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { ReactFlowProvider } from "@xyflow/react";
 import { ModelSearchDialog } from "@/components/modals/ModelSearchDialog";
-import { ProviderSettings } from "@/types";
 import { ProviderModel } from "@/lib/providers/types";
 
 // Mock deduplicatedFetch to pass through to global fetch (avoids caching issues in tests)
@@ -18,6 +17,20 @@ const mockDecrementModalCount = vi.fn();
 const mockTrackModelUsage = vi.fn();
 const mockUseWorkflowStore = vi.fn();
 
+// Keys are server-side now; the pickers ask which providers the deployment has.
+vi.mock("@/store/providerAvailabilityStore", () => ({
+  useAvailableProviders: () => ({
+    gemini: true,
+    openai: false,
+    anthropic: false,
+    replicate: false,
+    fal: true,
+    kie: false,
+    wavespeed: false,
+    loaded: true,
+  }),
+}));
+
 vi.mock("@/store/workflowStore", () => ({
   useWorkflowStore: (selector?: (state: unknown) => unknown) => {
     if (selector) {
@@ -25,14 +38,6 @@ vi.mock("@/store/workflowStore", () => ({
     }
     return mockUseWorkflowStore((s: unknown) => s);
   },
-  useProviderApiKeys: () => ({
-    replicateApiKey: "test-replicate-key",
-    falApiKey: "test-fal-key",
-    kieApiKey: null,
-    wavespeedApiKey: null,
-    replicateEnabled: true,
-    kieEnabled: false,
-  }),
 }));
 
 // Mock useReactFlow
@@ -67,17 +72,6 @@ function TestWrapper({ children }: { children: React.ReactNode }) {
 }
 
 // Default provider settings
-const defaultProviderSettings: ProviderSettings = {
-  providers: {
-    gemini: { id: "gemini", name: "Gemini", enabled: true, apiKey: null, apiKeyEnvVar: "GEMINI_API_KEY" },
-    openai: { id: "openai", name: "OpenAI", enabled: false, apiKey: null },
-    replicate: { id: "replicate", name: "Replicate", enabled: true, apiKey: "test-replicate-key" },
-    fal: { id: "fal", name: "fal.ai", enabled: true, apiKey: "test-fal-key" },
-    kie: { id: "kie", name: "Kie.ai", enabled: false, apiKey: null },
-    wavespeed: { id: "wavespeed", name: "WaveSpeed", enabled: false, apiKey: null },
-  },
-};
-
 // Sample models for testing
 const sampleModels: ProviderModel[] = [
   {
@@ -129,7 +123,6 @@ describe("ModelSearchDialog", () => {
     // Default store mock
     mockUseWorkflowStore.mockImplementation((selector) => {
       const state = {
-        providerSettings: defaultProviderSettings,
         addNode: mockAddNode,
         incrementModalCount: mockIncrementModalCount,
         decrementModalCount: mockDecrementModalCount,
@@ -746,8 +739,8 @@ describe("ModelSearchDialog", () => {
     });
   });
 
-  describe("API Headers", () => {
-    it("should include API keys in request headers", async () => {
+  describe("Credentials", () => {
+    it("sends no API key headers — keys are server-side only", async () => {
       render(
         <TestWrapper>
           <ModelSearchDialog isOpen={true} onClose={vi.fn()} />
@@ -756,13 +749,9 @@ describe("ModelSearchDialog", () => {
 
       await waitFor(() => {
         expect(mockFetch).toHaveBeenCalled();
-        const fetchCall = mockFetch.mock.calls[0];
-        const options = fetchCall[1] as RequestInit;
-        expect(options.headers).toEqual({
-          "X-Replicate-Key": "test-replicate-key",
-          "X-Fal-Key": "test-fal-key",
-        });
       });
+
+      expect(JSON.stringify(mockFetch.mock.calls)).not.toMatch(/X-[A-Za-z-]*Key/i);
     });
   });
 });

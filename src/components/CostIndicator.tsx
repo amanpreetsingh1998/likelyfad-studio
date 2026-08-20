@@ -74,7 +74,6 @@ export function CostIndicator() {
         </span>
         {/* The money equivalent, so the credit figure means something without
             hovering. Secondary weight — credits are what actually moves. */}
-        <span className="text-neutral-500">{formatCreditsAsInr(credits)}</span>
         {approximate && (
           <span
             className="text-amber-400/80"

@@ -6,17 +6,6 @@ import type { WorkflowNode } from "@/types";
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
 
-const defaultProviderSettings = {
-  providers: {
-    gemini: { apiKey: "gkey" },
-    replicate: { apiKey: "" },
-    fal: { apiKey: "" },
-    kie: { apiKey: "" },
-    wavespeed: { apiKey: "" },
-    openai: { apiKey: "okey" },
-    anthropic: { apiKey: "" },
-  },
-} as any;
 
 function makeNode(data: Record<string, unknown> = {}): WorkflowNode {
   return {
@@ -56,7 +45,6 @@ function makeCtx(
     getFreshNode: vi.fn().mockReturnValue(node),
     getEdges: vi.fn().mockReturnValue([]),
     getNodes: vi.fn().mockReturnValue([node]),
-    providerSettings: defaultProviderSettings,
     addIncurredCost: vi.fn(),
     addToGlobalHistory: vi.fn(),
     generationsPath: null,

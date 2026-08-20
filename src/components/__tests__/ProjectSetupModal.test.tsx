@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { ProjectSetupModal } from "@/components/ProjectSetupModal";
-import { ProviderSettings } from "@/types";
 
 // Mock the workflow store
 const mockSetUseExternalImageStorage = vi.fn();
@@ -41,28 +40,13 @@ Object.defineProperty(globalThis, "localStorage", {
   configurable: true,
 });
 
-// Default provider settings
-const defaultProviderSettings: ProviderSettings = {
-  providers: {
-    gemini: { id: "gemini", name: "Gemini", enabled: true, apiKey: null, apiKeyEnvVar: "GEMINI_API_KEY" },
-    openai: { id: "openai", name: "OpenAI", enabled: false, apiKey: null },
-    replicate: { id: "replicate", name: "Replicate", enabled: false, apiKey: null },
-    fal: { id: "fal", name: "fal.ai", enabled: false, apiKey: null },
-    kie: { id: "kie", name: "Kie.ai", enabled: false, apiKey: null },
-    wavespeed: { id: "wavespeed", name: "WaveSpeed", enabled: false, apiKey: null },
-  },
-};
-
 // Default store state factory
 const createDefaultState = (overrides = {}) => ({
   workflowName: "",
   workflowId: "",
   saveDirectoryPath: "",
   useExternalImageStorage: true,
-  providerSettings: defaultProviderSettings,
   setUseExternalImageStorage: mockSetUseExternalImageStorage,
-  updateProviderApiKey: mockUpdateProviderApiKey,
-  toggleProvider: mockToggleProvider,
   ...overrides,
 });
 
@@ -135,7 +119,7 @@ describe("ProjectSetupModal", () => {
   });
 
   describe("Tab Navigation", () => {
-    it("should render Project and Providers tabs", () => {
+    it("should render the Project tab", () => {
       render(
         <ProjectSetupModal
           isOpen={true}
@@ -146,7 +130,6 @@ describe("ProjectSetupModal", () => {
       );
 
       expect(screen.getByText("Project")).toBeInTheDocument();
-      expect(screen.getByText("Providers")).toBeInTheDocument();
     });
 
     it("should start on Project tab in new mode", () => {
@@ -161,25 +144,6 @@ describe("ProjectSetupModal", () => {
 
       // Project tab should show project name input
       expect(screen.getByPlaceholderText("my-project")).toBeInTheDocument();
-    });
-
-    it("should switch to Providers tab when clicked", () => {
-      render(
-        <ProjectSetupModal
-          isOpen={true}
-          onClose={vi.fn()}
-          onSave={vi.fn()}
-          mode="new"
-        />
-      );
-
-      fireEvent.click(screen.getByText("Providers"));
-
-      // Should show provider names
-      expect(screen.getByText("Google Gemini")).toBeInTheDocument();
-      expect(screen.getByText("OpenAI")).toBeInTheDocument();
-      expect(screen.getByText("Replicate")).toBeInTheDocument();
-      expect(screen.getByText("fal.ai")).toBeInTheDocument();
     });
   });
 
@@ -944,149 +908,4 @@ describe("ProjectSetupModal", () => {
     });
   });
 
-  describe("Providers Tab", () => {
-    // The default beforeEach already sets up proper mocks for env-status
-
-    it("should render all provider sections", async () => {
-      render(
-        <ProjectSetupModal
-          isOpen={true}
-          onClose={vi.fn()}
-          onSave={vi.fn()}
-          mode="settings"
-        />
-      );
-
-      fireEvent.click(screen.getByText("Providers"));
-
-      await waitFor(() => {
-        expect(screen.getByText("Google Gemini")).toBeInTheDocument();
-        expect(screen.getByText("OpenAI")).toBeInTheDocument();
-        expect(screen.getByText("Replicate")).toBeInTheDocument();
-        expect(screen.getByText("fal.ai")).toBeInTheDocument();
-      });
-    });
-
-    it("should show API key inputs for each provider", async () => {
-      render(
-        <ProjectSetupModal
-          isOpen={true}
-          onClose={vi.fn()}
-          onSave={vi.fn()}
-          mode="settings"
-        />
-      );
-
-      fireEvent.click(screen.getByText("Providers"));
-
-      await waitFor(() => {
-        // Check for placeholder texts
-        expect(screen.getByPlaceholderText("AIza...")).toBeInTheDocument();
-        expect(screen.getByPlaceholderText("sk-...")).toBeInTheDocument();
-        expect(screen.getByPlaceholderText("r8_...")).toBeInTheDocument();
-      });
-    });
-
-    it("should show 'Configured via .env' when provider has env key", async () => {
-      mockFetch.mockImplementation((url: string) => {
-        if (url === "/api/env-status") {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ gemini: true, openai: false, replicate: false, fal: false }),
-          });
-        }
-        return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) });
-      });
-
-      render(
-        <ProjectSetupModal
-          isOpen={true}
-          onClose={vi.fn()}
-          onSave={vi.fn()}
-          mode="settings"
-        />
-      );
-
-      fireEvent.click(screen.getByText("Providers"));
-
-      await waitFor(() => {
-        expect(screen.getByText("Configured via .env")).toBeInTheDocument();
-      });
-    });
-
-    it("should show Override button for env-configured providers", async () => {
-      mockFetch.mockImplementation((url: string) => {
-        if (url === "/api/env-status") {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ gemini: true, openai: false, replicate: false, fal: false }),
-          });
-        }
-        return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) });
-      });
-
-      render(
-        <ProjectSetupModal
-          isOpen={true}
-          onClose={vi.fn()}
-          onSave={vi.fn()}
-          mode="settings"
-        />
-      );
-
-      fireEvent.click(screen.getByText("Providers"));
-
-      await waitFor(() => {
-        expect(screen.getByText("Override")).toBeInTheDocument();
-      });
-    });
-
-    it("should toggle Show/Hide for API key visibility", async () => {
-      render(
-        <ProjectSetupModal
-          isOpen={true}
-          onClose={vi.fn()}
-          onSave={vi.fn()}
-          mode="settings"
-        />
-      );
-
-      fireEvent.click(screen.getByText("Providers"));
-
-      await waitFor(() => {
-        const showButtons = screen.getAllByText("Show");
-        expect(showButtons.length).toBeGreaterThan(0);
-      });
-
-      // Click Show for first provider
-      fireEvent.click(screen.getAllByText("Show")[0]);
-
-      await waitFor(() => {
-        expect(screen.getByText("Hide")).toBeInTheDocument();
-      });
-    });
-
-    it("should call onClose when Save is clicked on Providers tab", async () => {
-      const onClose = vi.fn();
-
-      render(
-        <ProjectSetupModal
-          isOpen={true}
-          onClose={onClose}
-          onSave={vi.fn()}
-          mode="settings"
-        />
-      );
-
-      fireEvent.click(screen.getByText("Providers"));
-
-      await waitFor(() => {
-        expect(screen.getByText("Google Gemini")).toBeInTheDocument();
-      });
-
-      fireEvent.click(screen.getByText("Save"));
-
-      expect(onClose).toHaveBeenCalled();
-    });
-  });
 });

@@ -15,6 +15,20 @@ const mockUpdateNodeData = vi.fn();
 const mockRegenerateNode = vi.fn();
 const mockUseWorkflowStore = vi.fn();
 
+// Keys are server-side now; the pickers ask which providers the deployment has.
+vi.mock("@/store/providerAvailabilityStore", () => ({
+  useAvailableProviders: () => ({
+    gemini: true,
+    openai: false,
+    anthropic: false,
+    replicate: false,
+    fal: true,
+    kie: false,
+    wavespeed: false,
+    loaded: true,
+  }),
+}));
+
 vi.mock("@/store/workflowStore", () => ({
   useWorkflowStore: (selector?: (state: unknown) => unknown) => {
     if (selector) {
@@ -22,14 +36,6 @@ vi.mock("@/store/workflowStore", () => ({
     }
     return mockUseWorkflowStore((s: unknown) => s);
   },
-  useProviderApiKeys: () => ({
-    replicateApiKey: null,
-    falApiKey: null,
-    kieApiKey: null,
-    wavespeedApiKey: null,
-    replicateEnabled: false,
-    kieEnabled: false,
-  }),
 }));
 
 // Mock useReactFlow

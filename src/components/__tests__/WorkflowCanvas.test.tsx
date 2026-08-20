@@ -25,6 +25,20 @@ const mockReactFlowProps = vi.hoisted(() => ({
   current: null as Record<string, unknown> | null,
 }));
 
+// Keys are server-side now; the pickers ask which providers the deployment has.
+vi.mock("@/store/providerAvailabilityStore", () => ({
+  useAvailableProviders: () => ({
+    gemini: true,
+    openai: false,
+    anthropic: false,
+    replicate: false,
+    fal: true,
+    kie: false,
+    wavespeed: false,
+    loaded: true,
+  }),
+}));
+
 vi.mock("@/store/workflowStore", () => ({
   useWorkflowStore: (selector?: (state: unknown) => unknown) => {
     if (selector) {
@@ -144,7 +158,6 @@ const createDefaultState = (overrides = {}) => ({
   pasteNodes: mockPasteNodes,
   clearClipboard: mockClearClipboard,
   clipboard: null,
-  providerSettings: defaultProviderSettings,
   edgeStyle: "angular" as const,
   currentNodeIds: [],
   navigationTarget: null,

@@ -111,21 +111,19 @@ type ModelsResponse = ModelsSuccessResponse | ModelsErrorResponse;
  *
  * Query params:
  *   - search: Optional search query to filter models
- *   - api_key: Alternative to X-API-Key header
  */
 export async function GET(
   request: NextRequest
 ): Promise<NextResponse<ModelsResponse>> {
-  // Get API key from header or query param
-  const apiKey =
-    request.headers.get("X-API-Key") ||
-    request.nextUrl.searchParams.get("api_key");
+  // Server-side key only. The old query-param path also put a credential in
+  // the URL, where it lands in access logs.
+  const apiKey = process.env.REPLICATE_API_KEY;
 
   if (!apiKey) {
     return NextResponse.json<ModelsErrorResponse>(
       {
         success: false,
-        error: "API key required. Provide X-API-Key header or api_key query param.",
+        error: "Replicate is not available on this deployment (REPLICATE_API_KEY is not set).",
       },
       { status: 401 }
     );

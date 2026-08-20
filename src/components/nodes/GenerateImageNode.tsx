@@ -4,7 +4,7 @@ import React, { useCallback, useState, useEffect, useMemo, useRef } from "react"
 import { Handle, Position, NodeProps, Node, useReactFlow } from "@xyflow/react";
 import { BaseNode } from "./BaseNode";
 import { ModelParameters } from "./ModelParameters";
-import { useWorkflowStore, saveNanoBananaDefaults, useProviderApiKeys } from "@/store/workflowStore";
+import { useWorkflowStore, saveNanoBananaDefaults } from "@/store/workflowStore";
 import { deduplicatedFetch } from "@/utils/deduplicatedFetch";
 import { NanoBananaNodeData, AspectRatio, Resolution, MODEL_DISPLAY_NAMES, ProviderType, SelectedModel, ModelInputDef, GEMINI_IMAGE_MODELS, ModelType } from "@/types";
 import { ProviderModel, ModelCapability } from "@/lib/providers/types";
@@ -23,6 +23,7 @@ import { useLoadGenerationById } from "@/hooks/useLoadGenerationById";
 import { useGenerationCarousel } from "@/hooks/useGenerationCarousel";
 import { useErrorToast } from "@/hooks/useErrorToast";
 import { useAutoResizeOnMedia } from "@/hooks/useAutoResizeOnMedia";
+import { useAvailableProviders } from "@/store/providerAvailabilityStore";
 
 /** Reorder items so they read column-first in a row-based CSS grid.
  *  e.g. [1,2,3,4,5,6,7,8] with 2 cols → [1,5,2,6,3,7,4,8] */
@@ -58,7 +59,7 @@ export function GenerateImageNode({ id, data, selected }: NodeProps<NanoBananaNo
   const adaptiveOutputImage = useAdaptiveImageSrc(data.outputImage, id);
   const updateNodeData = useWorkflowStore((state) => state.updateNodeData);
   // Use stable selector for API keys to prevent unnecessary re-fetches
-  const { replicateApiKey, falApiKey, kieApiKey, openaiApiKey, replicateEnabled, kieEnabled, openaiEnabled } = useProviderApiKeys();
+  const availableProviders = useAvailableProviders();
   const [externalModels, setExternalModels] = useState<ProviderModel[]>([]);
   const [isLoadingModels, setIsLoadingModels] = useState(false);
   const [modelsFetchError, setModelsFetchError] = useState<string | null>(null);
@@ -87,24 +88,14 @@ export function GenerateImageNode({ id, data, selected }: NodeProps<NanoBananaNo
   // Get enabled providers
   const enabledProviders = useMemo(() => {
     const providers: { id: ProviderType; name: string }[] = [];
-    // Gemini is always available
-    providers.push({ id: "gemini", name: "Gemini" });
-    // fal.ai is always available (works without key but rate limited)
-    providers.push({ id: "fal", name: "fal.ai" });
-    // Add Replicate if configured
-    if (replicateEnabled && replicateApiKey) {
-      providers.push({ id: "replicate", name: "Replicate" });
-    }
-    // Add Kie.ai if configured
-    if (kieEnabled && kieApiKey) {
-      providers.push({ id: "kie", name: "Kie.ai" });
-    }
-    // Add OpenAI if configured
-    if (openaiEnabled && openaiApiKey) {
-      providers.push({ id: "openai", name: "OpenAI" });
-    }
+    // A provider is offered when the server holds a key for it.
+    if (availableProviders.gemini) providers.push({ id: "gemini", name: "Gemini" });
+    if (availableProviders.fal) providers.push({ id: "fal", name: "fal.ai" });
+    if (availableProviders.replicate) providers.push({ id: "replicate", name: "Replicate" });
+    if (availableProviders.kie) providers.push({ id: "kie", name: "Kie.ai" });
+    if (availableProviders.openai) providers.push({ id: "openai", name: "OpenAI" });
     return providers;
-  }, [replicateEnabled, replicateApiKey, kieEnabled, kieApiKey, openaiEnabled, openaiApiKey]);
+  }, [availableProviders]);
 
   // Migrate legacy data: derive selectedModel from model field if missing
   useEffect(() => {
@@ -131,20 +122,7 @@ export function GenerateImageNode({ id, data, selected }: NodeProps<NanoBananaNo
     setModelsFetchError(null);
     try {
       const capabilities = IMAGE_CAPABILITIES.join(",");
-      const headers: HeadersInit = {};
-      if (replicateApiKey) {
-        headers["X-Replicate-Key"] = replicateApiKey;
-      }
-      if (falApiKey) {
-        headers["X-Fal-Key"] = falApiKey;
-      }
-      if (kieApiKey) {
-        headers["X-Kie-Key"] = kieApiKey;
-      }
-      if (openaiApiKey) {
-        headers["X-OpenAI-API-Key"] = openaiApiKey;
-      }
-      const response = await deduplicatedFetch(`/api/models?provider=${currentProvider}&capabilities=${capabilities}`, { headers });
+      const response = await deduplicatedFetch(`/api/models?provider=${currentProvider}&capabilities=${capabilities}`);
       if (response.ok) {
         const data = await response.json();
         setExternalModels(data.models || []);
@@ -166,7 +144,7 @@ export function GenerateImageNode({ id, data, selected }: NodeProps<NanoBananaNo
     } finally {
       setIsLoadingModels(false);
     }
-  }, [currentProvider, replicateApiKey, falApiKey, kieApiKey, openaiApiKey]);
+  }, [currentProvider]);
 
   useEffect(() => {
     fetchModels();

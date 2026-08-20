@@ -3,7 +3,7 @@ import {
   STORAGE_KEY,
   COST_DATA_STORAGE_KEY,
   GENERATE_IMAGE_DEFAULTS_KEY,
-  PROVIDER_SETTINGS_KEY,
+  LEGACY_PROVIDER_SETTINGS_KEY,
   NODE_DEFAULTS_KEY,
   CANVAS_NAVIGATION_KEY,
   loadSaveConfigs,
@@ -12,9 +12,7 @@ import {
   saveWorkflowCostData,
   loadGenerateImageDefaults,
   saveGenerateImageDefaults,
-  getProviderSettings,
-  saveProviderSettings,
-  defaultProviderSettings,
+  purgeLegacyProviderSettings,
   generateWorkflowId,
   loadNodeDefaults,
   saveNodeDefaults,
@@ -228,52 +226,21 @@ describe("localStorage utilities", () => {
     });
   });
 
-  describe("getProviderSettings", () => {
-    it("returns default settings when localStorage is empty", () => {
-      const result = getProviderSettings();
-      expect(result).toEqual(defaultProviderSettings);
-    });
-
-    it("merges with defaults for new providers", () => {
-      // Simulate old settings missing a new provider
-      const oldSettings = {
-        providers: {
-          gemini: { id: "gemini", name: "Google Gemini", enabled: true, apiKey: "test-key" },
-        },
-      };
+  describe("purgeLegacyProviderSettings", () => {
+    it("removes API keys left behind by the old per-user settings", () => {
       localStorageMock.setItem(
-        PROVIDER_SETTINGS_KEY,
-        JSON.stringify(oldSettings)
+        LEGACY_PROVIDER_SETTINGS_KEY,
+        JSON.stringify({ providers: { gemini: { apiKey: "sk-leftover" } } })
       );
 
-      const result = getProviderSettings();
-      // Should have the stored gemini settings
-      expect(result.providers.gemini.apiKey).toBe("test-key");
-      // Should also have the default providers that were missing
-      expect(result.providers.replicate).toBeDefined();
-      expect(result.providers.fal).toBeDefined();
+      purgeLegacyProviderSettings();
+
+      expect(localStorageMock.getItem(LEGACY_PROVIDER_SETTINGS_KEY)).toBeNull();
     });
 
-    it("returns default on invalid JSON", () => {
-      localStorageMock.setItem(PROVIDER_SETTINGS_KEY, "invalid");
-
-      const result = getProviderSettings();
-      expect(result).toEqual(defaultProviderSettings);
-    });
-  });
-
-  describe("saveProviderSettings", () => {
-    it("stores provider settings", () => {
-      const settings = {
-        providers: {
-          gemini: { id: "gemini", name: "Gemini", enabled: true, apiKey: "key123" },
-        },
-      };
-
-      saveProviderSettings(settings as any);
-
-      const stored = JSON.parse(localStorageMock.getItem(PROVIDER_SETTINGS_KEY)!);
-      expect(stored).toEqual(settings);
+    it("is a no-op when there is nothing to purge", () => {
+      expect(() => purgeLegacyProviderSettings()).not.toThrow();
+      expect(localStorageMock.getItem(LEGACY_PROVIDER_SETTINGS_KEY)).toBeNull();
     });
   });
 

@@ -4,7 +4,6 @@ import { useState } from "react";
 import { FTUXModalProps, FTUXStep } from "@/types/ftux";
 import { setFTUXCompleted } from "@/store/utils/localStorage";
 import { FTUXWelcomeStep } from "./FTUXWelcomeStep";
-import { FTUXApiKeysStep } from "./FTUXApiKeysStep";
 import { FTUXModelDefaultsStep } from "./FTUXModelDefaultsStep";
 import { FTUXReadyStep } from "./FTUXReadyStep";
 
@@ -13,7 +12,7 @@ export function FTUXModal({ onComplete, onStartTutorial }: FTUXModalProps) {
   const [showSkipConfirm, setShowSkipConfirm] = useState(false);
 
   const handleNext = () => {
-    if (currentStep === 4) {
+    if (currentStep === 3) {
       // Last step - user chose "Skip Tutorial"
       setFTUXCompleted(true);
       onComplete();
@@ -43,10 +42,8 @@ export function FTUXModal({ onComplete, onStartTutorial }: FTUXModalProps) {
       case 1:
         return "Welcome";
       case 2:
-        return "API Keys";
-      case 3:
         return "Model Defaults";
-      case 4:
+      case 3:
         return "Ready";
       default:
         return "";
@@ -54,7 +51,7 @@ export function FTUXModal({ onComplete, onStartTutorial }: FTUXModalProps) {
   };
 
   const getButtonText = () => {
-    if (currentStep === 4) return "Get Started";
+    if (currentStep === 3) return "Get Started";
     return "Next";
   };
 
@@ -63,9 +60,9 @@ export function FTUXModal({ onComplete, onStartTutorial }: FTUXModalProps) {
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60"
       onWheelCapture={(e) => e.stopPropagation()}
     >
-      <div className={`relative bg-neutral-800 rounded-xl w-full ${currentStep === 4 ? 'max-w-[420px]' : 'max-w-[640px]'} mx-4 border border-neutral-700 shadow-2xl overflow-clip flex flex-col ${currentStep === 4 ? '' : 'max-h-[80vh]'}`}>
+      <div className={`relative bg-neutral-800 rounded-xl w-full ${currentStep === 3 ? 'max-w-[420px]' : 'max-w-[640px]'} mx-4 border border-neutral-700 shadow-2xl overflow-clip flex flex-col ${currentStep === 3 ? '' : 'max-h-[80vh]'}`}>
         {/* Header */}
-        {currentStep !== 4 && (
+        {currentStep !== 3 && (
           <div className="px-8 pt-8 pb-4 border-b border-neutral-700/50 shrink-0">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -98,7 +95,7 @@ export function FTUXModal({ onComplete, onStartTutorial }: FTUXModalProps) {
 
             {/* Step indicators */}
             <div className="flex gap-2 mt-4">
-              {([1, 2, 3, 4] as const).map((step) => (
+              {([1, 2, 3] as const).map((step) => (
                 <div
                   key={step}
                   className={`h-1 flex-1 rounded-full transition-colors ${
@@ -113,9 +110,8 @@ export function FTUXModal({ onComplete, onStartTutorial }: FTUXModalProps) {
         {/* Content area */}
         <div className="flex-1 min-h-0 overflow-y-auto">
           {currentStep === 1 && <FTUXWelcomeStep />}
-          {currentStep === 2 && <FTUXApiKeysStep />}
-          {currentStep === 3 && <FTUXModelDefaultsStep />}
-          {currentStep === 4 && (
+          {currentStep === 2 && <FTUXModelDefaultsStep />}
+          {currentStep === 3 && (
             <FTUXReadyStep
               onStartTutorial={handleStartTutorial}
               onComplete={handleSkip}
@@ -124,7 +120,7 @@ export function FTUXModal({ onComplete, onStartTutorial }: FTUXModalProps) {
         </div>
 
         {/* Footer */}
-        {currentStep !== 4 && (
+        {currentStep !== 3 && (
           <div className="flex justify-between gap-2 px-8 py-5 border-t border-neutral-700/50 shrink-0">
             <button
               type="button"

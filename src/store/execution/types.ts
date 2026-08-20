@@ -9,7 +9,6 @@ import type {
   WorkflowNode,
   WorkflowEdge,
   WorkflowNodeData,
-  ProviderSettings,
   ImageHistoryItem,
 } from "@/types";
 import type { ConnectedInputs } from "@/store/utils/connectedInputs";
@@ -24,7 +23,6 @@ import type { ConnectedInputs } from "@/store/utils/connectedInputs";
  * - `getEdges`: Returns current edges from the store.
  * - `getNodes`: Returns current nodes from the store.
  * - `signal`: AbortSignal for cancellable fetch calls (only present in executeWorkflow).
- * - `providerSettings`: API key settings for providers.
  * - `addIncurredCost`: Tracks cost for billing.
  * - `addToGlobalHistory`: Adds image to the global generation history.
  * - `generationsPath`: Path for auto-saving generations (null if not configured).
@@ -40,7 +38,6 @@ export interface NodeExecutionContext {
   getEdges: () => WorkflowEdge[];
   getNodes: () => WorkflowNode[];
   signal?: AbortSignal;
-  providerSettings: ProviderSettings;
   addIncurredCost: (cost: number) => void;
   addToGlobalHistory: (item: Omit<ImageHistoryItem, "id">) => void;
   generationsPath: string | null;

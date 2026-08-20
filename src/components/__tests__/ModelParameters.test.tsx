@@ -11,13 +11,18 @@ vi.mock("@/utils/deduplicatedFetch", () => ({
 
 // Mock the workflow store
 const mockUseWorkflowStore = vi.fn();
-const mockUseProviderApiKeys = vi.fn(() => ({
-  replicateApiKey: null as string | null,
-  falApiKey: null as string | null,
-  kieApiKey: null as string | null,
-  wavespeedApiKey: null as string | null,
-  replicateEnabled: false,
-  kieEnabled: false,
+// Keys are server-side now; the pickers ask which providers the deployment has.
+vi.mock("@/store/providerAvailabilityStore", () => ({
+  useAvailableProviders: () => ({
+    gemini: true,
+    openai: false,
+    anthropic: false,
+    replicate: false,
+    fal: true,
+    kie: false,
+    wavespeed: false,
+    loaded: true,
+  }),
 }));
 
 vi.mock("@/store/workflowStore", () => ({
@@ -27,18 +32,10 @@ vi.mock("@/store/workflowStore", () => ({
     }
     return mockUseWorkflowStore((s: unknown) => s);
   },
-  useProviderApiKeys: () => mockUseProviderApiKeys(),
 }));
 
 // Default store state
-const defaultStoreState = {
-  providerSettings: {
-    providers: {
-      replicate: { apiKey: null },
-      fal: { apiKey: null },
-    },
-  },
-};
+const defaultStoreState = {};
 
 // Helper to create mock parameters
 const createMockParameter = (overrides: Partial<ModelParameter> = {}): ModelParameter => ({
@@ -714,17 +711,8 @@ describe("ModelParameters", () => {
     });
   });
 
-  describe("API Key Headers", () => {
-    it("should send Replicate API key header when available", async () => {
-      mockUseProviderApiKeys.mockReturnValue({
-        replicateApiKey: "test-replicate-key",
-        falApiKey: null,
-        kieApiKey: null,
-        wavespeedApiKey: null,
-        replicateEnabled: false,
-        kieEnabled: false,
-      });
-
+  describe("Credentials", () => {
+    it("sends no API key header — keys are server-side only", async () => {
       (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve({ parameters: [] }),
@@ -733,15 +721,13 @@ describe("ModelParameters", () => {
       render(<ModelParameters {...defaultProps} provider="replicate" />);
 
       await waitFor(() => {
-        expect(global.fetch).toHaveBeenCalledWith(
-          expect.any(String),
-          expect.objectContaining({
-            headers: expect.objectContaining({
-              "X-Replicate-Key": "test-replicate-key",
-            }),
-          })
-        );
+        expect(global.fetch).toHaveBeenCalled();
       });
+
+      const sent = JSON.stringify(
+        (global.fetch as ReturnType<typeof vi.fn>).mock.calls
+      );
+      expect(sent).not.toMatch(/X-[A-Za-z-]*Key/i);
     });
   });
 

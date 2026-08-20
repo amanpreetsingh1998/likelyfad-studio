@@ -1608,7 +1608,7 @@ export async function GET(
       }
     } else if (provider === "replicate") {
       // User-provided key takes precedence over env variable
-      const apiKey = request.headers.get("X-Replicate-Key") || process.env.REPLICATE_API_KEY;
+      const apiKey = process.env.REPLICATE_API_KEY;
       if (!apiKey) {
         return NextResponse.json<SchemaErrorResponse>(
           {
@@ -1624,14 +1624,14 @@ export async function GET(
       result = getKieSchema(decodedModelId);
     } else if (provider === "wavespeed") {
       // WaveSpeed uses dynamic schemas from API, with static fallback
-      const apiKey = request.headers.get("X-WaveSpeed-Key") || process.env.WAVESPEED_API_KEY || null;
+      const apiKey = process.env.WAVESPEED_API_KEY || null;
       result = await fetchWaveSpeedSchema(decodedModelId, apiKey);
     } else if (provider === "openai") {
       // OpenAI uses hardcoded schemas (no schema discovery API for image models)
       result = getOpenAiSchema(decodedModelId);
     } else {
       // User-provided key takes precedence over env variable
-      const apiKey = request.headers.get("X-Fal-Key") || process.env.FAL_API_KEY || null;
+      const apiKey = process.env.FAL_API_KEY || null;
       if (!apiKey) {
         return NextResponse.json<SchemaErrorResponse>(
           {

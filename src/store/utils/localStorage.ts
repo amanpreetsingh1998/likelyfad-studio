@@ -1,8 +1,6 @@
 import {
   WorkflowSaveConfig,
   WorkflowCostData,
-  ProviderSettings,
-  ProviderConfig,
   RecentModel,
   NodeDefaultsConfig,
   GenerateImageNodeDefaults,
@@ -16,7 +14,8 @@ import {
 export const STORAGE_KEY = "likelyfad-studio-workflow-configs";
 export const COST_DATA_STORAGE_KEY = "likelyfad-studio-workflow-costs";
 export const GENERATE_IMAGE_DEFAULTS_KEY = "likelyfad-studio-nanoBanana-defaults";
-export const PROVIDER_SETTINGS_KEY = "likelyfad-studio-provider-settings";
+/** Removed in the server-side-keys change; retained only so it can be purged. */
+export const LEGACY_PROVIDER_SETTINGS_KEY = "likelyfad-studio-provider-settings";
 export const RECENT_MODELS_KEY = "likelyfad-studio-recent-models";
 export const NODE_DEFAULTS_KEY = "likelyfad-studio-node-defaults";
 export const CANVAS_NAVIGATION_KEY = "likelyfad-studio-canvas-navigation";
@@ -42,19 +41,6 @@ const DEFAULT_GENERATE_IMAGE_SETTINGS: GenerateImageDefaults = {
   model: "nano-banana-pro",
   useGoogleSearch: false,
   useImageSearch: false,
-};
-
-// Default provider settings
-export const defaultProviderSettings: ProviderSettings = {
-  providers: {
-    gemini: { id: "gemini", name: "Google Gemini", enabled: true, apiKey: null, apiKeyEnvVar: "GEMINI_API_KEY" },
-    openai: { id: "openai", name: "OpenAI", enabled: true, apiKey: null, apiKeyEnvVar: "OPENAI_API_KEY" },
-    anthropic: { id: "anthropic", name: "Anthropic", enabled: true, apiKey: null, apiKeyEnvVar: "ANTHROPIC_API_KEY" },
-    replicate: { id: "replicate", name: "Replicate", enabled: false, apiKey: null, apiKeyEnvVar: "REPLICATE_API_KEY" },
-    fal: { id: "fal", name: "fal.ai", enabled: false, apiKey: null, apiKeyEnvVar: "FAL_API_KEY" },
-    kie: { id: "kie", name: "Kie.ai", enabled: false, apiKey: null, apiKeyEnvVar: "KIE_API_KEY" },
-    wavespeed: { id: "wavespeed", name: "WaveSpeed", enabled: false, apiKey: null, apiKeyEnvVar: "WAVESPEED_API_KEY" },
-  }
 };
 
 // Workflow configs helpers
@@ -122,35 +108,21 @@ export const saveGenerateImageDefaults = (settings: Partial<GenerateImageDefault
   localStorage.setItem(GENERATE_IMAGE_DEFAULTS_KEY, JSON.stringify(updated));
 };
 
-// Provider settings helpers
-export const getProviderSettings = (): ProviderSettings => {
-  if (typeof window === "undefined") return defaultProviderSettings;
-  const stored = localStorage.getItem(PROVIDER_SETTINGS_KEY);
-  if (stored) {
-    try {
-      const parsed = JSON.parse(stored) as ProviderSettings;
-      // Deep-merge each provider with defaults so new fields/providers added after
-      // the user saved settings are preserved (shallow merge would drop them).
-      const mergedProviders = { ...defaultProviderSettings.providers } as Record<string, ProviderConfig>;
-      for (const [key, value] of Object.entries(parsed.providers)) {
-        if (value && typeof value === "object") {
-          mergedProviders[key] = {
-            ...(defaultProviderSettings.providers as Record<string, ProviderConfig>)[key],
-            ...value,
-          };
-        }
-      }
-      return { providers: mergedProviders };
-    } catch {
-      return defaultProviderSettings;
-    }
-  }
-  return defaultProviderSettings;
-};
-
-export const saveProviderSettings = (settings: ProviderSettings): void => {
+/**
+ * Drop the old per-user API keys from the browser.
+ *
+ * Keys are server-side only now. Anyone who used the app before this change
+ * still has their pasted keys sitting in localStorage, where they are no
+ * longer read but are still readable — by an extension, by anything with a
+ * foothold on the page. Deleting them is the point; it is not housekeeping.
+ */
+export const purgeLegacyProviderSettings = (): void => {
   if (typeof window === "undefined") return;
-  localStorage.setItem(PROVIDER_SETTINGS_KEY, JSON.stringify(settings));
+  try {
+    localStorage.removeItem(LEGACY_PROVIDER_SETTINGS_KEY);
+  } catch {
+    // Private mode or a locked store — nothing to do but leave it.
+  }
 };
 
 // Recent models helpers

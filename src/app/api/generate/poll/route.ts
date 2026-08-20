@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get API key (same pattern as route.ts)
-    const apiKey = request.headers.get("X-Kie-Key") || process.env.KIE_API_KEY;
+    const apiKey = process.env.KIE_API_KEY;
     if (!apiKey) {
       return NextResponse.json<GenerateResponse>(
         { success: false, error: "Kie.ai API key not configured" },

@@ -40,16 +40,6 @@ vi.stubGlobal("Image", MockImage);
 const SOURCE_IMAGE = "data:image/png;base64,source";
 const SPLIT_IMAGES = ["split-0.png", "split-1.png", "split-2.png", "split-3.png"];
 
-const defaultProviderSettings = {
-  providers: {
-    gemini: { apiKey: "" },
-    replicate: { apiKey: "" },
-    fal: { apiKey: "" },
-    kie: { apiKey: "" },
-    wavespeed: { apiKey: "" },
-    openai: { apiKey: "" },
-  },
-} as never;
 
 function makeCells(count: number): SplitGridCell[] {
   return Array.from({ length: count }, (_, i) => ({
@@ -109,7 +99,6 @@ function makeCtx(
     getFreshNode: vi.fn().mockReturnValue(node),
     getEdges: vi.fn().mockReturnValue([]),
     getNodes: vi.fn().mockReturnValue([node]),
-    providerSettings: defaultProviderSettings,
     addIncurredCost: vi.fn(),
     addToGlobalHistory: vi.fn(),
     generationsPath: null,

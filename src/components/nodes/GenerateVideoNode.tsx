@@ -4,7 +4,7 @@ import React, { useCallback, useState, useEffect, useMemo } from "react";
 import { Handle, Position, NodeProps, Node, useReactFlow } from "@xyflow/react";
 import { BaseNode } from "./BaseNode";
 import { ModelParameters } from "./ModelParameters";
-import { useWorkflowStore, useProviderApiKeys } from "@/store/workflowStore";
+import { useWorkflowStore } from "@/store/workflowStore";
 import { deduplicatedFetch } from "@/utils/deduplicatedFetch";
 import { GenerateVideoNodeData, ProviderType, SelectedModel, ModelInputDef } from "@/types";
 import { ProviderModel, ModelCapability } from "@/lib/providers/types";
@@ -24,6 +24,7 @@ import { useLoadGenerationById } from "@/hooks/useLoadGenerationById";
 import { useGenerationCarousel } from "@/hooks/useGenerationCarousel";
 import { useErrorToast } from "@/hooks/useErrorToast";
 import { useAutoResizeOnMedia } from "@/hooks/useAutoResizeOnMedia";
+import { useAvailableProviders } from "@/store/providerAvailabilityStore";
 
 // Video generation capabilities
 const VIDEO_CAPABILITIES: ModelCapability[] = ["text-to-video", "image-to-video", "audio-to-video"];
@@ -53,8 +54,7 @@ type GenerateVideoNodeType = Node<GenerateVideoNodeData, "generateVideo">;
 export function GenerateVideoNode({ id, data, selected }: NodeProps<GenerateVideoNodeType>) {
   const nodeData = data;
   const updateNodeData = useWorkflowStore((state) => state.updateNodeData);
-  // Use stable selector for API keys to prevent unnecessary re-fetches
-  const { geminiApiKey, replicateApiKey, falApiKey, kieApiKey, replicateEnabled, kieEnabled } = useProviderApiKeys();
+  const availableProviders = useAvailableProviders();
   const [externalModels, setExternalModels] = useState<ProviderModel[]>([]);
   const [isLoadingModels, setIsLoadingModels] = useState(false);
   const [modelsFetchError, setModelsFetchError] = useState<string | null>(null);
@@ -85,22 +85,13 @@ export function GenerateVideoNode({ id, data, selected }: NodeProps<GenerateVide
   // Get enabled providers
   const enabledProviders = useMemo(() => {
     const providers: { id: ProviderType; name: string }[] = [];
-    // Gemini available when API key is configured (settings or env var)
-    if (geminiApiKey) {
-      providers.push({ id: "gemini", name: "Gemini" });
-    }
-    // fal.ai is always available (works without key but rate limited)
-    providers.push({ id: "fal", name: "fal.ai" });
-    // Add Replicate if configured
-    if (replicateEnabled && replicateApiKey) {
-      providers.push({ id: "replicate", name: "Replicate" });
-    }
-    // Add Kie.ai if configured
-    if (kieEnabled && kieApiKey) {
-      providers.push({ id: "kie", name: "Kie.ai" });
-    }
+    // A provider is offered when the server holds a key for it.
+    if (availableProviders.gemini) providers.push({ id: "gemini", name: "Gemini" });
+    if (availableProviders.fal) providers.push({ id: "fal", name: "fal.ai" });
+    if (availableProviders.replicate) providers.push({ id: "replicate", name: "Replicate" });
+    if (availableProviders.kie) providers.push({ id: "kie", name: "Kie.ai" });
     return providers;
-  }, [geminiApiKey, replicateEnabled, replicateApiKey, kieEnabled, kieApiKey]);
+  }, [availableProviders]);
 
   // Fetch models from external providers when provider changes
   const fetchModels = useCallback(async () => {
@@ -108,20 +99,7 @@ export function GenerateVideoNode({ id, data, selected }: NodeProps<GenerateVide
     setModelsFetchError(null);
     try {
       const capabilities = VIDEO_CAPABILITIES.join(",");
-      const headers: HeadersInit = {};
-      if (geminiApiKey) {
-        headers["X-Gemini-API-Key"] = geminiApiKey;
-      }
-      if (replicateApiKey) {
-        headers["X-Replicate-Key"] = replicateApiKey;
-      }
-      if (falApiKey) {
-        headers["X-Fal-Key"] = falApiKey;
-      }
-      if (kieApiKey) {
-        headers["X-Kie-Key"] = kieApiKey;
-      }
-      const response = await deduplicatedFetch(`/api/models?provider=${currentProvider}&capabilities=${capabilities}`, { headers });
+      const response = await deduplicatedFetch(`/api/models?provider=${currentProvider}&capabilities=${capabilities}`);
       if (response.ok) {
         const data = await response.json();
         setExternalModels(data.models || []);
@@ -143,7 +121,7 @@ export function GenerateVideoNode({ id, data, selected }: NodeProps<GenerateVide
     } finally {
       setIsLoadingModels(false);
     }
-  }, [currentProvider, geminiApiKey, replicateApiKey, falApiKey, kieApiKey]);
+  }, [currentProvider]);
 
   useEffect(() => {
     fetchModels();

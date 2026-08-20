@@ -53,8 +53,8 @@ interface FetchResultBody {
 
 type Body = SubmitBody | PollBody | FetchResultBody;
 
-function getApiKey(request: NextRequest): string | null {
-  return request.headers.get("X-Fal-API-Key") || process.env.FAL_API_KEY || null;
+function getApiKey(): string | null {
+  return process.env.FAL_API_KEY || null;
 }
 
 export async function POST(request: NextRequest) {
@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: false, error: "Missing action" }, { status: 400 });
   }
 
-  const apiKey = getApiKey(request);
+  const apiKey = getApiKey();
 
   try {
     if (body.action === "submit") {

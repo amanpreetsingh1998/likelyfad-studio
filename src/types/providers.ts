@@ -23,18 +23,6 @@ export interface SelectedModel {
   capabilities?: string[];  // Model capabilities (e.g., "text-to-image", "image-to-3d")
 }
 
-export interface ProviderConfig {
-  id: ProviderType;
-  name: string;
-  enabled: boolean;
-  apiKey: string | null;
-  apiKeyEnvVar?: string; // For providers using environment variables (e.g., Gemini)
-}
-
-export interface ProviderSettings {
-  providers: Record<ProviderType, ProviderConfig>;
-}
-
 // LLM Provider Options
 export type LLMProvider = "google" | "openai" | "anthropic";
 

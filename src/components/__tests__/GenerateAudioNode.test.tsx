@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { GenerateAudioNode } from "@/components/nodes/GenerateAudioNode";
 import { ReactFlowProvider } from "@xyflow/react";
-import { GenerateAudioNodeData, ProviderSettings } from "@/types";
+import { GenerateAudioNodeData } from "@/types";
 
 // Mock deduplicatedFetch to pass through to global fetch (avoids caching issues in tests)
 vi.mock("@/utils/deduplicatedFetch", () => ({
@@ -17,6 +17,20 @@ const mockIncrementModalCount = vi.fn();
 const mockDecrementModalCount = vi.fn();
 const mockUseWorkflowStore = vi.fn();
 
+// Keys are server-side now; the pickers ask which providers the deployment has.
+vi.mock("@/store/providerAvailabilityStore", () => ({
+  useAvailableProviders: () => ({
+    gemini: true,
+    openai: false,
+    anthropic: false,
+    replicate: false,
+    fal: true,
+    kie: false,
+    wavespeed: false,
+    loaded: true,
+  }),
+}));
+
 vi.mock("@/store/workflowStore", () => ({
   useWorkflowStore: (selector?: (state: unknown) => unknown) => {
     if (selector) {
@@ -24,14 +38,6 @@ vi.mock("@/store/workflowStore", () => ({
     }
     return mockUseWorkflowStore((s: unknown) => s);
   },
-  useProviderApiKeys: () => ({
-    replicateApiKey: null,
-    falApiKey: null,
-    kieApiKey: null,
-    wavespeedApiKey: null,
-    replicateEnabled: false,
-    kieEnabled: false,
-  }),
 }));
 
 // Mock useReactFlow
@@ -86,17 +92,6 @@ function TestWrapper({ children }: { children: React.ReactNode }) {
 }
 
 // Default provider settings
-const defaultProviderSettings: ProviderSettings = {
-  providers: {
-    gemini: { id: "gemini", name: "Gemini", enabled: true, apiKey: null, apiKeyEnvVar: "GEMINI_API_KEY" },
-    openai: { id: "openai", name: "OpenAI", enabled: false, apiKey: null },
-    replicate: { id: "replicate", name: "Replicate", enabled: false, apiKey: null },
-    fal: { id: "fal", name: "fal.ai", enabled: true, apiKey: null },
-    kie: { id: "kie", name: "Kie.ai", enabled: false, apiKey: null },
-    wavespeed: { id: "wavespeed", name: "WaveSpeed", enabled: false, apiKey: null },
-  },
-};
-
 describe("GenerateAudioNode", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -111,7 +106,6 @@ describe("GenerateAudioNode", () => {
         regenerateNode: mockRegenerateNode,
         incrementModalCount: mockIncrementModalCount,
         decrementModalCount: mockDecrementModalCount,
-        providerSettings: defaultProviderSettings,
         generationsPath: "/test/generations",
         isRunning: false,
         currentNodeIds: [],

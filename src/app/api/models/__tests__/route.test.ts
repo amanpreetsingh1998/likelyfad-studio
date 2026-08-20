@@ -305,7 +305,7 @@ describe("/api/models route", () => {
       expect(data.providers.fal.cached).toBe(false);
     });
 
-    it("GET: should use API key from header over env var", async () => {
+    it("GET: ignores a client-supplied API key header", async () => {
       process.env.REPLICATE_API_KEY = "env-key";
 
       mockFetch.mockResolvedValueOnce(
@@ -325,11 +325,11 @@ describe("/api/models route", () => {
       const response = await GET(request);
 
       expect(response.status).toBe(200);
-      // Check that fetch was called with header key
+      // The header is not a channel any more — the environment decides.
       expect(mockFetch).toHaveBeenCalledWith(
         expect.stringContaining("api.replicate.com"),
         expect.objectContaining({
-          headers: { Authorization: "Bearer header-key" },
+          headers: { Authorization: "Bearer env-key" },
         })
       );
     });

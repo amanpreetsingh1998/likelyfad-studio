@@ -22,16 +22,6 @@ vi.stubGlobal("URL", {
   revokeObjectURL: vi.fn(),
 });
 
-const defaultProviderSettings = {
-  providers: {
-    gemini: { apiKey: "" },
-    replicate: { apiKey: "" },
-    fal: { apiKey: "" },
-    kie: { apiKey: "" },
-    wavespeed: { apiKey: "" },
-    openai: { apiKey: "" },
-  },
-} as any;
 
 function makeCtx(
   node: WorkflowNode,
@@ -51,7 +41,6 @@ function makeCtx(
     getFreshNode: vi.fn().mockReturnValue(node),
     getEdges: vi.fn().mockReturnValue([]),
     getNodes: vi.fn().mockReturnValue([node]),
-    providerSettings: defaultProviderSettings,
     addIncurredCost: vi.fn(),
     addToGlobalHistory: vi.fn(),
     generationsPath: null,

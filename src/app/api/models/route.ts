@@ -1250,11 +1250,11 @@ export async function GET(
     : null;
 
   // Get API keys from headers, falling back to env variables
-  const replicateKey = request.headers.get("X-Replicate-Key") || process.env.REPLICATE_API_KEY || null;
-  const falKey = request.headers.get("X-Fal-Key") || process.env.FAL_API_KEY || null;
-  const kieKey = request.headers.get("X-Kie-Key") || process.env.KIE_API_KEY || null;
-  const wavespeedKey = request.headers.get("X-WaveSpeed-Key") || process.env.WAVESPEED_API_KEY || null;
-  const openaiKey = request.headers.get("X-OpenAI-API-Key") || process.env.OPENAI_API_KEY || null;
+  const replicateKey = process.env.REPLICATE_API_KEY || null;
+  const falKey = process.env.FAL_API_KEY || null;
+  const kieKey = process.env.KIE_API_KEY || null;
+  const wavespeedKey = process.env.WAVESPEED_API_KEY || null;
+  const openaiKey = process.env.OPENAI_API_KEY || null;
 
   // Build list of all available providers (have keys from env or client headers)
   const availableProviders: string[] = ["gemini"]; // Gemini always available
