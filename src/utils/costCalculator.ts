@@ -1,5 +1,6 @@
 import { ModelType, Resolution, MODEL_DISPLAY_NAMES, NanoBananaNodeData, GenerateVideoNodeData, Generate3DNodeData, WorkflowNode, ProviderType, SelectedModel } from "@/types";
 import { PRICING_OVERRIDES } from "@/lib/likelyfad/pricing-overrides";
+import { getFalPrice, falUsdForRun } from "@/lib/credits/falPricing";
 import type { CustomPrice } from "@/store/modelPricingStore";
 
 // Pricing in USD per image (Gemini API)
@@ -192,7 +193,13 @@ export function calculatePredictedCost(
     unitCost: number | null,
     count: number = 1
   ) {
-    const key = `${provider}:${modelId}`;
+    // Keyed on the unit cost as well as the model, because the same model at
+    // two resolutions is two different prices. Grouping on model alone kept
+    // the first unit cost seen and applied it to every run in the group, so a
+    // workflow with one 4K and one 1K render of the same model reported both
+    // at the 4K rate. `subtotal` was always right; `unitCost` was not, and the
+    // header now derives its credit figure from unitCost.
+    const key = `${provider}:${modelId}:${unitCost ?? "unknown"}`;
     const existing = breakdown.get(key);
     if (existing) {
       existing.count += count;
@@ -260,6 +267,25 @@ export function calculatePredictedCost(
 
     const override = PRICING_OVERRIDES[modelId];
     if (override) return { unitCost: override.amount, unit: "run" };
+
+    // The recorded fal table, keyed by endpoint id.
+    //
+    // Reached mainly by nodes placed before models carried a price: their
+    // stored selectedModel has no `pricing`, so without this they would read
+    // as "unknown" forever, or until the user re-picked the same model. Also
+    // covers the legacy `data.model` path, which never had a selectedModel.
+    const fal = getFalPrice(modelId);
+    if (fal) {
+      const unit = fal.unit.toLowerCase();
+      if (unit === "seconds" || unit === "input seconds") {
+        return perSecondToRun(fal.price);
+      }
+      const perRun = falUsdForRun(modelId, { resolution, seconds });
+      // null means a price we recorded but refuse to bill from ($0, empty
+      // unit, or fal's "$1 / units" placeholder). Fall through so it counts as
+      // unknown rather than being shown as a number we would not charge.
+      if (perRun !== null) return { unitCost: perRun, unit: "run" };
+    }
 
     if (modelPricing?.has(modelId)) {
       const external = modelPricing.get(modelId)!;
