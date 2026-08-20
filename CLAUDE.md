@@ -76,6 +76,13 @@ units. `src/lib/credits/falPricing.ts` does the conversion: megapixels scale
 with resolution, seconds with clip length, `5 seconds`/`video segments` round up
 to whole blocks, `compute seconds` uses `ASSUMED_COMPUTE_SECONDS`.
 
+`/api/providers/fal/models` attaches the recorded price to each model, so the
+picker and `calculatePredictedCost` read the same number the credit gate bills
+from — `calculatePredictedCost` already prefers `ProviderModel.pricing`, so
+setting it there is what makes fal prices show up in the UI at all. That route
+also follows the cursor now (it previously read only the first of ~15 pages,
+hiding ~90% of the catalogue) and caches the walk for 5 minutes.
+
 **Unbillable rows are refused, not guessed.** `$0`, an empty unit, and fal's
 `$1 / units` variable-pricing placeholder (which appears on models that really
 cost a few cents) all return `null`, and the guard answers **409
