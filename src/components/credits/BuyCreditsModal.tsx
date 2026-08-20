@@ -15,6 +15,7 @@
 import { useEffect, useState } from "react";
 import { useCreditStore } from "@/store/creditStore";
 import { formatPackPrice, type CreditPack } from "@/lib/credits/pricing";
+import { CREDIT_VALUE_INR } from "@/lib/credits/rates";
 
 const CHECKOUT_SRC = "https://checkout.razorpay.com/v1/checkout.js";
 
@@ -241,8 +242,11 @@ export function BuyCreditsModal() {
         </div>
 
         <p className="border-t border-neutral-800 px-5 py-3 text-[11px] text-neutral-500">
-          Credits are charged when a run starts and refunded automatically if it
-          fails before reaching the provider.
+          {/* The peg, stated. Without it a balance in credits is a number with
+              no meaning — which is exactly the confusion this line exists to
+              remove. */}
+          1 credit ≈ ₹{CREDIT_VALUE_INR.toFixed(2)}. Your workflow is billed once
+          when the run finishes, for the steps that actually ran.
         </p>
       </div>
     </div>

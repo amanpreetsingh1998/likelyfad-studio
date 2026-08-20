@@ -10,7 +10,7 @@
  */
 
 import { getServiceClient } from "@/lib/supabase/server";
-import { creditCostForRun, type RunCostInput } from "./pricing";
+import type { RunCostInput } from "./pricing";
 
 export class InsufficientCreditsError extends Error {
   readonly required: number;
@@ -39,90 +39,96 @@ export async function getBalance(userId: string): Promise<number> {
   return data?.balance ?? 0;
 }
 
-export type SpendResult = {
-  /** Ledger row id. Hand this to refundSpend() if the run then fails. */
-  transactionId: string;
+/**
+ * Record a node run that has already happened, to be billed at settlement.
+ *
+ * Returns the user's new unsettled total, which the route stamps on the
+ * response so the UI can show a live "this run so far" figure.
+ */
+export async function recordPendingCharge(
+  userId: string,
+  credits: number,
+  cost: RunCostInput
+): Promise<number> {
+  const supabase = getServiceClient();
+  const { data, error } = await supabase.rpc("record_pending_charge", {
+    p_user_id: userId,
+    p_credits: credits,
+    p_kind: cost.kind,
+    p_model_id: cost.modelId ?? null,
+  });
+
+  if (error) throw new Error(`Could not record charge: ${error.message}`);
+  return (data as number) ?? 0;
+}
+
+/** Credits this user has run up but not yet been billed for. */
+export async function getPendingTotal(userId: string): Promise<number> {
+  const supabase = getServiceClient();
+  const { data, error } = await supabase
+    .from("pending_charges")
+    .select("credits")
+    .eq("user_id", userId)
+    .is("settled_at", null);
+
+  if (error) throw new Error(`Could not read pending charges: ${error.message}`);
+  return (data ?? []).reduce((sum, row) => sum + (row.credits as number), 0);
+}
+
+export type SettlementResult = {
+  /** Credits actually debited. */
+  charged: number;
   /** Balance after the debit. */
   balance: number;
-  /** What was charged. */
-  charged: number;
+  /** How many node runs this covered. */
+  runs: number;
+  /** Credits owed that the balance could not cover. Normally 0. */
+  shortfall: number;
 };
 
 /**
- * Debit for a run, atomically.
+ * Bill everything this user has run since their last settlement, in one debit.
  *
- * Charged UP FRONT rather than on success, because the expensive half is the
- * provider call and it happens whether or not we like the result. Async video
- * jobs make this sharper still: /api/generate returns a task id long before
- * any money is spent downstream, so there is no later moment at which we could
- * reliably charge. refundSpend() is the compensating half for runs that never
- * reach the provider at all.
+ * Called when a workflow finishes. Idempotent in the way that matters: it bills
+ * unsettled rows and marks them settled, so calling it twice charges once.
  */
-export async function spendForRun(
+export async function settlePendingCharges(
   userId: string,
-  cost: RunCostInput,
-  reason: string,
-  metadata: Record<string, unknown> = {}
-): Promise<SpendResult> {
-  const charged = creditCostForRun(cost);
+  reason = "Workflow run"
+): Promise<SettlementResult> {
   const supabase = getServiceClient();
-
-  const { data, error } = await supabase.rpc("spend_credits", {
+  const { data, error } = await supabase.rpc("settle_pending_charges", {
     p_user_id: userId,
-    p_amount: charged,
     p_reason: reason,
-    p_metadata: { ...metadata, ...cost },
   });
 
-  if (error) {
-    // The SQL raises this by name when the conditional UPDATE matches nothing.
-    if (error.message.includes("insufficient_credits")) {
-      throw new InsufficientCreditsError(charged, await getBalance(userId));
-    }
-    throw new Error(`Could not charge credits: ${error.message}`);
-  }
+  if (error) throw new Error(`Could not settle run: ${error.message}`);
 
-  // The function RETURNS TABLE, so PostgREST hands back an array of one row.
   const row = Array.isArray(data) ? data[0] : data;
-  if (!row) throw new Error("Could not charge credits: no result from ledger");
+  if (!row) return { charged: 0, balance: 0, runs: 0, shortfall: 0 };
 
   return {
-    transactionId: row.transaction_id as string,
+    charged: row.charged as number,
     balance: row.balance as number,
-    charged,
+    runs: row.runs as number,
+    shortfall: row.shortfall as number,
   };
 }
 
 /**
- * Give back a spend that never became a provider call.
- *
- * Keyed on the spend's own transaction id, so a retried refund is absorbed by
- * the ledger's unique index rather than paying out twice. Never throws: a
- * failed refund must not turn a failed generation into a 500 that hides the
- * original error, so it logs and moves on.
+ * Throw away pending charges for a workflow that never dispatched anything.
+ * Nothing was spent, so there is nothing to bill.
  */
-export async function refundSpend(
-  userId: string,
-  transactionId: string,
-  amount: number,
-  reason: string
-): Promise<void> {
-  try {
-    const supabase = getServiceClient();
-    const { error } = await supabase.rpc("grant_credits", {
-      p_user_id: userId,
-      p_amount: amount,
-      p_kind: "refund",
-      p_reason: reason,
-      p_ref: `refund:${transactionId}`,
-      p_metadata: { refunded_transaction: transactionId },
-    });
-    if (error) {
-      console.error("[credits] refund failed:", error.message, { transactionId });
-    }
-  } catch (err) {
-    console.error("[credits] refund threw:", err);
+export async function discardPendingCharges(userId: string): Promise<number> {
+  const supabase = getServiceClient();
+  const { data, error } = await supabase.rpc("discard_pending_charges", {
+    p_user_id: userId,
+  });
+  if (error) {
+    console.error("[credits] discard failed:", error.message);
+    return 0;
   }
+  return (data as number) ?? 0;
 }
 
 /** Add credits — used by the Razorpay grant path and any admin top-up. */

@@ -1,11 +1,13 @@
 /**
  * The credit gate that wraps a generation route.
  *
- * Written as a wrapper rather than a few lines inside each route because the
- * routes have many early returns — /api/generate alone has a return per
- * provider branch — and a charge that has to be undone on every one of those
- * paths is a bug waiting to happen. Wrapping means the refund is decided once,
- * from the response, no matter which branch produced it.
+ * Charging happens once per WORKFLOW, not once per node — so this wrapper does
+ * not debit. It authenticates, checks the user can afford what they are about
+ * to run, and records a pending charge that /api/credits/settle later bills in
+ * a single transaction.
+ *
+ * Recording server-side rather than letting the browser tally its own total is
+ * the part that matters: the client chooses *when* to settle, never *how much*.
  *
  * Also the place where auth lands on these routes. proxy.ts deliberately lets
  * /api/* through (a redirect would hand fetch() an HTML page instead of a
@@ -16,25 +18,22 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthedContext } from "@/lib/supabase/server";
-import {
-  InsufficientCreditsError,
-  refundSpend,
-  spendForRun,
-} from "./server";
-import type { RunCostInput } from "./pricing";
+import { getBalance, getPendingTotal, recordPendingCharge } from "./server";
+import { creditCostForRun, type RunCostInput } from "./pricing";
 
-/** Sent on every gated response so the UI can update without a refetch. */
+/** Balance minus what this run's workflow already owes. */
 export const BALANCE_HEADER = "X-Credits-Balance";
-export const CHARGED_HEADER = "X-Credits-Charged";
+/** What this node run added to the pending total. */
+export const CHARGED_HEADER = "X-Credits-Pending";
 
 type Handler = (request: NextRequest) => Promise<Response>;
 
 /**
- * Authenticate, charge, run, refund-on-failure.
+ * Authenticate, check affordability, record, run.
  *
- * `costFrom` receives the parsed request body and returns what to charge.
- * It runs on the server against the server's own price table — the body is
- * only consulted for which model was asked for, never for a price.
+ * `costFrom` receives the parsed request body and returns what to charge. It
+ * runs on the server against the server's own rate card — the body is only
+ * consulted for which model was asked for, never for a price.
  */
 export function withCredits(
   costFrom: (body: Record<string, unknown>) => RunCostInput,
@@ -51,7 +50,7 @@ export function withCredits(
 
     // Clone so the handler still gets an unread body. Next's request bodies
     // are one-shot streams; reading here without cloning would leave the
-    // handler's own request.json() throwing on an already-consumed stream.
+    // handler's own request.json() throwing on a consumed stream.
     let body: Record<string, unknown>;
     try {
       body = await request.clone().json();
@@ -63,73 +62,68 @@ export function withCredits(
     }
 
     const cost = costFrom(body);
+    const charge = creditCostForRun(cost);
 
-    let spend;
+    // Affordability is checked against balance MINUS what this workflow has
+    // already run up. Without the pending term a user with 10 credits could
+    // start a 40-node workflow and only discover the problem at settlement,
+    // by which point every provider call is already paid for.
+    let balance: number;
+    let pending: number;
     try {
-      spend = await spendForRun(
-        auth.user.id,
-        cost,
-        `${cost.kind} run`,
-        { route: new URL(request.url).pathname }
-      );
+      [balance, pending] = await Promise.all([
+        getBalance(auth.user.id),
+        getPendingTotal(auth.user.id),
+      ]);
     } catch (err) {
-      if (err instanceof InsufficientCreditsError) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: err.message,
-            code: "insufficient_credits",
-            required: err.required,
-            balance: err.balance,
-          },
-          // 402 Payment Required: the one status that means exactly this. The
-          // client keys its "buy credits" prompt off it.
-          { status: 402 }
-        );
-      }
       const message = err instanceof Error ? err.message : "Unknown error";
-      console.error("[credits] charge failed:", message);
+      console.error("[credits] balance check failed:", message);
       return NextResponse.json(
         { success: false, error: `Credit check failed: ${message}` },
         { status: 500 }
       );
     }
 
-    let response: Response;
-    try {
-      response = await handler(request);
-    } catch (err) {
-      // The handler threw before reaching a provider — nothing was spent
-      // downstream, so the charge goes back.
-      await refundSpend(
-        auth.user.id,
-        spend.transactionId,
-        spend.charged,
-        "Run failed before dispatch"
+    const available = balance - pending;
+    if (available < charge) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Not enough credits: this step costs ${charge}, you have ${Math.max(
+            0,
+            available
+          )} available.`,
+          code: "insufficient_credits",
+          required: charge,
+          balance: available,
+        },
+        // 402 Payment Required: the one status that means exactly this. The
+        // client keys its "buy credits" prompt off it.
+        { status: 402 }
       );
-      throw err;
     }
 
-    if (await shouldRefund(response)) {
-      await refundSpend(
-        auth.user.id,
-        spend.transactionId,
-        spend.charged,
-        "Run failed"
-      );
-      const headers = new Headers(response.headers);
-      headers.set(BALANCE_HEADER, String(spend.balance + spend.charged));
-      headers.set(CHARGED_HEADER, "0");
-      return new Response(response.body, {
-        status: response.status,
-        statusText: response.statusText,
-        headers,
-      });
+    const response = await handler(request);
+
+    // Only a run that actually reached a provider is worth billing. A failed
+    // one records nothing, so there is no refund path to get wrong.
+    if (await didSucceed(response)) {
+      try {
+        pending = await recordPendingCharge(auth.user.id, charge, cost);
+      } catch (err) {
+        // The generation succeeded; failing to record the charge must not turn
+        // that into an error for the user. Logged loudly — it is lost revenue.
+        console.error(
+          "[credits] FAILED TO RECORD CHARGE — unbilled run:",
+          err instanceof Error ? err.message : err,
+          { userId: auth.user.id, charge }
+        );
+      }
     }
 
     const headers = new Headers(response.headers);
-    headers.set(BALANCE_HEADER, String(spend.balance));
-    headers.set(CHARGED_HEADER, String(spend.charged));
+    headers.set(BALANCE_HEADER, String(balance - pending));
+    headers.set(CHARGED_HEADER, String(pending));
     return new Response(response.body, {
       status: response.status,
       statusText: response.statusText,
@@ -139,26 +133,24 @@ export function withCredits(
 }
 
 /**
- * Did this run fail in a way that deserves the credits back?
+ * Did this run reach a provider?
  *
- * A non-2xx always does. A 200 carrying `success: false` does too — these
+ * A non-2xx did not. A 200 carrying `success: false` did not either — these
  * routes report provider failures that way rather than with a status code.
  *
  * Note this reads a CLONE: the caller still returns the original stream.
  */
-async function shouldRefund(response: Response): Promise<boolean> {
-  if (!response.ok) return true;
+async function didSucceed(response: Response): Promise<boolean> {
+  if (!response.ok) return false;
 
   try {
-    const clone = response.clone();
-    const text = await clone.text();
-    if (!text) return false;
-    const parsed = JSON.parse(text);
-    return parsed?.success === false;
+    const text = await response.clone().text();
+    if (!text) return true;
+    return JSON.parse(text)?.success !== false;
   } catch {
-    // Not JSON, or a stream we cannot re-read — a 2xx we cannot inspect is
-    // treated as a success. Refunding on doubt would hand back credits for
-    // runs that did reach the provider.
-    return false;
+    // Not JSON, or a stream we cannot re-read. A 2xx we cannot inspect is
+    // treated as a success — declining to bill on doubt would make every
+    // streaming response free.
+    return true;
   }
 }

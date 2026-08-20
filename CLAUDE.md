@@ -34,29 +34,36 @@ free grant; more are bought with real money through Razorpay.
 
 ### Where the numbers live
 
-**`src/lib/credits/pricing.ts` is the only file to edit to change prices.**
+**Three files, in order of how often you will touch them.**
 
 | To change | Edit |
 |-----------|------|
-| Pack price or credits per pack | `CREDIT_PACKS` |
-| Cost of a run by media type | `RUN_CREDIT_COSTS` |
-| Cost of a specific model | `MODEL_CREDIT_COSTS` (longest key match wins) |
-| 4K costs more than 1K | `RESOLUTION_MULTIPLIERS` |
-| Free signup grant | `SIGNUP_GRANT_CREDITS` **and** the two `100` literals in `supabase/migrations/0003_credits.sql` §6 — the SQL is what pays out |
+| Your margin over provider cost | `MARGIN` in `src/lib/credits/rates.ts` |
+| ₹ per USD | `USD_INR_RATE` in `src/lib/credits/rates.ts` |
+| What one credit is worth | `CREDIT_VALUE_INR` in `src/lib/credits/rates.ts` **and** `CREDIT_PACKS` |
+| A provider's real USD rate | `USD_RATES` in `src/lib/credits/rates.ts` |
+| Pack price or credits per pack | `CREDIT_PACKS` in `src/lib/credits/pricing.ts` |
+| Free signup grant | `SIGNUP_GRANT_CREDITS` **and** the two `100` literals in `0003_credits.sql` §6 — the SQL is what pays out |
 
-Prices are never read from the request body. A client can pick a model, not a
-price.
+Run costs are **derived**: `credits = ceil(usd × USD_INR_RATE × MARGIN ÷ CREDIT_VALUE_INR)`.
+There is no hand-written table of credit prices. There used to be, and it drifted
+until every image sold at ~50% of cost — `pricing.test.ts` now asserts no model
+is billed below provider cost, so that cannot come back silently.
+
+Prices are never read from the request body. A client picks a model, not a price.
 
 ### Files
 
 | Purpose | Location |
 |---------|----------|
-| Prices, packs, run costs | `src/lib/credits/pricing.ts` |
-| Balance/spend/refund/grant | `src/lib/credits/server.ts` |
-| Route wrapper: auth → charge → refund-on-failure | `src/lib/credits/guard.ts` |
+| Margin, FX, peg, USD rate card | `src/lib/credits/rates.ts` |
+| Packs + run costs derived from rates | `src/lib/credits/pricing.ts` |
+| Balance / pending / settle / grant | `src/lib/credits/server.ts` |
+| Route wrapper: auth → afford → record | `src/lib/credits/guard.ts` |
 | Razorpay orders + signature verification | `src/lib/credits/razorpay.ts` |
 | Ledger schema, RLS, SQL functions | `supabase/migrations/0003_credits.sql` |
-| Balance store | `src/store/creditStore.ts` |
+| Pending charges + settlement | `supabase/migrations/0004_workflow_settlement.sql` |
+| Balance store + `settleRun()` | `src/store/creditStore.ts` |
 | Header badge / buy modal | `src/components/credits/` |
 
 ### Routes
@@ -64,6 +71,7 @@ price.
 | Route | Purpose |
 |-------|---------|
 | `GET /api/credits` | Balance, packs, recent ledger |
+| `POST /api/credits/settle` | Bill a finished workflow in one debit |
 | `POST /api/credits/order` | Create a Razorpay order for a pack |
 | `POST /api/credits/verify` | Verify checkout callback → grant (fast path) |
 | `POST /api/credits/webhook` | Razorpay `payment.captured` → grant (safety net) |
@@ -73,23 +81,35 @@ index makes whichever arrives second a no-op, so a payment credits exactly once.
 
 ### How charging works
 
-`withCredits()` wraps `/api/generate` and `/api/llm`. It authenticates the
-caller (these routes had **no** auth before — `proxy.ts` deliberately lets
-`/api/*` through so each route gates itself), charges up front, runs the
-handler, and refunds if the response is non-2xx or carries `success: false`.
+**One debit per workflow, not per node.**
 
-Charging up front rather than on success is deliberate: the provider call costs
-money whether or not the result is good, and async video jobs return a task id
-long before the spend completes, so there is no later moment at which to charge
-reliably.
+1. Each node run hits `/api/generate` or `/api/llm`, wrapped by `withCredits()`.
+   It authenticates the caller, checks `balance − pending ≥ this step`, runs the
+   handler, and — only if the run actually reached a provider — writes a
+   `pending_charges` row.
+2. When `executeWorkflow` exits (any path), `settleRun()` posts to
+   `/api/credits/settle`, which sums the unsettled rows and debits once.
 
-A refused run returns **402** with `code: "insufficient_credits"`; the
-executors turn that into the buy-credits modal. Every gated response carries
-`X-Credits-Balance`, so the header badge stays current without a refetch.
+The client picks the *moment* to settle; it never supplies the *amount*. That is
+the whole reason `pending_charges` exists rather than the browser tallying its
+own total — a workflow could otherwise report that it ran nothing.
+
+A failed or cancelled workflow still pays for the nodes that already dispatched;
+that money is spent regardless. Settling twice is harmless — the second call
+finds nothing unsettled.
+
+**Known gap:** a tab closed mid-run never settles, so those rows stay unbilled.
+This is deliberate and temporary. The fix is a sweep job settling rows older
+than N minutes — `settle_pending_charges` already takes just a user id, so it
+needs no new logic, only a scheduler.
+
+A refused step returns **402** with `code: "insufficient_credits"`; the executors
+turn that into the buy-credits modal. Every gated response carries
+`X-Credits-Balance` and `X-Credits-Pending`.
 
 ### Setup
 
-1. Run `supabase/migrations/0003_credits.sql` in the Supabase SQL editor.
+1. Run `supabase/migrations/0003_credits.sql`, then `0004_workflow_settlement.sql`, in the Supabase SQL editor.
 2. Add the three Razorpay vars above to `.env.local`.
 3. Razorpay dashboard → Settings → Webhooks → add
    `https://<domain>/api/credits/webhook` for `payment.captured`, using the

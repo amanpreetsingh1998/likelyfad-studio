@@ -1,24 +1,32 @@
 /**
- * Every number in this system that you might want to change.
+ * Credit packs, and the cost of a run in credits.
  *
- * ── HOW TO EDIT ────────────────────────────────────────────────────────────
+ * ── WHERE TO EDIT WHAT ─────────────────────────────────────────────────────
  *
- * 1. Price of a pack, or how many credits it carries → CREDIT_PACKS below.
- *    Edit freely, add or remove entries. `amountInPaise` is what Razorpay
- *    charges (₹1 = 100 paise, so ₹499 is 49900). Keep each `id` stable once
- *    real payments exist — it is recorded on the transaction.
+ * Pack prices / credits per pack   → CREDIT_PACKS, below.
+ * Margin, FX rate, credit value    → ./rates.ts (the three tunable numbers).
+ * A provider's USD rate            → USD_RATES in ./rates.ts.
+ * The free signup grant            → SIGNUP_GRANT_CREDITS below AND the two
+ *                                    `100` literals in
+ *                                    supabase/migrations/0003_credits.sql §6.
+ *                                    The SQL is what actually pays out.
  *
- * 2. What a run costs → RUN_CREDIT_COSTS / MODEL_CREDIT_COSTS below.
- *
- * 3. The free signup grant → SIGNUP_GRANT_CREDITS below AND the two `100`
- *    literals in supabase/migrations/0003_credits.sql (section 6). The SQL is
- *    what actually pays out; the constant here is only what the UI advertises.
- *    Changing the SQL means re-running that section against your database.
- *
- * The starting numbers are placeholders picked to be roughly sane — 1 credit
- * ≈ ₹0.50, and a run costs about what it costs us — not a researched price.
+ * Run costs are DERIVED from USD rates — there is no hand-written table of
+ * credit prices any more. That was how images ended up selling at roughly half
+ * of what they cost to produce: two tables, edited independently, silently
+ * disagreeing.
  * ───────────────────────────────────────────────────────────────────────────
  */
+
+import {
+  CREDIT_VALUE_INR,
+  USD_RATES,
+  creditsForUsd,
+  formatCreditsAsInr,
+} from "./rates";
+
+export { CREDIT_VALUE_INR, creditsForUsd, formatCreditsAsInr };
+export { creditsToInr, MARGIN, USD_INR_RATE } from "./rates";
 
 export type CreditPack = {
   /** Stable identifier, recorded on the purchase transaction. */
@@ -40,22 +48,22 @@ export const CREDIT_PACKS: CreditPack[] = [
     id: "starter",
     name: "Starter",
     credits: 1_000,
-    amountInPaise: 49_900, // ₹499
+    amountInPaise: 49_900, // ₹499 → ₹0.499/credit, the peg in rates.ts
     currency: "INR",
   },
   {
     id: "creator",
     name: "Creator",
-    credits: 4_500, // 12.5% more per rupee than Starter
-    amountInPaise: 199_900, // ₹1,999
+    credits: 4_500,
+    amountInPaise: 199_900, // ₹1,999 → ₹0.444/credit
     currency: "INR",
     popular: true,
   },
   {
     id: "studio",
     name: "Studio",
-    credits: 12_000, // 20% more per rupee than Starter
-    amountInPaise: 499_900, // ₹4,999
+    credits: 12_000,
+    amountInPaise: 499_900, // ₹4,999 → ₹0.417/credit
     currency: "INR",
   },
 ];
@@ -69,57 +77,22 @@ export function formatPackPrice(pack: CreditPack): string {
   return `₹${(pack.amountInPaise / 100).toLocaleString("en-IN")}`;
 }
 
+/**
+ * The entry pack's rate must match CREDIT_VALUE_INR, or the "1 credit ≈ ₹X"
+ * the buy modal shows is a lie. Asserted by the pricing tests rather than
+ * enforced at runtime — it is a mistake to catch in CI, not in production.
+ */
+export function creditPegDriftPct(): number {
+  const entry = CREDIT_PACKS[0];
+  const actual = entry.amountInPaise / 100 / entry.credits;
+  return Math.abs(actual - CREDIT_VALUE_INR) / CREDIT_VALUE_INR;
+}
+
 // ---------------------------------------------------------------------------
-// What a run costs
-//
-// Keyed by media type, because that is the one thing every generation request
-// carries and the server can trust. MODEL_CREDIT_COSTS overrides it for models
-// whose real cost is far from their category's average — a 4K Nano Banana Pro
-// image and a 512px Lite image are both "image", but not remotely the same
-// spend, and charging the average for both loses money on one and overcharges
-// on the other.
+// Run costs
 // ---------------------------------------------------------------------------
 
 export type RunKind = "image" | "video" | "audio" | "3d" | "llm" | "comfy";
-
-export const RUN_CREDIT_COSTS: Record<RunKind, number> = {
-  image: 5,
-  video: 40,
-  audio: 8,
-  "3d": 25,
-  llm: 1,
-  comfy: 10,
-};
-
-/**
- * Per-model overrides. Keys are matched against the model id the request
- * carries (`selectedModel.modelId`, falling back to the legacy `model` field),
- * longest prefix first — so "veo-3" can cost more than "veo-2" without listing
- * every variant.
- */
-export const MODEL_CREDIT_COSTS: Record<string, number> = {
-  // Gemini image models, priced off src/utils/costCalculator.ts PRICING.
-  "nano-banana-2-lite": 3,
-  "nano-banana-2": 6,
-  "nano-banana-pro": 12,
-  "nano-banana": 4,
-  // Video is where the real money goes.
-  "veo-3": 120,
-  "veo-2": 60,
-  sora: 100,
-  kling: 50,
-};
-
-/**
- * Resolution multipliers for image runs. A 4K render costs materially more
- * than a 1K one at every provider we use, so the charge should track it.
- */
-export const RESOLUTION_MULTIPLIERS: Record<string, number> = {
-  "512": 0.75,
-  "1K": 1,
-  "2K": 1.5,
-  "4K": 2.5,
-};
 
 export type RunCostInput = {
   kind: RunKind;
@@ -130,36 +103,48 @@ export type RunCostInput = {
 };
 
 /**
+ * USD cost of one run, from the billing rate card.
+ *
+ * Exported so the UI can show "this costs X credits (≈ ₹Y)" using exactly the
+ * number that will be charged, rather than a parallel estimate.
+ */
+export function usdCostForRun(input: RunCostInput): number {
+  const { kind, modelId, resolution } = input;
+  const id = (modelId ?? "").toLowerCase();
+
+  if (kind === "image") {
+    const key = matchKey(id, Object.keys(USD_RATES.image));
+    const row = key ? USD_RATES.image[key] : undefined;
+    if (!row) return USD_RATES.image["nano-banana"]["1K"];
+    return row[resolution ?? "1K"] ?? row["1K"];
+  }
+
+  const table = USD_RATES[kind] as Record<string, number> | undefined;
+  if (!table) return USD_RATES.image["nano-banana"]["1K"];
+
+  const key = matchKey(id, Object.keys(table).filter((k) => k !== "default"));
+  return (key ? table[key] : undefined) ?? table.default ?? 0.05;
+}
+
+/**
  * The credit charge for one run. Always at least 1 — a free run would let an
  * exhausted account keep spending our provider budget forever.
  */
 export function creditCostForRun(input: RunCostInput): number {
-  const { kind, modelId, resolution, count = 1 } = input;
-
-  const override = modelId ? matchModelCost(modelId) : undefined;
-  const base = override ?? RUN_CREDIT_COSTS[kind] ?? RUN_CREDIT_COSTS.image;
-
-  const multiplier =
-    kind === "image" && resolution
-      ? RESOLUTION_MULTIPLIERS[resolution] ?? 1
-      : 1;
-
-  const batch = Number.isFinite(count) && count > 0 ? Math.floor(count) : 1;
-
-  return Math.max(1, Math.ceil(base * multiplier * batch));
+  const perRun = creditsForUsd(usdCostForRun(input));
+  const count = input.count;
+  const batch = Number.isFinite(count) && (count ?? 0) > 0 ? Math.floor(count!) : 1;
+  return Math.max(1, perRun * batch);
 }
 
-/** Longest matching prefix wins, so specific ids beat family prefixes. */
-function matchModelCost(modelId: string): number | undefined {
-  const id = modelId.toLowerCase();
-  let best: { key: string; cost: number } | undefined;
-
-  for (const [key, cost] of Object.entries(MODEL_CREDIT_COSTS)) {
+/** Longest matching key wins, so "nano-banana-2-lite" beats "nano-banana". */
+function matchKey(id: string, keys: string[]): string | undefined {
+  let best: string | undefined;
+  for (const key of keys) {
     if (!id.includes(key)) continue;
-    if (!best || key.length > best.key.length) best = { key, cost };
+    if (!best || key.length > best.length) best = key;
   }
-
-  return best?.cost;
+  return best;
 }
 
 /**

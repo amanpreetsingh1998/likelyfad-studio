@@ -1,5 +1,4 @@
 import { create, StateCreator } from "zustand";
-import { useShallow } from "zustand/shallow";
 import {
   Connection,
   EdgeChange,
@@ -21,7 +20,6 @@ import {
   NodeGroup,
   GroupColor,
   ProviderType,
-  ProviderSettings,
   RecentModel,
   CanvasNavigationSettings,
   MatchMode,
@@ -34,6 +32,7 @@ import { externalizeWorkflowMedia, hydrateWorkflowMedia } from "@/utils/mediaSto
 // === LIKELYFAD CUSTOM START === (cloud persistence)
 import { ensureProjectRow, saveProject } from "@/lib/likelyfad/cloud-storage";
 import { isSignedIn, requireAuth } from "./authGateStore";
+import { settleRun } from "@/store/creditStore";
 // === LIKELYFAD CUSTOM END ===
 import { EditOperation, applyEditOperations as executeEditOps } from "@/lib/chat/editOperations";
 import { findNearestFreePosition } from "@/utils/spatialLayout";
@@ -42,9 +41,6 @@ import {
   saveSaveConfig,
   loadWorkflowCostData,
   saveWorkflowCostData,
-  getProviderSettings,
-  saveProviderSettings,
-  defaultProviderSettings,
   getRecentModels,
   saveRecentModels,
   MAX_RECENT_MODELS,
@@ -383,14 +379,6 @@ interface WorkflowStore {
   loadIncurredCost: (workflowId: string) => void;
   saveIncurredCost: () => void;
 
-  // Provider settings state
-  providerSettings: ProviderSettings;
-
-  // Provider settings actions
-  updateProviderSettings: (settings: ProviderSettings) => void;
-  updateProviderApiKey: (providerId: ProviderType, apiKey: string | null) => void;
-  toggleProvider: (providerId: ProviderType, enabled: boolean) => void;
-
   // Model search dialog state
   modelSearchOpen: boolean;
   modelSearchProvider: ProviderType | null;
@@ -670,9 +658,6 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
 
   // Cost tracking initial state
   incurredCost: 0,
-
-  // Provider settings initial state
-  providerSettings: getProviderSettings(),
 
   // Model search dialog initial state
   modelSearchOpen: false,
@@ -1558,7 +1543,6 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
     getEdges: () => get().edges,
     getNodes: () => get().nodes,
     signal,
-    providerSettings: get().providerSettings,
     addIncurredCost: (cost: number) => get().addIncurredCost(cost),
     addToGlobalHistory: (item) => get().addToGlobalHistory(item),
     generationsPath: get().generationsPath,
@@ -1991,6 +1975,12 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
 
       set({ isRunning: false, currentNodeIds: [], skippedNodeIds: new Set(), _abortController: null });
 
+      // === LIKELYFAD CUSTOM START === (credits)
+      // Bill the whole run in one debit. The server already recorded what each
+      // node cost as it ran; this only says the workflow is over.
+      void settleRun(abortController.signal.aborted ? "cancelled" : "completed");
+      // === LIKELYFAD CUSTOM END ===
+
       saveLogSession();
       await logger.endSession();
     } catch (error) {
@@ -2008,6 +1998,16 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
       // Reset skipped nodes' status back to idle
       resetSkippedNodes();
       set({ isRunning: false, currentNodeIds: [], skippedNodeIds: new Set(), _abortController: null });
+
+      // === LIKELYFAD CUSTOM START === (credits)
+      // A failed or cancelled run still pays for the nodes that already
+      // reached a provider — that money is spent either way.
+      void settleRun(
+        error instanceof DOMException && error.name === "AbortError"
+          ? "cancelled"
+          : "failed"
+      );
+      // === LIKELYFAD CUSTOM END ===
 
       saveLogSession();
       await logger.endSession();
@@ -3139,42 +3139,6 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
     });
   },
 
-  // Provider settings actions
-  updateProviderSettings: (settings: ProviderSettings) => {
-    set({ providerSettings: settings });
-    saveProviderSettings(settings);
-  },
-
-  updateProviderApiKey: (providerId: ProviderType, apiKey: string | null) => {
-    const { providerSettings } = get();
-    const updated: ProviderSettings = {
-      providers: {
-        ...providerSettings.providers,
-        [providerId]: {
-          ...providerSettings.providers[providerId],
-          apiKey,
-        },
-      },
-    };
-    set({ providerSettings: updated });
-    saveProviderSettings(updated);
-  },
-
-  toggleProvider: (providerId: ProviderType, enabled: boolean) => {
-    const { providerSettings } = get();
-    const updated: ProviderSettings = {
-      providers: {
-        ...providerSettings.providers,
-        [providerId]: {
-          ...providerSettings.providers[providerId],
-          enabled,
-        },
-      },
-    };
-    set({ providerSettings: updated });
-    saveProviderSettings(updated);
-  },
-
   // Keyboard shortcuts dialog actions
   setShortcutsDialogOpen: (open: boolean) => {
     set({ shortcutsDialogOpen: open });
@@ -3354,31 +3318,3 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
 });
 
 export const useWorkflowStore = create<WorkflowStore>()(workflowStoreImpl);
-
-/**
- * Stable hook for provider API keys.
- *
- * Returns individual primitive values for each provider's API key.
- * Uses shallow equality comparison to prevent re-renders when the
- * providerSettings object reference changes but the actual key values
- * don't change.
- *
- * This prevents unnecessary re-fetches of /api/models when multiple
- * node instances subscribe to provider settings.
- */
-export function useProviderApiKeys() {
-  return useWorkflowStore(
-    useShallow((state) => ({
-      geminiApiKey: state.providerSettings.providers.gemini?.apiKey ?? null,
-      replicateApiKey: state.providerSettings.providers.replicate?.apiKey ?? null,
-      falApiKey: state.providerSettings.providers.fal?.apiKey ?? null,
-      kieApiKey: state.providerSettings.providers.kie?.apiKey ?? null,
-      wavespeedApiKey: state.providerSettings.providers.wavespeed?.apiKey ?? null,
-      openaiApiKey: state.providerSettings.providers.openai?.apiKey ?? null,
-      // Provider enabled states (for conditional UI)
-      replicateEnabled: state.providerSettings.providers.replicate?.enabled ?? false,
-      kieEnabled: state.providerSettings.providers.kie?.enabled ?? false,
-      openaiEnabled: state.providerSettings.providers.openai?.enabled ?? false,
-    }))
-  );
-}

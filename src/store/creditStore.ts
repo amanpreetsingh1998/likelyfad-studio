@@ -29,9 +29,12 @@ type CreditState = {
   buyModalOpen: boolean;
   /** Set when a run is refused, so the modal can say why it opened. */
   shortfall: { required: number; balance: number } | null;
+  /** What the last finished workflow cost, for the run receipt. */
+  lastReceipt: { charged: number; runs: number; status: string } | null;
 
   refresh: () => Promise<void>;
   setBalance: (balance: number) => void;
+  setLastReceipt: (receipt: { charged: number; runs: number; status: string } | null) => void;
   openBuyModal: (shortfall?: { required: number; balance: number }) => void;
   closeBuyModal: () => void;
 };
@@ -46,6 +49,7 @@ export const useCreditStore = create<CreditState>((set, get) => ({
   error: null,
   buyModalOpen: false,
   shortfall: null,
+  lastReceipt: null,
 
   refresh: async () => {
     if (get().loading) return;
@@ -78,6 +82,8 @@ export const useCreditStore = create<CreditState>((set, get) => ({
   },
 
   setBalance: (balance) => set({ balance }),
+
+  setLastReceipt: (lastReceipt) => set({ lastReceipt }),
 
   openBuyModal: (shortfall) => set({ buyModalOpen: true, shortfall: shortfall ?? null }),
   closeBuyModal: () => set({ buyModalOpen: false, shortfall: null }),
@@ -112,4 +118,37 @@ export function handleInsufficientCredits(payload: {
   useCreditStore.getState().openBuyModal({ required, balance });
   useCreditStore.getState().setBalance(balance);
   return payload.error ?? `Not enough credits (need ${required}, have ${balance}).`;
+}
+
+/**
+ * Bill the workflow that just finished.
+ *
+ * Called from executeWorkflow's exit paths. The server owns the amount — this
+ * only says "the run is over". Failures are swallowed: an unsettled run is lost
+ * revenue, not a reason to show the user an error about a workflow that worked.
+ */
+export async function settleRun(
+  status: "completed" | "failed" | "cancelled"
+): Promise<void> {
+  try {
+    const response = await fetch("/api/credits/settle", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+    if (!response.ok) return;
+
+    const result = await response.json();
+    useCreditStore.getState().setBalance(result.balance);
+
+    if (result.charged > 0) {
+      useCreditStore.getState().setLastReceipt({
+        charged: result.charged,
+        runs: result.runs,
+        status,
+      });
+    }
+  } catch {
+    // Offline, or the tab is going away. Nothing useful to do here.
+  }
 }
