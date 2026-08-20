@@ -2,15 +2,18 @@
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
-import { useWorkflowStore, useProviderApiKeys } from "@/store/workflowStore";
+import { useWorkflowStore } from "@/store/workflowStore";
 import { deduplicatedFetch, clearFetchCache } from "@/utils/deduplicatedFetch";
 import { useReactFlow } from "@xyflow/react";
 import { ProviderType, RecentModel } from "@/types";
 import { ProviderModel, ModelCapability } from "@/lib/providers/types";
 import { toSelectedModel } from "@/lib/providers/selectedModel";
+import { creditsForUsd } from "@/lib/credits/rates";
 
 // localStorage cache for models (persists across dev server restarts)
-const MODELS_CACHE_KEY = "likelyfad-studio-models-cache";
+// v2: entries cached before models carried pricing have no `pricing` field and
+// would hide it for the full 48h TTL. Bumping the key retires them at once.
+const MODELS_CACHE_KEY = "likelyfad-studio-models-cache-v2";
 const MODELS_CACHE_TTL = 48 * 60 * 60 * 1000; // 48 hours
 // Cap the number of cached entries to avoid unbounded localStorage growth.
 // Entries are pruned LRU-style (oldest timestamp first) on write.
@@ -65,26 +68,6 @@ function setCachedModels(cacheKey: string, models: ProviderModel[], availablePro
   } catch {
     // Ignore cache errors
   }
-}
-
-// Build a short, stable hash of the configured providers so the cache key
-// changes when API keys are added/removed (otherwise the "all" view keeps
-// serving a stale list that omits a newly-configured provider).
-function getProvidersHash(providers: {
-  replicate: boolean;
-  fal: boolean;
-  kie: boolean;
-  wavespeed: boolean;
-  openai: boolean;
-}): string {
-  // Fixed order keeps the hash deterministic across renders.
-  return [
-    providers.replicate ? "r" : "",
-    providers.fal ? "f" : "",
-    providers.kie ? "k" : "",
-    providers.wavespeed ? "w" : "",
-    providers.openai ? "o" : "",
-  ].join("");
 }
 
 // Provider icons — all normalized to w-3.5 h-3.5 with viewBoxes cropped to fill consistently
@@ -186,8 +169,6 @@ export function ModelSearchDialog({
     recentModels,
     trackModelUsage,
   } = useWorkflowStore();
-  // Use stable selector for API keys to prevent unnecessary re-fetches
-  const { replicateApiKey, falApiKey, kieApiKey, wavespeedApiKey, openaiApiKey } = useProviderApiKeys();
   const { screenToFlowPosition } = useReactFlow();
 
   // State
@@ -237,16 +218,7 @@ export function ModelSearchDialog({
     // Increment version to track this request
     const thisVersion = ++requestVersionRef.current;
 
-    // Build cache key from filters + configured providers (so the key changes
-    // when an API key is added/removed and the "all" view can't go stale).
-    const providersHash = getProvidersHash({
-      replicate: !!replicateApiKey,
-      fal: !!falApiKey,
-      kie: !!kieApiKey,
-      wavespeed: !!wavespeedApiKey,
-      openai: !!openaiApiKey,
-    });
-    const cacheKey = `${providersHash}:${providerFilter}:${capabilityFilter}:${debouncedSearch}`;
+    const cacheKey = `${providerFilter}:${capabilityFilter}:${debouncedSearch}`;
 
     // Check localStorage cache first (skip when bypassing)
     if (!bypassCache) {
@@ -287,27 +259,7 @@ export function ModelSearchDialog({
         params.set("refresh", "true");
       }
 
-      // Build headers with API keys
-      const headers: Record<string, string> = {};
-      if (replicateApiKey) {
-        headers["X-Replicate-Key"] = replicateApiKey;
-      }
-      if (falApiKey) {
-        headers["X-Fal-Key"] = falApiKey;
-      }
-      if (kieApiKey) {
-        headers["X-Kie-Key"] = kieApiKey;
-      }
-      if (wavespeedApiKey) {
-        headers["X-WaveSpeed-Key"] = wavespeedApiKey;
-      }
-      if (openaiApiKey) {
-        headers["X-OpenAI-API-Key"] = openaiApiKey;
-      }
-
-      const response = await deduplicatedFetch(`/api/models?${params.toString()}`, {
-        headers,
-      });
+      const response = await deduplicatedFetch(`/api/models?${params.toString()}`);
 
       // Check if this request is still current
       if (thisVersion !== requestVersionRef.current) {
@@ -345,7 +297,7 @@ export function ModelSearchDialog({
         setIsLoading(false);
       }
     }
-  }, [debouncedSearch, providerFilter, capabilityFilter, replicateApiKey, falApiKey, kieApiKey, wavespeedApiKey, openaiApiKey]);
+  }, [debouncedSearch, providerFilter, capabilityFilter]);
 
   // Fetch models when filters change
   useEffect(() => {
@@ -491,20 +443,14 @@ export function ModelSearchDialog({
     }
   };
 
-  // Compute which providers are available based on client API keys + server env vars
+  // Which providers the server holds keys for, as reported by /api/models.
   const availableProviders = useMemo(() => {
-    const providers = new Set<ProviderType>(["gemini", "fal"]); // Always available
-    // Client-side keys (from localStorage/provider settings)
-    if (replicateApiKey) providers.add("replicate");
-    if (kieApiKey) providers.add("kie");
-    if (wavespeedApiKey) providers.add("wavespeed");
-    if (openaiApiKey) providers.add("openai");
-    // Server-side keys (from env vars, reported by /api/models)
+    const providers = new Set<ProviderType>(["gemini", "fal"]);
     for (const p of serverAvailableProviders) {
       providers.add(p as ProviderType);
     }
     return providers;
-  }, [replicateApiKey, kieApiKey, wavespeedApiKey, openaiApiKey, serverAvailableProviders]);
+  }, [serverAvailableProviders]);
 
   // Reset provider filter if current selection becomes unavailable
   useEffect(() => {
@@ -1088,6 +1034,30 @@ export function ModelSearchDialog({
                         {getProviderDisplayName(model.provider)}
                       </span>
                       {getCapabilityBadges(model.capabilities)}
+                      {/* What this model costs, in the unit the user is billed
+                          in. Models with no published price say so rather than
+                          rendering nothing, which reads as "free". */}
+                      {model.pricing ? (
+                        <span
+                          className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30"
+                          title={
+                            model.pricing.type === "per-second"
+                              ? `$${model.pricing.amount}/second of output`
+                              : `$${model.pricing.amount.toFixed(4)} per run`
+                          }
+                        >
+                          {model.pricing.type === "per-second"
+                            ? `~${creditsForUsd(model.pricing.amount * 5)} cr / 5s`
+                            : `${creditsForUsd(model.pricing.amount)} cr`}
+                        </span>
+                      ) : (
+                        <span
+                          className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-700/50 text-neutral-500 border border-neutral-600/50"
+                          title="No published price for this model — it cannot be billed, so runs are refused."
+                        >
+                          no price
+                        </span>
+                      )}
                     </div>
 
                     {/* Description - more lines */}
