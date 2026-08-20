@@ -10,6 +10,7 @@ import { WorkflowBrowserModal } from "./WorkflowBrowserModal";
 // === LIKELYFAD CUSTOM START === (Save as Template modal)
 import { SaveTemplateModal } from "./likelyfad/SaveTemplateModal";
 import { AccountButton } from "./auth/AccountButton";
+import { CreditBadge } from "./credits/CreditBadge";
 // === LIKELYFAD CUSTOM END ===
 
 function CommentsNavigationIcon() {
@@ -468,7 +469,8 @@ export function Header() {
           {/* === LIKELYFAD CUSTOM START === (account menu)
               Last element in the header. Its dropdown opens right-aligned, so
               it needs the edge to open against. */}
-          <div className="ml-1 pl-2 border-l border-neutral-700/50">
+          <div className="ml-1 pl-2 border-l border-neutral-700/50 flex items-center gap-2">
+            <CreditBadge />
             <AccountButton />
           </div>
           {/* === LIKELYFAD CUSTOM END === */}

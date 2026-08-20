@@ -9,17 +9,19 @@ import { AnnotationModal } from "@/components/AnnotationModal";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { useWorkflowStore } from "@/store/workflowStore";
 import { FTUXModal } from "@/components/onboarding/FTUXModal";
-import { getFTUXCompleted, setFTUXCompleted } from "@/store/utils/localStorage";
+import { getFTUXCompleted, setFTUXCompleted, purgeLegacyProviderSettings } from "@/store/utils/localStorage";
 import { useFTUXStore } from "@/store/ftuxStore";
 import { migrateLegacyStorageKeys } from "@/store/utils/storageMigration";
 // === LIKELYFAD CUSTOM START === (cloud project list)
 import { ProjectListModal } from "@/components/likelyfad/ProjectListModal";
+import { BuyCreditsModal } from "@/components/credits/BuyCreditsModal";
 import { loadProject } from "@/lib/likelyfad/cloud-storage";
 import type { WorkflowFile } from "@/store/workflowStore";
 // === LIKELYFAD CUSTOM END ===
 
 // Runs before any component reads storage, so the rename keeps existing data.
 migrateLegacyStorageKeys();
+purgeLegacyProviderSettings();
 
 /**
  * The studio. Reaching this page at all means there is a session — proxy.ts
@@ -176,6 +178,8 @@ function Studio() {
         </ErrorBoundary>
         <FloatingActionBar />
         <AnnotationModal />
+        {/* Opens on a 402 from any generation route, or from the header badge. */}
+        <BuyCreditsModal />
         {showFTUX && (
           <FTUXModal
             onComplete={handleFTUXComplete}

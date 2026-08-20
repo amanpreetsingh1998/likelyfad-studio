@@ -20,7 +20,80 @@ Create `.env.local` in the root directory:
 GEMINI_API_KEY=your_gemini_api_key
 OPENAI_API_KEY=your_openai_api_key  # Optional, for OpenAI LLM provider
 KIE_API_KEY=your_kie_api_key        # Optional, for Kie.ai models (Sora, Veo, Kling, etc.)
+
+# Credits + payments (see "Credit System" below)
+NEXT_PUBLIC_RAZORPAY_KEY_ID=rzp_test_xxxxx  # public; the browser checkout needs it
+RAZORPAY_KEY_SECRET=your_razorpay_secret    # server only
+RAZORPAY_WEBHOOK_SECRET=your_webhook_secret # server only; set when adding the webhook
 ```
+
+## Credit System
+
+Every run is charged to the signed-in user's credit balance. New accounts get a
+free grant; more are bought with real money through Razorpay.
+
+### Where the numbers live
+
+**`src/lib/credits/pricing.ts` is the only file to edit to change prices.**
+
+| To change | Edit |
+|-----------|------|
+| Pack price or credits per pack | `CREDIT_PACKS` |
+| Cost of a run by media type | `RUN_CREDIT_COSTS` |
+| Cost of a specific model | `MODEL_CREDIT_COSTS` (longest key match wins) |
+| 4K costs more than 1K | `RESOLUTION_MULTIPLIERS` |
+| Free signup grant | `SIGNUP_GRANT_CREDITS` **and** the two `100` literals in `supabase/migrations/0003_credits.sql` §6 — the SQL is what pays out |
+
+Prices are never read from the request body. A client can pick a model, not a
+price.
+
+### Files
+
+| Purpose | Location |
+|---------|----------|
+| Prices, packs, run costs | `src/lib/credits/pricing.ts` |
+| Balance/spend/refund/grant | `src/lib/credits/server.ts` |
+| Route wrapper: auth → charge → refund-on-failure | `src/lib/credits/guard.ts` |
+| Razorpay orders + signature verification | `src/lib/credits/razorpay.ts` |
+| Ledger schema, RLS, SQL functions | `supabase/migrations/0003_credits.sql` |
+| Balance store | `src/store/creditStore.ts` |
+| Header badge / buy modal | `src/components/credits/` |
+
+### Routes
+
+| Route | Purpose |
+|-------|---------|
+| `GET /api/credits` | Balance, packs, recent ledger |
+| `POST /api/credits/order` | Create a Razorpay order for a pack |
+| `POST /api/credits/verify` | Verify checkout callback → grant (fast path) |
+| `POST /api/credits/webhook` | Razorpay `payment.captured` → grant (safety net) |
+
+Both grant paths use `ref = razorpay:<payment_id>`; the ledger's partial unique
+index makes whichever arrives second a no-op, so a payment credits exactly once.
+
+### How charging works
+
+`withCredits()` wraps `/api/generate` and `/api/llm`. It authenticates the
+caller (these routes had **no** auth before — `proxy.ts` deliberately lets
+`/api/*` through so each route gates itself), charges up front, runs the
+handler, and refunds if the response is non-2xx or carries `success: false`.
+
+Charging up front rather than on success is deliberate: the provider call costs
+money whether or not the result is good, and async video jobs return a task id
+long before the spend completes, so there is no later moment at which to charge
+reliably.
+
+A refused run returns **402** with `code: "insufficient_credits"`; the
+executors turn that into the buy-credits modal. Every gated response carries
+`X-Credits-Balance`, so the header badge stays current without a refetch.
+
+### Setup
+
+1. Run `supabase/migrations/0003_credits.sql` in the Supabase SQL editor.
+2. Add the three Razorpay vars above to `.env.local`.
+3. Razorpay dashboard → Settings → Webhooks → add
+   `https://<domain>/api/credits/webhook` for `payment.captured`, using the
+   same secret as `RAZORPAY_WEBHOOK_SECRET`.
 
 ## Architecture Overview
 

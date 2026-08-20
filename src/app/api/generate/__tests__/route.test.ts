@@ -30,6 +30,15 @@ const { mockGenerateContent, MockGoogleGenAI } = vi.hoisted(() => {
   return { mockGenerateContent, MockGoogleGenAI };
 });
 
+// The credit gate is tested separately in src/lib/credits/__tests__. Here it is
+// stubbed to a pass-through so these cases keep testing generation logic rather
+// than re-testing auth and billing on every provider branch.
+vi.mock("@/lib/credits/guard", () => ({
+  BALANCE_HEADER: "X-Credits-Balance",
+  CHARGED_HEADER: "X-Credits-Charged",
+  withCredits: (_cost: unknown, handler: unknown) => handler,
+}));
+
 vi.mock("@google/genai", () => ({
   GoogleGenAI: MockGoogleGenAI,
 }));
@@ -99,8 +108,13 @@ describe("/api/generate route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     MockGoogleGenAI.reset();
-    // Reset env to original
+    // Reset env to original. Provider keys are server-side only now, so a
+    // request can no longer carry one — seed the environment instead.
     process.env = { ...originalEnv };
+    process.env.REPLICATE_API_KEY = "test-replicate-key";
+    process.env.FAL_API_KEY = "test-fal-key";
+    process.env.KIE_API_KEY = "test-kie-key";
+    process.env.WAVESPEED_API_KEY = "test-wavespeed-key";
   });
 
   afterEach(() => {
@@ -481,7 +495,7 @@ describe("/api/generate route", () => {
       );
     });
 
-    it("should use X-Gemini-API-Key header over env var", async () => {
+    it("ignores a client-supplied API key header", async () => {
       process.env.GEMINI_API_KEY = "env-gemini-key";
 
       mockGenerateContent.mockResolvedValueOnce(createGeminiImageResponse());
@@ -499,9 +513,9 @@ describe("/api/generate route", () => {
 
       expect(response.status).toBe(200);
       expect(data.success).toBe(true);
-      // Verify GoogleGenAI was called with header key (takes precedence)
+      // The header is not a channel any more — the environment decides.
       expect(MockGoogleGenAI.lastCalledWith).toEqual({
-        apiKey: "header-gemini-key",
+        apiKey: "env-gemini-key",
       });
     });
 
@@ -1148,8 +1162,7 @@ describe("/api/generate route", () => {
             modelId: "stability-ai/sdxl",
             displayName: "SDXL",
           },
-        },
-        { "X-Replicate-API-Key": "test-replicate-key" }
+        }
       );
 
       const response = await POST(request);
@@ -1214,8 +1227,7 @@ describe("/api/generate route", () => {
             modelId: "luma/ray",
             displayName: "Luma Ray",
           },
-        },
-        { "X-Replicate-API-Key": "test-replicate-key" }
+        }
       );
 
       const response = await POST(request);
@@ -1271,8 +1283,7 @@ describe("/api/generate route", () => {
             modelId: "stability-ai/sdxl",
             displayName: "SDXL",
           },
-        },
-        { "X-Replicate-API-Key": "test-replicate-key" }
+        }
       );
 
       const response = await POST(request);
@@ -1319,8 +1330,7 @@ describe("/api/generate route", () => {
             modelId: "stability-ai/sdxl",
             displayName: "SDXL",
           },
-        },
-        { "X-Replicate-API-Key": "test-replicate-key" }
+        }
       );
 
       const response = await POST(request);
@@ -1368,8 +1378,7 @@ describe("/api/generate route", () => {
             modelId: "stability-ai/sdxl",
             displayName: "SDXL",
           },
-        },
-        { "X-Replicate-API-Key": "test-replicate-key" }
+        }
       );
 
       // Start the POST request
@@ -1452,8 +1461,7 @@ describe("/api/generate route", () => {
             modelId: "stability-ai/sdxl",
             displayName: "SDXL",
           },
-        },
-        { "X-Replicate-API-Key": "test-replicate-key" }
+        }
       );
 
       const response = await POST(request);
@@ -1510,8 +1518,7 @@ describe("/api/generate route", () => {
             modelId: "luma/ray",
             displayName: "Luma Ray",
           },
-        },
-        { "X-Replicate-API-Key": "test-replicate-key" }
+        }
       );
 
       const response = await POST(request);
@@ -1563,8 +1570,7 @@ describe("/api/generate route", () => {
             image_url: "data:image/png;base64,testImageData",
             guidance_scale: "7.5",
           },
-        },
-        { "X-Replicate-API-Key": "test-replicate-key" }
+        }
       );
 
       const response = await POST(request);
@@ -1637,8 +1643,7 @@ describe("/api/generate route", () => {
             prompt: "Test prompt",
             image_urls: "data:image/png;base64,singleImage",  // Single string sent
           },
-        },
-        { "X-Replicate-API-Key": "test-replicate-key" }
+        }
       );
 
       const response = await POST(request);
@@ -1703,8 +1708,7 @@ describe("/api/generate route", () => {
             prompt: "Test prompt",
             image_url: ["data:image/png;base64,image1", "data:image/png;base64,image2"],  // Array sent for string param
           },
-        },
-        { "X-Replicate-API-Key": "test-replicate-key" }
+        }
       );
 
       const response = await POST(request);
@@ -1811,8 +1815,7 @@ describe("/api/generate route", () => {
             num_inference_steps: 30,
             guidance_scale: 7.5,
           },
-        },
-        { "X-Replicate-API-Key": "test-replicate-key" }
+        }
       );
 
       const response = await POST(request);
@@ -1875,8 +1878,7 @@ describe("/api/generate route", () => {
             prompt: "Dynamic prompt",
             guidance_scale: "10.0", // Should override parameters
           },
-        },
-        { "X-Replicate-API-Key": "test-replicate-key" }
+        }
       );
 
       const response = await POST(request);
@@ -1929,8 +1931,7 @@ describe("/api/generate route", () => {
             displayName: "GPT Image 1",
           },
           parameters: { size: "1024x1024", quality: "high" },
-        },
-        { "X-OpenAI-API-Key": "test-openai-key" }
+        }
       );
 
       const response = await POST(request);
@@ -1973,8 +1974,7 @@ describe("/api/generate route", () => {
             displayName: "GPT Image 1",
             capabilities: ["text-to-image", "image-to-image"],
           },
-        },
-        { "X-OpenAI-API-Key": "test-openai-key" }
+        }
       );
 
       const response = await POST(request);
@@ -2031,8 +2031,7 @@ describe("/api/generate route", () => {
             modelId: "gpt-image-1",
             displayName: "GPT Image 1",
           },
-        },
-        { "X-OpenAI-API-Key": "test-openai-key" }
+        }
       );
 
       const response = await POST(request);
@@ -2057,8 +2056,7 @@ describe("/api/generate route", () => {
             modelId: "gpt-image-1",
             displayName: "GPT Image 1",
           },
-        },
-        { "X-OpenAI-API-Key": "test-openai-key" }
+        }
       );
 
       const response = await POST(request);
@@ -2087,8 +2085,7 @@ describe("/api/generate route", () => {
             modelId: "gpt-image-2",
             displayName: "GPT Image 2",
           },
-        },
-        { "X-OpenAI-API-Key": "test-openai-key" }
+        }
       );
 
       const response = await POST(request);
@@ -2180,8 +2177,7 @@ describe("/api/generate route", () => {
             modelId: "fal-ai/flux/schnell",
             displayName: "Flux Schnell",
           },
-        },
-        { "X-Fal-API-Key": "test-fal-key" }
+        }
       );
 
       const response = await POST(request);
@@ -2225,8 +2221,7 @@ describe("/api/generate route", () => {
             modelId: "fal-ai/runway-gen3",
             displayName: "Runway Gen3",
           },
-        },
-        { "X-Fal-API-Key": "test-fal-key" }
+        }
       );
 
       const response = await POST(request);
@@ -2293,8 +2288,7 @@ describe("/api/generate route", () => {
             modelId: "fal-ai/flux/schnell",
             displayName: "Flux Schnell",
           },
-        },
-        { "X-Fal-API-Key": "test-fal-key" }
+        }
       );
 
       const response = await POST(request);
@@ -2362,8 +2356,7 @@ describe("/api/generate route", () => {
             modelId: "fal-ai/some-model",
             displayName: "Some Model",
           },
-        },
-        { "X-Fal-API-Key": "test-fal-key" }
+        }
       );
 
       const response = await POST(request);
@@ -2396,8 +2389,7 @@ describe("/api/generate route", () => {
             modelId: "fal-ai/another-model",
             displayName: "Another Model",
           },
-        },
-        { "X-Fal-API-Key": "test-fal-key" }
+        }
       );
 
       const response = await POST(request);
@@ -2447,8 +2439,7 @@ describe("/api/generate route", () => {
             modelId: "fal-ai/runway-gen3",
             displayName: "Runway Gen3",
           },
-        },
-        { "X-Fal-API-Key": "test-fal-key" }
+        }
       );
 
       const response = await POST(request);
@@ -2492,8 +2483,7 @@ describe("/api/generate route", () => {
             tail_image_url: "data:image/png;base64,tailData",
             empty_field: "", // Empty - should be filtered
           },
-        },
-        { "X-Fal-API-Key": "test-fal-key" }
+        }
       );
 
       const response = await POST(request);
@@ -2546,8 +2536,7 @@ describe("/api/generate route", () => {
             image_url: "data:image/png;base64,testImageData",
             num_inference_steps: "25",
           },
-        },
-        { "X-Fal-API-Key": "test-fal-key" }
+        }
       );
 
       const response = await POST(request);
@@ -2643,8 +2632,7 @@ describe("/api/generate route", () => {
             num_inference_steps: 28,
             guidance_scale: 3.5,
           },
-        },
-        { "X-Fal-API-Key": "test-fal-key" }
+        }
       );
 
       const response = await POST(request);
@@ -2698,8 +2686,7 @@ describe("/api/generate route", () => {
             prompt: "Dynamic prompt",
             num_inference_steps: "30", // Should override parameters
           },
-        },
-        { "X-Fal-API-Key": "test-fal-key" }
+        }
       );
 
       const response = await POST(request);
@@ -2775,8 +2762,7 @@ describe("/api/generate route", () => {
             prompt: "Edit this image",
             image_urls: "data:image/png;base64,singleImage",  // Single string sent
           },
-        },
-        { "X-Fal-API-Key": "test-fal-key" }
+        }
       );
 
       const response = await POST(request);
@@ -2845,8 +2831,7 @@ describe("/api/generate route", () => {
             prompt: "Test prompt",
             image_url: "data:image/png;base64,singleImage",  // Single string
           },
-        },
-        { "X-Fal-API-Key": "test-fal-key" }
+        }
       );
 
       const response = await POST(request);
@@ -2926,8 +2911,7 @@ describe("/api/generate route", () => {
             prompt: "Test prompt",
             image_url: ["data:image/png;base64,image1", "data:image/png;base64,image2"],  // Array of images
           },
-        },
-        { "X-Fal-API-Key": "test-fal-key" }
+        }
       );
 
       const response = await POST(request);
@@ -2969,8 +2953,7 @@ describe("/api/generate route", () => {
             modelId: "fal-ai/flux/schnell",
             displayName: "Flux Schnell",
           },
-        },
-        { "X-Fal-API-Key": "test-fal-key" }
+        }
       );
 
       const response = await POST(request);
@@ -3008,8 +2991,7 @@ describe("/api/generate route", () => {
             modelId: "fal-ai/flux/schnell",
             displayName: "Flux Schnell",
           },
-        },
-        { "X-Fal-API-Key": "test-fal-key" }
+        }
       );
 
       const response = await POST(request);
@@ -3052,8 +3034,7 @@ describe("/api/generate route", () => {
             modelId: "fal-ai/flux/schnell",
             displayName: "Flux Schnell",
           },
-        },
-        { "X-Fal-API-Key": "test-fal-key" }
+        }
       );
 
       const response = await POST(request);
@@ -3097,8 +3078,7 @@ describe("/api/generate route", () => {
             modelId: "fal-ai/hunyuan3d/mini",
             displayName: "Hunyuan 3D Mini",
           },
-        },
-        { "X-Fal-API-Key": "test-fal-key" }
+        }
       );
 
       const response = await POST(request);
@@ -3143,8 +3123,7 @@ describe("/api/generate route", () => {
             modelId: "fal-ai/hunyuan3d/standard",
             displayName: "Hunyuan 3D Standard",
           },
-        },
-        { "X-Fal-API-Key": "test-fal-key" }
+        }
       );
 
       const response = await POST(request);
@@ -3189,8 +3168,7 @@ describe("/api/generate route", () => {
             modelId: "fal-ai/some-model",
             displayName: "Some Model",
           },
-        },
-        { "X-Fal-API-Key": "test-fal-key" }
+        }
       );
 
       const response = await POST(request);

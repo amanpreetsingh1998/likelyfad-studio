@@ -20,6 +20,8 @@ import { submitKieTask } from "./providers/kie";
 import { generateWithWaveSpeed } from "./providers/wavespeed";
 import { generateWithOpenAI } from "./providers/openai";
 import { buildMediaResponse } from "./shared";
+import { withCredits } from "@/lib/credits/guard";
+import { runKindForMediaType } from "@/lib/credits/pricing";
 
 export const maxDuration = 300; // 5 min — Vercel's hobby-plan ceiling; video generation polls via /api/generate/poll
 export const dynamic = 'force-dynamic'; // Ensure this route is always dynamic
@@ -45,7 +47,7 @@ function capabilitiesForMediaType(mediaType?: string): ModelCapability[] {
   return map[mediaType ?? ""] ?? ["text-to-image"];
 }
 
-export async function POST(request: NextRequest) {
+async function handleGenerate(request: NextRequest) {
   const requestId = Math.random().toString(36).substring(7);
   console.log(`\n[API:${requestId}] ========== NEW GENERATE REQUEST ==========`);
 
@@ -111,7 +113,7 @@ export async function POST(request: NextRequest) {
       }
 
       // User-provided key takes precedence over env variable
-      const replicateApiKey = request.headers.get("X-Replicate-API-Key") || process.env.REPLICATE_API_KEY;
+      const replicateApiKey = process.env.REPLICATE_API_KEY;
       if (!replicateApiKey) {
         return NextResponse.json<GenerateResponse>(
           {
@@ -191,7 +193,7 @@ export async function POST(request: NextRequest) {
       }
 
       // User-provided key takes precedence over env variable
-      const falApiKey = request.headers.get("X-Fal-API-Key") || process.env.FAL_API_KEY || null;
+      const falApiKey = process.env.FAL_API_KEY || null;
 
       if (!falApiKey) {
         console.warn(`[API:${requestId}] No FAL API key configured. Proceeding without auth (rate-limited).`);
@@ -266,7 +268,7 @@ export async function POST(request: NextRequest) {
       }
 
       // User-provided key takes precedence over env variable
-      const kieApiKey = request.headers.get("X-Kie-Key") || process.env.KIE_API_KEY;
+      const kieApiKey = process.env.KIE_API_KEY;
       if (!kieApiKey) {
         return NextResponse.json<GenerateResponse>(
           {
@@ -344,7 +346,7 @@ export async function POST(request: NextRequest) {
       }
 
       // User-provided key takes precedence over env variable
-      const wavespeedApiKey = request.headers.get("X-WaveSpeed-Key") || process.env.WAVESPEED_API_KEY;
+      const wavespeedApiKey = process.env.WAVESPEED_API_KEY;
       if (!wavespeedApiKey) {
         return NextResponse.json<GenerateResponse>(
           {
@@ -423,7 +425,7 @@ export async function POST(request: NextRequest) {
       }
 
       // User-provided key takes precedence over env variable
-      const openaiApiKey = request.headers.get("X-OpenAI-API-Key") || process.env.OPENAI_API_KEY;
+      const openaiApiKey = process.env.OPENAI_API_KEY;
       if (!openaiApiKey) {
         return NextResponse.json<GenerateResponse>(
           {
@@ -495,7 +497,7 @@ export async function POST(request: NextRequest) {
 
     // Default: Use Gemini
     // User-provided key (from settings) takes precedence over env variable
-    const geminiApiKey = request.headers.get("X-Gemini-API-Key") || process.env.GEMINI_API_KEY;
+    const geminiApiKey = process.env.GEMINI_API_KEY;
 
     if (!geminiApiKey) {
       return NextResponse.json<GenerateResponse>(
@@ -619,3 +621,28 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+/**
+ * The route itself: credit gate first, generation second.
+ *
+ * withCredits() authenticates the caller, charges for the run, and refunds if
+ * the response comes back a failure — so none of the many early returns above
+ * has to remember to do it.
+ *
+ * The charge is derived from mediaType and the model id, both of which the
+ * request carries; the price for each comes from src/lib/credits/pricing.ts on
+ * the server. Nothing in the body influences the amount.
+ */
+export const POST = withCredits(
+  (body) => {
+    const selectedModel = body.selectedModel as { modelId?: string } | undefined;
+    const modelId = selectedModel?.modelId ?? (body.model as string | undefined);
+
+    return {
+      kind: runKindForMediaType(body.mediaType as string | undefined),
+      modelId,
+      resolution: body.resolution as string | undefined,
+    };
+  },
+  handleGenerate
+);

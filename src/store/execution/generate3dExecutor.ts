@@ -6,10 +6,10 @@
  */
 
 import type { Generate3DNodeData, SelectedModel } from "@/types";
-import { buildGenerateHeaders } from "@/store/utils/buildApiHeaders";
 import { pollGenerateTask } from "./pollTaskCompletion";
 import { runWithFallback } from "./runWithFallback";
 import type { NodeExecutionContext } from "./types";
+import { syncBalanceFromResponse, handleInsufficientCredits } from "@/store/creditStore";
 
 export interface Generate3DOptions {
   /** When true, falls back to stored inputImages/inputPrompt if no connections provide them. */
@@ -26,7 +26,6 @@ export async function executeGenerate3D(
     updateNodeData,
     getFreshNode,
     signal,
-    providerSettings,
     addIncurredCost,
     generationsPath,
     trackSaveGeneration,
@@ -73,7 +72,7 @@ export async function executeGenerate3D(
 
   const runOnce = async (modelToUse: SelectedModel, parametersOverride?: Record<string, unknown>): Promise<void> => {
     const provider = modelToUse.provider;
-    const headers = buildGenerateHeaders(provider, providerSettings);
+    const headers = { "Content-Type": "application/json" };
 
     const requestPayload = {
       images,
@@ -92,12 +91,21 @@ export async function executeGenerate3D(
         ...(signal ? { signal } : {}),
       });
 
+      // Every gated route stamps the post-run balance on the response, so the
+      // header badge stays current without a second round trip.
+      syncBalanceFromResponse(response);
+
       if (!response.ok) {
         const errorText = await response.text();
         let errorMessage = `HTTP ${response.status}`;
         try {
           const errorJson = JSON.parse(errorText);
           errorMessage = errorJson.error || errorMessage;
+          // 402 means the run was refused for want of credits. Open the buy
+          // modal rather than leaving a dead-end error on the node.
+          if (response.status === 402 && errorJson.code === "insufficient_credits") {
+            errorMessage = handleInsufficientCredits(errorJson);
+          }
         } catch {
           if (errorText) errorMessage += ` - ${errorText.substring(0, 200)}`;
         }

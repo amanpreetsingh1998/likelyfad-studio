@@ -10,10 +10,10 @@ import type {
   SelectedModel,
 } from "@/types";
 import { calculateGenerationCost } from "@/utils/costCalculator";
-import { buildGenerateHeaders } from "@/store/utils/buildApiHeaders";
 import { pollGenerateTask } from "./pollTaskCompletion";
 import { runWithFallback } from "./runWithFallback";
 import type { NodeExecutionContext } from "./types";
+import { syncBalanceFromResponse, handleInsufficientCredits } from "@/store/creditStore";
 
 export interface NanoBananaOptions {
   /** When true, falls back to stored inputImages/inputPrompt if no connections provide them. */
@@ -32,7 +32,6 @@ export async function executeNanoBanana(
     getEdges,
     getNodes,
     signal,
-    providerSettings,
     addIncurredCost,
     addToGlobalHistory,
     generationsPath,
@@ -94,7 +93,7 @@ export async function executeNanoBanana(
   // Extracted so runWithFallback can invoke it twice (primary, then fallback) if needed.
   const runOnce = async (modelToUse: SelectedModel, parametersOverride?: Record<string, unknown>): Promise<void> => {
     const provider = modelToUse.provider;
-    const headers = buildGenerateHeaders(provider, providerSettings);
+    const headers = { "Content-Type": "application/json" };
 
     // Sanitize dynamicInputs: remove prompt since it's already sent as the top-level
     // `prompt` field in requestPayload. Keeping both can cause providers like Replicate
@@ -131,12 +130,21 @@ export async function executeNanoBanana(
         ...(signal ? { signal } : {}),
       });
 
+      // Every gated route stamps the post-run balance on the response, so the
+      // header badge stays current without a second round trip.
+      syncBalanceFromResponse(response);
+
       if (!response.ok) {
         const errorText = await response.text();
         let errorMessage = `HTTP ${response.status}`;
         try {
           const errorJson = JSON.parse(errorText);
           errorMessage = errorJson.error || errorMessage;
+          // 402 means the run was refused for want of credits. Open the buy
+          // modal rather than leaving a dead-end error on the node.
+          if (response.status === 402 && errorJson.code === "insufficient_credits") {
+            errorMessage = handleInsufficientCredits(errorJson);
+          }
         } catch {
           if (errorText) errorMessage += ` - ${errorText.substring(0, 200)}`;
         }

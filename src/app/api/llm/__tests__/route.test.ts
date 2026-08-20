@@ -31,6 +31,15 @@ const { mockGenerateContent, MockGoogleGenAI, mockGoogleGenAIInstance } = vi.hoi
   return { mockGenerateContent, MockGoogleGenAI, mockGoogleGenAIInstance };
 });
 
+// The credit gate is tested separately in src/lib/credits/__tests__. Here it is
+// stubbed to a pass-through so these cases keep testing generation logic rather
+// than re-testing auth and billing on every provider branch.
+vi.mock("@/lib/credits/guard", () => ({
+  BALANCE_HEADER: "X-Credits-Balance",
+  CHARGED_HEADER: "X-Credits-Charged",
+  withCredits: (_cost: unknown, handler: unknown) => handler,
+}));
+
 vi.mock("@google/genai", () => ({
   GoogleGenAI: MockGoogleGenAI,
 }));
@@ -184,7 +193,7 @@ describe("/api/llm route", () => {
       expect(data.error).toContain("GEMINI_API_KEY not configured");
     });
 
-    it("should use X-Gemini-API-Key header over env var", async () => {
+    it("ignores a client-supplied X-Gemini-API-Key header", async () => {
       process.env.GEMINI_API_KEY = "env-gemini-key";
 
       mockGenerateContent.mockResolvedValueOnce({
@@ -206,8 +215,8 @@ describe("/api/llm route", () => {
       expect(response.status).toBe(200);
       expect(data.success).toBe(true);
 
-      // Verify GoogleGenAI was called with header key (takes precedence)
-      expect(MockGoogleGenAI.lastCalledWith).toEqual({ apiKey: "header-gemini-key" });
+      // The header is not a channel any more — the environment decides.
+      expect(MockGoogleGenAI.lastCalledWith).toEqual({ apiKey: "env-gemini-key" });
     });
 
     it("should return 429 on rate limit errors", async () => {
@@ -445,7 +454,7 @@ describe("/api/llm route", () => {
       expect(data.error).toContain("OPENAI_API_KEY not configured");
     });
 
-    it("should use X-OpenAI-API-Key header over env var", async () => {
+    it("ignores a client-supplied X-OpenAI-API-Key header", async () => {
       process.env.OPENAI_API_KEY = "env-openai-key";
 
       mockFetch.mockResolvedValueOnce({
@@ -477,7 +486,7 @@ describe("/api/llm route", () => {
         expect.objectContaining({
           headers: {
             "Content-Type": "application/json",
-            Authorization: "Bearer header-openai-key",
+            Authorization: "Bearer env-openai-key",
           },
         })
       );
@@ -704,7 +713,7 @@ describe("/api/llm route", () => {
       expect(data.error).toContain("ANTHROPIC_API_KEY not configured");
     });
 
-    it("should use X-Anthropic-API-Key header over env var", async () => {
+    it("ignores a client-supplied X-Anthropic-API-Key header", async () => {
       process.env.ANTHROPIC_API_KEY = "env-anthropic-key";
 
       mockFetch.mockResolvedValueOnce({
@@ -736,7 +745,7 @@ describe("/api/llm route", () => {
         expect.objectContaining({
           headers: {
             "Content-Type": "application/json",
-            "x-api-key": "header-anthropic-key",
+            "x-api-key": "env-anthropic-key",
             "anthropic-version": "2023-06-01",
           },
         })

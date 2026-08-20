@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 import { LLMGenerateRequest, LLMGenerateResponse, LLMModelType } from "@/types";
 import { logger } from "@/utils/logger";
+import { withCredits } from "@/lib/credits/guard";
 
 export const maxDuration = 60; // 1 minute timeout
 
@@ -35,11 +36,10 @@ async function generateWithGoogle(
   temperature: number,
   maxTokens: number,
   images?: string[],
-  requestId?: string,
-  userApiKey?: string | null
+  requestId?: string
 ): Promise<string> {
   // User-provided key takes precedence over env variable
-  const apiKey = userApiKey || process.env.GEMINI_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     logger.error('api.error', 'GEMINI_API_KEY not configured', { requestId });
     throw new Error("GEMINI_API_KEY not configured. Add it to .env.local or configure in Settings.");
@@ -119,11 +119,10 @@ async function generateWithOpenAI(
   temperature: number,
   maxTokens: number,
   images?: string[],
-  requestId?: string,
-  userApiKey?: string | null
+  requestId?: string
 ): Promise<string> {
   // User-provided key takes precedence over env variable
-  const apiKey = userApiKey || process.env.OPENAI_API_KEY;
+  const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     logger.error('api.error', 'OPENAI_API_KEY not configured', { requestId });
     throw new Error("OPENAI_API_KEY not configured. Add it to .env.local or configure in Settings.");
@@ -203,10 +202,9 @@ async function generateWithAnthropic(
   temperature: number,
   maxTokens: number,
   images?: string[],
-  requestId?: string,
-  userApiKey?: string | null
+  requestId?: string
 ): Promise<string> {
-  const apiKey = userApiKey || process.env.ANTHROPIC_API_KEY;
+  const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     logger.error('api.error', 'ANTHROPIC_API_KEY not configured', { requestId });
     throw new Error("ANTHROPIC_API_KEY not configured. Add it to .env.local or configure in Settings.");
@@ -289,15 +287,10 @@ async function generateWithAnthropic(
   return text;
 }
 
-export async function POST(request: NextRequest) {
+async function handleLLM(request: NextRequest) {
   const requestId = generateRequestId();
 
   try {
-    // Get user-provided API keys from headers (override env variables)
-    const geminiApiKey = request.headers.get("X-Gemini-API-Key");
-    const openaiApiKey = request.headers.get("X-OpenAI-API-Key");
-    const anthropicApiKey = request.headers.get("X-Anthropic-API-Key");
-
     const body: LLMGenerateRequest = await request.json();
     const {
       prompt,
@@ -330,11 +323,11 @@ export async function POST(request: NextRequest) {
     let text: string;
 
     if (provider === "google") {
-      text = await generateWithGoogle(prompt, model, temperature, maxTokens, images, requestId, geminiApiKey);
+      text = await generateWithGoogle(prompt, model, temperature, maxTokens, images, requestId);
     } else if (provider === "openai") {
-      text = await generateWithOpenAI(prompt, model, temperature, maxTokens, images, requestId, openaiApiKey);
+      text = await generateWithOpenAI(prompt, model, temperature, maxTokens, images, requestId);
     } else if (provider === "anthropic") {
-      text = await generateWithAnthropic(prompt, model, temperature, maxTokens, images, requestId, anthropicApiKey);
+      text = await generateWithAnthropic(prompt, model, temperature, maxTokens, images, requestId);
     } else {
       logger.warn('api.llm', 'Unknown provider requested', { requestId, provider });
       return NextResponse.json<LLMGenerateResponse>(
@@ -372,3 +365,13 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+/**
+ * Credit gate. LLM runs are the cheapest thing in the studio, but they still
+ * spend a server key on every call, so they are charged like anything else —
+ * see RUN_CREDIT_COSTS.llm in src/lib/credits/pricing.ts.
+ */
+export const POST = withCredits(
+  (body) => ({ kind: "llm", modelId: body.model as string | undefined }),
+  handleLLM
+);
