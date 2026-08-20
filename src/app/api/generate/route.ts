@@ -635,13 +635,24 @@ async function handleGenerate(request: NextRequest) {
  */
 export const POST = withCredits(
   (body) => {
-    const selectedModel = body.selectedModel as { modelId?: string } | undefined;
+    const selectedModel = body.selectedModel as
+      | { modelId?: string; provider?: string }
+      | undefined;
     const modelId = selectedModel?.modelId ?? (body.model as string | undefined);
+    const parameters = (body.parameters ?? {}) as Record<string, unknown>;
+
+    // Duration matters: fal bills many video models per second of output, so a
+    // 10s clip costs twice a 5s one and must not be charged the same.
+    const seconds = Number(
+      parameters.duration ?? parameters.duration_seconds ?? parameters.num_seconds
+    );
 
     return {
       kind: runKindForMediaType(body.mediaType as string | undefined),
       modelId,
+      provider: selectedModel?.provider,
       resolution: body.resolution as string | undefined,
+      seconds: Number.isFinite(seconds) && seconds > 0 ? seconds : null,
     };
   },
   handleGenerate

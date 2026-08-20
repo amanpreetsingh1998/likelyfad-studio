@@ -7,13 +7,14 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "vitest",
-    "test:run": "vitest run",
-    "test:coverage": "vitest run --coverage",
+    "test": "node --experimental-require-module ./node_modules/vitest/vitest.mjs",
+    "test:run": "node --experimental-require-module ./node_modules/vitest/vitest.mjs run",
+    "test:coverage": "node --experimental-require-module ./node_modules/vitest/vitest.mjs run --coverage",
     "supabase:check": "node scripts/supabase-check.mjs",
     "supabase:claim": "node scripts/claim-default-data.mjs",
     "comfy:record": "node scripts/comfy-smoke.mjs record",
-    "comfy:smoke": "node scripts/comfy-smoke.mjs run"
+    "comfy:smoke": "node scripts/comfy-smoke.mjs run",
+    "fal:pricing": "node scripts/fal-record-pricing.mjs"
   },
   "dependencies": {
     "@ai-sdk/google": "^3.0.13",

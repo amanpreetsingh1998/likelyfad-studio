@@ -52,11 +52,44 @@ is billed below provider cost, so that cannot come back silently.
 
 Prices are never read from the request body. A client picks a model, not a price.
 
+### fal.ai pricing
+
+fal's models API returns **no pricing field at all** — verified across the whole
+catalogue. There is no billing or usage endpoint either. The only
+machine-readable price fal publishes is an `endpointBilling` object embedded in
+each model page:
+
+```json
+{ "endpoint": "fal-ai/nano-banana-2/edit", "billing_unit": "images", "price": 0.08 }
+```
+
+`npm run fal:pricing` pages through the catalogue, scrapes that object from all
+919 relevant models, and writes `src/lib/likelyfad/fal-pricing.generated.ts`.
+Re-run it whenever fal's catalogue moves — same idea as `comfy:record`.
+
+That payload is internal, not a documented API, so the script **aborts** if
+coverage drops below 80% rather than writing a file of zeroes that would price
+the whole catalogue at nothing.
+
+`price` is per billing unit, not per run, and fal uses seventeen different
+units. `src/lib/credits/falPricing.ts` does the conversion: megapixels scale
+with resolution, seconds with clip length, `5 seconds`/`video segments` round up
+to whole blocks, `compute seconds` uses `ASSUMED_COMPUTE_SECONDS`.
+
+**Unbillable rows are refused, not guessed.** `$0`, an empty unit, and fal's
+`$1 / units` variable-pricing placeholder (which appears on models that really
+cost a few cents) all return `null`, and the guard answers **409
+`unpriced_model`**. Add a manual override rather than letting a 30x mispricing
+through — `falUnusableIds()` lists the backlog.
+
 ### Files
 
 | Purpose | Location |
 |---------|----------|
 | Margin, FX, peg, USD rate card | `src/lib/credits/rates.ts` |
+| Recorded fal prices (generated) | `src/lib/likelyfad/fal-pricing.generated.ts` |
+| fal billing-unit → per-run USD | `src/lib/credits/falPricing.ts` |
+| Pricing recorder | `scripts/fal-record-pricing.mjs` |
 | Packs + run costs derived from rates | `src/lib/credits/pricing.ts` |
 | Balance / pending / settle / grant | `src/lib/credits/server.ts` |
 | Route wrapper: auth → afford → record | `src/lib/credits/guard.ts` |

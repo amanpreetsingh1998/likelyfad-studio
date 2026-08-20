@@ -19,7 +19,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthedContext } from "@/lib/supabase/server";
 import { getBalance, getPendingTotal, recordPendingCharge } from "./server";
-import { creditCostForRun, type RunCostInput } from "./pricing";
+import { creditCostForRun, hasKnownPrice, type RunCostInput } from "./pricing";
 
 /** Balance minus what this run's workflow already owes. */
 export const BALANCE_HEADER = "X-Credits-Balance";
@@ -62,6 +62,24 @@ export function withCredits(
     }
 
     const cost = costFrom(body);
+
+    // Refuse rather than guess. Billing an unpriced model at a category
+    // average is how a $1.68 run gets charged like a $0.05 one — and it fails
+    // silently, in your favour never.
+    if (!hasKnownPrice(cost)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "This model has no recorded price yet, so it cannot be billed. " +
+            "Run `npm run fal:pricing` to refresh the price list, or pick another model.",
+          code: "unpriced_model",
+          modelId: cost.modelId ?? null,
+        },
+        { status: 409 }
+      );
+    }
+
     const charge = creditCostForRun(cost);
 
     // Affordability is checked against balance MINUS what this workflow has

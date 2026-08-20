@@ -24,6 +24,7 @@ import {
   creditsForUsd,
   formatCreditsAsInr,
 } from "./rates";
+import { falUsdForRun, hasUsableFalPrice } from "./falPricing";
 
 export { CREDIT_VALUE_INR, creditsForUsd, formatCreditsAsInr };
 export { creditsToInr, MARGIN, USD_INR_RATE } from "./rates";
@@ -100,6 +101,10 @@ export type RunCostInput = {
   resolution?: string | null;
   /** Number of outputs requested, when the model supports batching. */
   count?: number;
+  /** Which provider the model belongs to, when known. */
+  provider?: string | null;
+  /** Clip length, for models that bill per second of output. */
+  seconds?: number | null;
 };
 
 /**
@@ -111,6 +116,21 @@ export type RunCostInput = {
 export function usdCostForRun(input: RunCostInput): number {
   const { kind, modelId, resolution } = input;
   const id = (modelId ?? "").toLowerCase();
+
+  // Real recorded fal prices beat anything in USD_RATES. They are scraped from
+  // fal's own billing payload (npm run fal:pricing), so they are the actual
+  // number we get invoiced for — USD_RATES is a hand-written approximation
+  // kept only for providers with no recorded data.
+  if (modelId) {
+    const fal = falUsdForRun(modelId, {
+      resolution,
+      seconds: input.seconds,
+      // count is applied by creditCostForRun, not here, or it would be
+      // multiplied in twice.
+      count: 1,
+    });
+    if (fal !== null) return fal;
+  }
 
   if (kind === "image") {
     const key = matchKey(id, Object.keys(USD_RATES.image));
@@ -162,4 +182,18 @@ export function runKindForMediaType(mediaType?: string | null): RunKind {
     default:
       return "image";
   }
+}
+
+/**
+ * True when this run's price is a real recorded provider rate rather than a
+ * category fallback. The guard refuses unpriced fal models rather than billing
+ * them at a guess.
+ */
+export function hasKnownPrice(input: RunCostInput): boolean {
+  if (input.provider === "fal") {
+    return input.modelId ? hasUsableFalPrice(input.modelId) : false;
+  }
+  // Every other provider is either a static rate card we control (Gemini,
+  // OpenAI, Kie) or not yet audited — those keep the existing behaviour.
+  return true;
 }
