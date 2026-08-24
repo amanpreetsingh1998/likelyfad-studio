@@ -203,7 +203,7 @@ passes, so a handler cannot obtain it by forgetting to check.
 
 ### Setup
 
-1. Run `supabase/migrations/0005_admin.sql`.
+1. Run `supabase/migrations/0005_admin.sql`, then `0006_generation_events.sql`.
 2. Sign in once with the account that should be admin (there must be an
    `auth.users` row to point at).
 3. `select public.set_admin('you@example.com');`
@@ -211,17 +211,81 @@ passes, so a handler cannot obtain it by forgetting to check.
 Re-running `set_admin` with a different email **transfers** the seat rather
 than adding one — that is the intended handover path.
 
+### The generation log
+
+`generation_events` is one row per billable run — user, model, prompt, status,
+credits, duration, and a 256px thumbnail of the output. It is what both halves
+of the dashboard read from: the moderation feed wants prompts and pictures, the
+stats want models, statuses and timings.
+
+Written from `withCredits()`, for the same reason billing lives there: it is
+the one point every `/api/generate` and `/api/llm` call passes through with the
+user, the model and the response all in scope. The write is deferred with
+`deferAfterResponse()` so no user waits on a resize.
+
+Before this table nothing recorded what users generated. Outputs lived as
+base64 in `projects.workflow_json`, overwritten on every autosave; prompts were
+stored nowhere at all. **It is the only part of the dashboard that cannot be
+backfilled** — history starts the day it ships.
+
+**Two writes, not one.** The row lands first, the thumbnail follows. A picture
+that fails to encode or upload then costs only the picture; the prompt, model
+and user — what moderation actually turns on — are already recorded.
+
+**`status` is a lifecycle, not a success flag.** `pending` means the run was
+dispatched to a provider that answers asynchronously (long-running Kie tasks);
+`/api/generate/poll` closes it out later. A `pending` row that never advances
+is not garbage to sweep — it is the record that this prompt reached a provider,
+which is worth keeping even when the output never came back.
+
+**Completion matches `(user_id, task_id)`, never `task_id` alone.** Task ids
+come from the provider and are guessable enough that matching on one by itself
+would let a user attach output to someone else's event, or read a completion
+that is not theirs. The unique index is on the pair for the same reason.
+
+`/api/generate/poll` **is now authenticated**. It was not before — the one
+generation route reachable without a session, where anyone could spend
+`KIE_API_KEY` and a guessed task id returned someone else's media. `proxy.ts`
+lets `/api/*` through on purpose, so nothing else was covering it.
+
+**Thumbnails live in their own `moderation` bucket**, not `project-media`:
+`0002_storage_policies.sql` grants users delete on everything under their own
+prefix there, and evidence the subject can delete is not evidence. Keyed by
+event id with no user prefix, so the shape never invites an owner-scoped policy
+later.
+
+**Video, audio and 3D get no thumbnail** — a representative frame needs a
+decoder that does not run server-side here, so those runs are moderated on
+their prompt alone. A real gap in visual coverage, recorded rather than papered
+over.
+
+**Nothing here throws.** Every failure path logs and returns null. By the time
+any of it runs the generation has succeeded and the credits are committed; a
+logging fault must not become the user's error. The cost is that a broken log
+is silent, so failures log loudly enough to find.
+
+### Files
+
+| Purpose | Location |
+|---------|----------|
+| Table, indexes, `moderation` bucket, retention | `supabase/migrations/0006_generation_events.sql` |
+| Record / complete an event | `src/lib/moderation/events.ts` |
+| 256px webp encoder | `src/lib/moderation/thumbnail.ts` |
+| `after()` wrapper | `src/lib/moderation/defer.ts` |
+| Write site | `src/lib/credits/guard.ts` |
+| Async completion | `src/app/api/generate/poll/route.ts` |
+
 ### Status
 
-Phase 0 (auth + shell) only. The Overview, Users and Content pages are
-placeholders naming the phase that fills them.
+Phases 0 and 1. Auth, shell, and the generation log are in; the Overview, Users
+and Content pages are still placeholders naming the phase that fills them
+(2, 3 and 4).
 
-**Nothing records generated content yet**, so the moderation feed has no data
-source: `uploadMedia()` in `cloud-storage.ts` is uncalled, outputs live as
-base64 inside `projects.workflow_json` and are overwritten on every autosave,
-and prompts are not logged anywhere. Phase 1 adds a `generation_events` table
-written from `withCredits()` — the one chokepoint every billable run passes
-through. It is the only part of the dashboard that cannot be backfilled.
+**Retention is not wired up.** `prune_generation_events(days)` exists and
+returns the thumbnail keys it deleted — SQL cannot remove storage objects, so a
+caller must pass those to the storage API. It needs a scheduler this project
+does not have, the same gap that keeps `settle_pending_charges` from closing
+the closed-tab billing leak.
 
 ## Architecture Overview
 

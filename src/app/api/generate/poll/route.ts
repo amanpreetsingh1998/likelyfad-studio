@@ -4,9 +4,24 @@
  * Handles status polling for long-running Kie.ai tasks.
  * The client calls this endpoint repeatedly with short-lived requests
  * instead of holding a single connection open for minutes.
+ *
+ * AUTHENTICATED, as of the moderation log.
+ *
+ * It was not before, which made it the one generation route reachable without
+ * a session: anyone could spend the server's KIE_API_KEY fetching results, and
+ * a guessed task id returned somebody else's generated media. proxy.ts lets
+ * /api/* through on purpose, so nothing else was covering it.
+ *
+ * The session is also what makes completion attributable. The dispatch in
+ * withCredits() logged a pending row against (user_id, task_id); this route
+ * closes that row out, and matching on the pair rather than the task id alone
+ * is what stops one user completing — or reading — another's run.
  */
 import { NextRequest, NextResponse } from "next/server";
 import type { GenerateResponse } from "@/types";
+import { getAuthedContext } from "@/lib/supabase/server";
+import { completeGenerationEvent } from "@/lib/moderation/events";
+import { deferAfterResponse } from "@/lib/moderation/defer";
 import { checkKieTaskOnce, fetchKieMediaResult, isVeoModel } from "../providers/kie";
 import { buildMediaResponse } from "../shared";
 
@@ -42,6 +57,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Checked after the cheap validation above, but before anything that
+    // spends the provider key.
+    const auth = await getAuthedContext();
+    if (!auth) {
+      return NextResponse.json<GenerateResponse>(
+        { success: false, error: "Not signed in" },
+        { status: 401 }
+      );
+    }
+    const userId = auth.user.id;
+
     // Get API key (same pattern as route.ts)
     const apiKey = process.env.KIE_API_KEY;
     if (!apiKey) {
@@ -67,6 +93,14 @@ export async function POST(request: NextRequest) {
     }
 
     if (pollResult.status === "failed") {
+      deferAfterResponse(() =>
+        completeGenerationEvent({
+          userId,
+          taskId,
+          status: "failed",
+          error: pollResult.error,
+        })
+      );
       return NextResponse.json<GenerateResponse>(
         { success: false, error: `${modelName}: ${pollResult.error}` },
         { status: 500 }
@@ -102,6 +136,19 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
+
+    // The run is finished, so close out the pending row the dispatch left
+    // behind. Deferred: this thumbnails the output, and the client has waited
+    // long enough for this media already.
+    deferAfterResponse(() =>
+      completeGenerationEvent({
+        userId,
+        taskId,
+        status: "succeeded",
+        output: output.data ?? output.url ?? null,
+        outputKind: mediaType,
+      })
+    );
 
     return buildMediaResponse(output);
   } catch (error) {
