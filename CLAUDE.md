@@ -200,10 +200,15 @@ passes, so a handler cannot obtain it by forgetting to check.
 | Page gate | `src/proxy.ts` (`isAdminPath`) |
 | Shell, nav, pages | `src/app/admin/`, `src/components/admin/` |
 | Gate smoke test route | `src/app/api/admin/me/route.ts` |
+| Stats SQL functions | `supabase/migrations/0007_admin_stats.sql` |
+| Stats reader + pivot | `src/lib/admin/stats.ts` |
+| Stats route | `src/app/api/admin/stats/route.ts` |
+| Charts, palette, formatters | `src/components/admin/charts/` |
 
 ### Setup
 
-1. Run `supabase/migrations/0005_admin.sql`, then `0006_generation_events.sql`.
+1. Run `supabase/migrations/0005_admin.sql`, then `0006_generation_events.sql`,
+   then `0007_admin_stats.sql`.
 2. Sign in once with the account that should be admin (there must be an
    `auth.users` row to point at).
 3. `select public.set_admin('you@example.com');`
@@ -275,11 +280,56 @@ is silent, so failures log loudly enough to find.
 | Write site | `src/lib/credits/guard.ts` |
 | Async completion | `src/app/api/generate/poll/route.ts` |
 
+### The stats board
+
+Every aggregate is a SQL function in `0007_admin_stats.sql`, not a query in the
+route. These count over tables that only grow; pulling rows into Node to count
+them works right up until it very suddenly does not, and the failure lands on
+the one page you open when something is already wrong.
+
+`/admin` renders server-side with real numbers on first paint, then refetches
+through `/api/admin/stats` when the window changes — no navigation, no skeleton.
+
+**A failed panel costs one panel.** `getAdminStats()` collects the names of
+queries that failed into `stats.failed` and returns 200 regardless; each panel
+says whether it is *empty* or *broken*. Those are different facts, and showing
+zero for a failed query is showing a number an admin would believe.
+
+**Charts are hand-rolled SVG**, not a chart library. The mark spec is exact —
+2px surface gaps between touching fills, 4px radius on the data end only,
+square at the baseline — and every panel carries a table twin, which is what a
+tooltip-only value fails to be for keyboard and screen-reader users.
+
+Rules the charts are built to, worth knowing before adding one:
+
+- **Never a second y-axis.** Signups and revenue are separate charts because
+  the alignment between two scales is arbitrary, so a dual axis invents a
+  correlation that is not in the data.
+- **Colour follows the entity, never its position.** `kindColor()` maps a run
+  kind to a fixed slot from `KIND_ORDER`. Deriving it from the series on screen
+  meant a window with no video runs shifted every later kind down a slot and
+  repainted them.
+- **One filter row above everything it scopes**, never inside a chart card, so
+  two panels cannot disagree about the period on screen.
+- **One colour per bar in the leaderboard** — a darker-where-bigger ramp would
+  double-encode length as hue and spend the only free channel restating it.
+- **Six categorical slots, never cycled.** A seventh series folds into "Other";
+  a generated hue is indistinguishable under CVD.
+
+The palette is the reference dark steps, re-validated against *this* app's
+surface (`neutral-900`) rather than the reference's — contrast and
+lightness-band results only mean anything against the surface the chart really
+renders on. All six pass; worst adjacent CVD ΔE 8.4.
+
 ### Status
 
-Phases 0 and 1. Auth, shell, and the generation log are in; the Overview, Users
-and Content pages are still placeholders naming the phase that fills them
-(2, 3 and 4).
+Phases 0–2. Auth, the shell, the generation log and the stats board are in.
+Users and Content are still placeholders naming the phase that fills them
+(3 and 4).
+
+The usage panels read from `generation_events`, which starts empty — "no data
+yet" is the honest first-week state of half this dashboard, and the panels say
+so rather than drawing empty axes that look like a bug.
 
 **Retention is not wired up.** `prune_generation_events(days)` exists and
 returns the thumbnail keys it deleted — SQL cannot remove storage objects, so a
