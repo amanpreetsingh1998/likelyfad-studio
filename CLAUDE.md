@@ -155,6 +155,74 @@ turn that into the buy-credits modal. Every gated response carries
    `https://<domain>/api/credits/webhook` for `payment.captured`, using the
    same secret as `RAZORPAY_WEBHOOK_SECRET`.
 
+## Admin Dashboard
+
+One admin, enforced by the database rather than by application code: the
+`admins` table is `id int primary key check (id = 1)`, so a second row is a
+constraint violation. There is no UI that grants admin — seeding is a manual
+`select set_admin('you@example.com')` in the SQL editor, because a UI that can
+promote an admin is a UI that can be tricked into promoting one.
+
+### Two gates, different jobs
+
+| Surface | Gate | Refusal |
+|---------|------|---------|
+| `/admin/*` pages | `src/proxy.ts` | redirect to `/` |
+| `/api/admin/*` routes | `requireAdmin()` in `src/lib/admin/guard.ts` | 401 signed out, **404** signed in |
+
+404 rather than 403 for a non-admin: there is no benefit in confirming the
+surface exists to someone who just probed for it.
+
+The proxy asks through the **caller's own session** — `admins_select_self` in
+`0005_admin.sql` limits that read to their own row — so no service-role key is
+reachable from the edge. `requireAdmin()` asks through the service client
+instead, so route authorization does not depend on that policy being right.
+
+Both compare `row.user_id === session.user.id` explicitly rather than treating
+"a row came back" as a pass, and both **fail closed**: a missing migration,
+revoked grant, or absent `SUPABASE_SERVICE_ROLE_KEY` is a refusal, not a 500
+and not an admission.
+
+**Admin reads deliberately do not go through RLS.** The obvious alternative —
+an `is_admin()` helper wired into every table's policies — was rejected: it
+widens the blast radius of every policy in the schema at once, on tables whose
+entire security model is `auth.uid() = user_id`. Keeping the bypass in
+`guard.ts` means RLS stays exactly as strict as it is and the exception lives
+in one file. `requireAdmin()` returns the service client only *after* the check
+passes, so a handler cannot obtain it by forgetting to check.
+
+### Files
+
+| Purpose | Location |
+|---------|----------|
+| `admins` table, RLS, `set_admin()` | `supabase/migrations/0005_admin.sql` |
+| `isAdmin()` / `requireAdmin()` | `src/lib/admin/guard.ts` |
+| Page gate | `src/proxy.ts` (`isAdminPath`) |
+| Shell, nav, pages | `src/app/admin/`, `src/components/admin/` |
+| Gate smoke test route | `src/app/api/admin/me/route.ts` |
+
+### Setup
+
+1. Run `supabase/migrations/0005_admin.sql`.
+2. Sign in once with the account that should be admin (there must be an
+   `auth.users` row to point at).
+3. `select public.set_admin('you@example.com');`
+
+Re-running `set_admin` with a different email **transfers** the seat rather
+than adding one — that is the intended handover path.
+
+### Status
+
+Phase 0 (auth + shell) only. The Overview, Users and Content pages are
+placeholders naming the phase that fills them.
+
+**Nothing records generated content yet**, so the moderation feed has no data
+source: `uploadMedia()` in `cloud-storage.ts` is uncalled, outputs live as
+base64 inside `projects.workflow_json` and are overwritten on every autosave,
+and prompts are not logged anywhere. Phase 1 adds a `generation_events` table
+written from `withCredits()` — the one chokepoint every billable run passes
+through. It is the only part of the dashboard that cannot be backfilled.
+
 ## Architecture Overview
 
 Likelyfad Studio is a node-based visual workflow editor for AI image generation. Users drag nodes onto a React Flow canvas, connect them via typed handles, and execute pipelines that call AI APIs.
