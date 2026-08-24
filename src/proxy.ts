@@ -33,6 +33,21 @@ function isPublicPath(pathname: string): boolean {
   );
 }
 
+/**
+ * The admin surface, gated here for the same reason the studio is: a visitor
+ * who is not the admin never receives the page at all, so there is no flash of
+ * a dashboard before a client-side redirect and nothing to reach by disabling
+ * JavaScript.
+ *
+ * This runs one indexed lookup on a single-row table, and only for /admin
+ * paths — /api/admin/* is excluded because those routes gate themselves
+ * through requireAdmin(), and a redirect would hand fetch() an HTML page with
+ * a 200 instead of the error it knows how to handle.
+ */
+function isAdminPath(pathname: string): boolean {
+  return pathname === "/admin" || pathname.startsWith("/admin/");
+}
+
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
 
@@ -70,6 +85,27 @@ export async function proxy(request: NextRequest) {
     const signIn = new URL("/signin", request.url);
     signIn.searchParams.set("next", pathname + search);
     return NextResponse.redirect(signIn);
+  }
+
+  // Signed in, but is it the admin? Asked through the caller's own session,
+  // which the admins_select_self policy limits to their own row — so this
+  // needs no service-role key, and a non-admin simply gets nothing back.
+  //
+  // Compared explicitly against the session's id rather than trusting that a
+  // returned row must be theirs: the policy is what makes those equivalent,
+  // and this is the check that would be load-bearing if the policy were wrong.
+  if (data.user && isAdminPath(pathname)) {
+    const { data: admin } = await supabase
+      .from("admins")
+      .select("user_id")
+      .eq("id", 1)
+      .maybeSingle();
+
+    // Redirected to the studio, not shown a denial. Someone who guessed the
+    // URL learns only that it is not theirs.
+    if (admin?.user_id !== data.user.id) {
+      return NextResponse.redirect(new URL("/", request.url));
+    }
   }
 
   return response;
