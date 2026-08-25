@@ -96,3 +96,50 @@ export function niceTicks(max: number, count = 4): number[] {
   if (ticks.length < 2) ticks.push(step);
   return ticks;
 }
+
+/** "2026-08-24T09:31:00Z" → "24 Aug 2026, 15:01". Absolute, local, minutes. */
+export function formatDateTime(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "—";
+  return new Intl.DateTimeFormat("en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+/**
+ * "3d ago", "just now", "—".
+ *
+ * For table cells where the question is "is this account warm or cold", not
+ * "when exactly". The absolute time goes in the cell's title attribute at the
+ * call site — a relative figure alone is unanswerable if what you need is to
+ * line an event up against something else.
+ */
+export function formatAgo(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const then = new Date(iso).getTime();
+  if (!Number.isFinite(then)) return "—";
+
+  const seconds = Math.round((Date.now() - then) / 1000);
+  if (seconds < 60) return "just now";
+
+  const units: Array<[Intl.RelativeTimeFormatUnit, number]> = [
+    ["minute", 60],
+    ["hour", 3600],
+    ["day", 86400],
+    ["month", 2_592_000],
+    ["year", 31_536_000],
+  ];
+
+  // Largest unit that still yields a whole number ≥ 1, so a fortnight reads
+  // "2w"-ish rather than "336 hours".
+  let chosen: [Intl.RelativeTimeFormatUnit, number] = units[0];
+  for (const unit of units) if (seconds >= unit[1]) chosen = unit;
+
+  const formatter = new Intl.RelativeTimeFormat("en-IN", { numeric: "auto" });
+  return formatter.format(-Math.floor(seconds / chosen[1]), chosen[0]);
+}

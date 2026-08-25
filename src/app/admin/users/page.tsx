@@ -1,28 +1,28 @@
-import { PlaceholderPanel } from "@/components/admin/PlaceholderPanel";
+/**
+ * Users — every account, what they spend, and what they have made.
+ *
+ * The first page is read here, on the server, so the table paints with real
+ * rows; search, sort and paging then go through /api/admin/users without a
+ * navigation. Same shape as the Overview page, for the same reason.
+ */
 
+import { requireAdmin } from "@/lib/admin/guard";
+import { listUsers } from "@/lib/admin/users";
+import { UsersDashboard } from "@/components/admin/users/UsersDashboard";
+
+// Accounts, balances and suspensions must be current per request. A cached
+// user list is a list that shows a suspended account as active.
 export const dynamic = "force-dynamic";
 
-export default function AdminUsersPage() {
-  return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold text-neutral-100">Users</h1>
-        <p className="mt-1 text-sm text-neutral-400">
-          Every account, what they spend, and what they have made.
-        </p>
-      </div>
+export default async function AdminUsersPage() {
+  const gate = await requireAdmin();
 
-      <PlaceholderPanel
-        title="User table"
-        phase="Phase 3"
-        items={[
-          "Email, name, signed up, last active, balance, lifetime ₹, credits spent",
-          "Projects, generations, flag count, account status",
-          "Row detail: Overview / Projects / Generations / Ledger / Flags",
-          "Actions: grant credits, refund, suspend, delete, view-as",
-        ]}
-        note="Buildable against existing data — auth.users, user_credits, credit_transactions and pending_charges already carry every column above except generations and flags, which Phase 1 starts recording."
-      />
-    </div>
-  );
+  // Unreachable in practice — proxy.ts turns a non-admin away before routing.
+  // Kept for the reason the Overview page keeps it: "unreachable" is a
+  // property of today's proxy config, not of this file.
+  if (!gate.ok) return null;
+
+  const initial = await listUsers(gate.service);
+
+  return <UsersDashboard initial={initial} adminId={gate.user.id} />;
 }
