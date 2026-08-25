@@ -213,12 +213,16 @@ passes, so a handler cannot obtain it by forgetting to check.
 | Thumbnail signing | `src/lib/admin/thumbnails.ts` |
 | Content routes | `src/app/api/admin/content/` |
 | Feed and cards | `src/components/admin/content/` |
+| Audit log SQL | `supabase/migrations/0010_admin_audit.sql` |
+| Log reader + detail formatting | `src/lib/admin/audit.ts` |
+| Audit route | `src/app/api/admin/audit/route.ts` |
+| Log table | `src/components/admin/audit/` |
 
 ### Setup
 
 1. Run `supabase/migrations/0005_admin.sql`, then `0006_generation_events.sql`,
    then `0007_admin_stats.sql`, then `0008_admin_users.sql`, then
-   `0009_moderation.sql`.
+   `0009_moderation.sql`, then `0010_admin_audit.sql`.
 2. Sign in once with the account that should be admin (there must be an
    `auth.users` row to point at).
 3. `select public.set_admin('you@example.com');`
@@ -422,10 +426,39 @@ The two coverage gaps are stated in the UI rather than papered over: nothing
 before `generation_events` shipped can be reviewed at all, and video, audio
 and 3D runs have no thumbnail, so they are judged on their prompt alone.
 
+### The audit log
+
+`/admin/audit` reads `admin_actions`, which every mutating route has written
+to since Phase 3. The table's RLS is on with no policies, so the only possible
+reader was the service role — and until this page, no route asked. A log
+nobody can read is a log first seen with an incident already underway.
+
+**Read-only, and there is no writer here.** Rows are written by the handlers
+that take the actions; nothing edits or deletes one. An audit log with an edit
+endpoint is not an audit log.
+
+- **Emails come off the row, never a join.** They were snapshot at write time
+  so a deleted account still reads as an address. `target_exists` answers the
+  separate question — whether there is still an account to open — and a row
+  without one says "no account" rather than offering a dead link on the very
+  row that documents the deletion.
+- **`describeDetail()` prints keys it does not know.** `details` is jsonb so a
+  new action can record what it needs without a migration; a renderer written
+  to a fixed schema per action would quietly hide the next one's evidence.
+- **The action filter is capped, not whitelisted**, for the same reason: a
+  chip for an action this build has never heard of must filter to it rather
+  than degrade to "everything".
+- The chips' counts come from one summary query, and a failed summary shows
+  no number instead of a zero beside "Deleted account".
+
+The Users drawer links here with `?target=`, which is how one account's
+history is read.
+
 ### Status
 
-Phases 0–4. Every tab of the dashboard is real: auth, the shell, the
-generation log, the stats board, the user list and the moderation feed.
+Phases 0–4, plus the audit log. Every tab of the dashboard is real: auth, the
+shell, the generation log, the stats board, the user list, the moderation feed
+and the record of what the admin did.
 
 The usage panels read from `generation_events`, which starts empty — "no data
 yet" is the honest first-week state of half this dashboard, and the panels say
