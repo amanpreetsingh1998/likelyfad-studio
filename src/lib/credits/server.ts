@@ -135,7 +135,7 @@ export async function discardPendingCharges(userId: string): Promise<number> {
 export async function grantCredits(params: {
   userId: string;
   amount: number;
-  kind: "purchase" | "admin" | "signup";
+  kind: "purchase" | "admin" | "signup" | "refund";
   reason?: string;
   /** Idempotency key. A repeat is a no-op returning the current balance. */
   ref?: string;
