@@ -16,6 +16,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { signThumbnails } from "./thumbnails";
 
 /** Accounts per page. */
 export const DEFAULT_PAGE_SIZE = 25;
@@ -23,11 +24,6 @@ const MAX_PAGE_SIZE = 100;
 
 /** Rows in the drawer's tabs before "showing the first N" applies. */
 export const TAB_PAGE_SIZE = 25;
-
-/** How long a moderation thumbnail URL stays valid, in seconds. */
-const THUMB_TTL_SECONDS = 300;
-
-const MODERATION_BUCKET = "moderation";
 
 /**
  * Sortable columns, mirroring the CASE list in 0008 §2.
@@ -43,6 +39,7 @@ export const USER_SORTS = [
   "spent",
   "revenue",
   "generations",
+  "flags",
   "email",
 ] as const;
 
@@ -65,6 +62,8 @@ export type AdminUserRow = {
   projects: number;
   generations: number;
   generations_failed: number;
+  /** Runs a moderator has flagged. Added in 0009, with the Content tab. */
+  flags: number;
   total_count: number;
 };
 
@@ -305,47 +304,6 @@ export async function getUserProjects(
   return (data ?? []) as AdminProjectRow[];
 }
 
-/**
- * Sign a batch of moderation thumbnails.
- *
- * The bucket is private and has no policies at all (0006 §4), so the only way
- * a browser can render one is a signed URL minted here, after requireAdmin().
- * Short TTL: these are links to evidence, and one pasted into a chat should
- * stop working quickly.
- *
- * A failure to sign costs the pictures, not the tab — the prompt, model and
- * status are what the row is mostly there to show.
- */
-async function signThumbnails(
-  service: SupabaseClient,
-  paths: string[]
-): Promise<Map<string, string>> {
-  const signed = new Map<string, string>();
-  if (paths.length === 0) return signed;
-
-  try {
-    const { data, error } = await service.storage
-      .from(MODERATION_BUCKET)
-      .createSignedUrls(paths, THUMB_TTL_SECONDS);
-
-    if (error) {
-      console.error("[admin] thumbnail signing failed:", error.message);
-      return signed;
-    }
-
-    for (const entry of data ?? []) {
-      if (entry.path && entry.signedUrl) signed.set(entry.path, entry.signedUrl);
-    }
-  } catch (err) {
-    console.error(
-      "[admin] thumbnail signing threw:",
-      err instanceof Error ? err.message : err
-    );
-  }
-
-  return signed;
-}
-
 /** The Generations tab, with signed thumbnails attached. */
 export async function getUserGenerations(
   service: SupabaseClient,
@@ -386,7 +344,11 @@ export type AdminActionName =
   | "refund"
   | "suspend"
   | "unsuspend"
-  | "delete_user";
+  | "delete_user"
+  // Content actions, added with the moderation feed in Phase 4.
+  | "flag_content"
+  | "clear_content"
+  | "remove_content";
 
 /**
  * Record an admin action.

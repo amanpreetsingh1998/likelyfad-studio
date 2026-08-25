@@ -44,6 +44,7 @@ create table if not exists public.admin_actions (
   actor_id       uuid not null,
   actor_email    text,
   -- 'grant_credits' | 'refund' | 'suspend' | 'unsuspend' | 'delete_user'
+  -- and, from 0009: 'flag_content' | 'clear_content' | 'remove_content'
   action         text not null,
   target_user_id uuid,
   target_email   text,
