@@ -45,6 +45,7 @@ const COLUMNS: Array<{
   { key: "spent", label: "Spent", sort: "spent", align: "right" },
   { key: "projects", label: "Projects", align: "right", wide: true },
   { key: "generations", label: "Runs", sort: "generations", align: "right" },
+  { key: "flags", label: "Flags", sort: "flags", align: "right" },
   { key: "status", label: "Status" },
 ];
 
@@ -53,12 +54,15 @@ const SEARCH_DEBOUNCE_MS = 250;
 export function UsersDashboard({
   initial,
   adminId,
+  initialSearch = "",
 }: {
   initial: AdminUserListResult;
   adminId: string;
+  /** Seeded from ?q=, so a link from the Content feed lands on that account. */
+  initialSearch?: string;
 }) {
   const [result, setResult] = useState(initial);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(initialSearch);
   const [sort, setSort] = useState<UserSort>(initial.sort);
   const [offset, setOffset] = useState(initial.offset);
   const [loading, setLoading] = useState(false);
@@ -364,6 +368,16 @@ function UserRow({
           <span className="block text-xs text-neutral-600">
             {formatNumber(user.generations_failed)} failed
           </span>
+        )}
+      </td>
+
+      <td className="px-3 py-2.5 text-right tabular-nums">
+        {/* Zero is written as an em dash: a column of noughts reads as a
+            measurement, and what it mostly means here is "nothing to see". */}
+        {user.flags > 0 ? (
+          <span className="text-amber-300">{formatNumber(user.flags)}</span>
+        ) : (
+          <span className="text-neutral-600">—</span>
         )}
       </td>
 

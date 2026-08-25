@@ -1,28 +1,27 @@
-import { PlaceholderPanel } from "@/components/admin/PlaceholderPanel";
+/**
+ * Content — generated output, newest first, for review.
+ *
+ * The first page is read on the server so the feed paints with real cards;
+ * filters, search and paging then go through /api/admin/content.
+ */
 
+import { requireAdmin } from "@/lib/admin/guard";
+import { getModerationFeed } from "@/lib/admin/moderation";
+import { ContentFeed } from "@/components/admin/content/ContentFeed";
+
+// A cached moderation queue is a queue that shows work already done.
 export const dynamic = "force-dynamic";
 
-export default function AdminContentPage() {
-  return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold text-neutral-100">Content</h1>
-        <p className="mt-1 text-sm text-neutral-400">
-          Generated output, newest first, for NSFW review.
-        </p>
-      </div>
+export default async function AdminContentPage() {
+  const gate = await requireAdmin();
 
-      <PlaceholderPanel
-        title="Moderation feed"
-        phase="Phase 4"
-        items={[
-          "Thumbnail, prompt, user, model, timestamp — filterable and searchable",
-          "Flag queue with per-user violation counts",
-          "Actions: flag, delete content, suspend user",
-          "Admin audit log of every action taken",
-        ]}
-        note="Blocked on Phase 1, and it is the one thing here that cannot be backfilled. Generated images are never written anywhere queryable today — uploadMedia() is uncalled, outputs live as base64 inside projects.workflow_json and are overwritten on every autosave, and prompts are not logged at all. This feed can only show what generation_events has recorded since it went live."
-      />
-    </div>
-  );
+  // Unreachable in practice — proxy.ts turns a non-admin away before routing.
+  if (!gate.ok) return null;
+
+  // Opens on everything rather than on the unreviewed queue: the first
+  // question about a new feed is what is in it, and a filtered first paint
+  // looks like an empty log.
+  const initial = await getModerationFeed(gate.service);
+
+  return <ContentFeed initial={initial} />;
 }

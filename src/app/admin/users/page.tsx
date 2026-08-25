@@ -14,7 +14,14 @@ import { UsersDashboard } from "@/components/admin/users/UsersDashboard";
 // user list is a list that shows a suspended account as active.
 export const dynamic = "force-dynamic";
 
-export default async function AdminUsersPage() {
+export default async function AdminUsersPage({
+  searchParams,
+}: {
+  // ?q= is how the Content feed links to an account: a card names the email,
+  // and following it should land on that account rather than on page one of
+  // everyone.
+  searchParams: Promise<{ q?: string }>;
+}) {
   const gate = await requireAdmin();
 
   // Unreachable in practice — proxy.ts turns a non-admin away before routing.
@@ -22,7 +29,14 @@ export default async function AdminUsersPage() {
   // property of today's proxy config, not of this file.
   if (!gate.ok) return null;
 
-  const initial = await listUsers(gate.service);
+  const { q } = await searchParams;
+  const initial = await listUsers(gate.service, { search: q });
 
-  return <UsersDashboard initial={initial} adminId={gate.user.id} />;
+  return (
+    <UsersDashboard
+      initial={initial}
+      adminId={gate.user.id}
+      initialSearch={initial.search ?? ""}
+    />
+  );
 }
