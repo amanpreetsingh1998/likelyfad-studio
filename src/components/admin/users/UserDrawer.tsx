@@ -24,6 +24,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import type {
   AdminGenerationRow,
   AdminLedgerRow,
@@ -359,6 +360,15 @@ function OverviewTab({
         />
         <Row label="Projects" value={formatNumber(user.projects)} />
       </dl>
+
+      {/* Everything below this line is an action, and every action is
+          recorded. The log is where it is read back. */}
+      <Link
+        href={`/admin/audit?target=${user.user_id}`}
+        className="inline-block text-xs text-neutral-400 underline-offset-2 hover:text-neutral-200 hover:underline"
+      >
+        What has been done to this account →
+      </Link>
 
       <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-4">
         <h3 className="text-sm font-medium text-neutral-200">Grant credits</h3>
