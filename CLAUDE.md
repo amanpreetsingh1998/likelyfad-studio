@@ -208,11 +208,17 @@ passes, so a handler cannot obtain it by forgetting to check.
 | User reader + action log | `src/lib/admin/users.ts` |
 | User routes | `src/app/api/admin/users/` |
 | Table, drawer, tabs | `src/components/admin/users/` |
+| Review state + feed SQL | `supabase/migrations/0009_moderation.sql` |
+| Feed reader + flag/remove | `src/lib/admin/moderation.ts` |
+| Thumbnail signing | `src/lib/admin/thumbnails.ts` |
+| Content routes | `src/app/api/admin/content/` |
+| Feed and cards | `src/components/admin/content/` |
 
 ### Setup
 
 1. Run `supabase/migrations/0005_admin.sql`, then `0006_generation_events.sql`,
-   then `0007_admin_stats.sql`, then `0008_admin_users.sql`.
+   then `0007_admin_stats.sql`, then `0008_admin_users.sql`, then
+   `0009_moderation.sql`.
 2. Sign in once with the account that should be admin (there must be an
    `auth.users` row to point at).
 3. `select public.set_admin('you@example.com');`
@@ -380,12 +386,46 @@ someone else: the admin could spend their credits and edit their projects,
 with nothing on the user's side recording it. The read-only tabs answer what
 it was for.
 
+### The moderation feed
+
+`/admin/content` is the generation log with decisions attached: state tabs,
+a type filter, search over prompts and emails, and per-card actions.
+
+**A flag is state on the event, not a row in a flags table.** It is the
+current answer to "has a human looked at this, and what did they decide" —
+storing it append-only would make every reader fold a history to find the
+present, on the table the feed already sorts and pages by. The history is not
+lost: `admin_actions` records each flag, clear and removal with its actor and
+reason. State here, audit trail there, neither derived from the other.
+
+- **Three states, not two.** `cleared` is a decision and `unreviewed` is the
+  absence of one. Collapsing them hands the moderator the same picture every
+  morning.
+- **`content_removed_at` is separate from the state.** Removing a thumbnail is
+  an action about a row, not a verdict on it — a flagged row may keep its
+  picture as evidence, and a cleared one may still have had it deleted.
+- **Removal deletes the picture and keeps the row.** The prompt, model and
+  account are the record. Storage goes first, then the row is marked: the
+  other order would leave a live thumbnail the feed can no longer see, which
+  hides evidence rather than leaving litter.
+- **The tab counts are one query, not four filtered feeds** — and a failed
+  count renders as no number rather than a zero, because a zero on the
+  Flagged tab claims the queue is clear.
+- **Every card carries the account's flag count**, and links to it. The same
+  prompt reads differently on a first flag and a fourth, which is also why
+  `/admin/users` now takes `?q=` and shows a Flags column of its own.
+
+**Suspending from a card is the same route the Users page uses**, with the
+event id as the reason, so the account's history explains itself later.
+
+The two coverage gaps are stated in the UI rather than papered over: nothing
+before `generation_events` shipped can be reviewed at all, and video, audio
+and 3D runs have no thumbnail, so they are judged on their prompt alone.
+
 ### Status
 
-Phases 0–3. Auth, the shell, the generation log, the stats board and the user
-list are in. Content is still a placeholder naming the phase that fills it (4)
-— and flags, which that phase introduces, are why no flag column appears on
-the user table yet.
+Phases 0–4. Every tab of the dashboard is real: auth, the shell, the
+generation log, the stats board, the user list and the moderation feed.
 
 The usage panels read from `generation_events`, which starts empty — "no data
 yet" is the honest first-week state of half this dashboard, and the panels say
