@@ -204,11 +204,15 @@ passes, so a handler cannot obtain it by forgetting to check.
 | Stats reader + pivot | `src/lib/admin/stats.ts` |
 | Stats route | `src/app/api/admin/stats/route.ts` |
 | Charts, palette, formatters | `src/components/admin/charts/` |
+| User list SQL + `admin_actions` | `supabase/migrations/0008_admin_users.sql` |
+| User reader + action log | `src/lib/admin/users.ts` |
+| User routes | `src/app/api/admin/users/` |
+| Table, drawer, tabs | `src/components/admin/users/` |
 
 ### Setup
 
 1. Run `supabase/migrations/0005_admin.sql`, then `0006_generation_events.sql`,
-   then `0007_admin_stats.sql`.
+   then `0007_admin_stats.sql`, then `0008_admin_users.sql`.
 2. Sign in once with the account that should be admin (there must be an
    `auth.users` row to point at).
 3. `select public.set_admin('you@example.com');`
@@ -321,11 +325,67 @@ surface (`neutral-900`) rather than the reference's — contrast and
 lightness-band results only mean anything against the surface the chart really
 renders on. All six pass; worst adjacent CVD ΔE 8.4.
 
+### The user list
+
+`/admin/users` is a page of accounts with a drawer over it: Overview,
+Projects, Generations, Ledger. `admin_users_list` joins `auth.users` to the
+credit, generation and project aggregates in one round trip — the route cannot
+join `auth.users` at all, and one aggregate query per row on screen is the
+shape that dies quietly as the tables grow.
+
+- **`total_count` rides along as a window function**, not a second count
+  query. The filtered set is already materialised, and a separate count is
+  both another full pass and a chance to disagree with the page it labels.
+- **Search is `position()`, not `ilike '%…%'`.** The needle is admin-typed, so
+  a stray `%` should find a percent sign rather than silently matching every
+  account.
+- **Sorting picks a column, not a direction.** Each sortable figure has one
+  useful order; the reverse doubles the states to answer a question this page
+  is not for. Unknown keys fall through to the `created_at` tiebreak rather
+  than being interpolated into a query.
+- **A failed read is reported, never rendered as an empty table.** `listUsers`
+  returns `failed`, because "no accounts matched" and "the query broke" look
+  identical otherwise — and the first is a fact an admin would act on.
+- **Last active is the last generation**, not `last_sign_in_at`, which a
+  silent token refresh moves. Both are shown, separately labelled.
+
+**Actions are logged, in `admin_actions`.** Granting, refunding, suspending
+and deleting all write a row naming the actor, the target and the details.
+The actor's email is snapshot because the admin seat transfers, and
+`target_user_id` deliberately carries **no foreign key**: every other
+reference to `auth.users` cascades, which would erase the record of the delete
+along with the account it describes.
+
+Both credit paths are idempotent by `ref` — a refund carries the refunded
+spend's id, a grant a per-submission request id — so the partial unique index
+from 0003, not application logic, is what makes a double-click pay out once.
+Only a `spend` can be refunded, and the lookup is filtered by `(id, user_id)`
+for the same reason the poll route matches on the pair.
+
+**Suspension is a GoTrue ban, and it is not instant.** It blocks sign-in and
+token refresh; an access token already issued keeps working until it expires,
+up to an hour. The drawer says so rather than implying the session is dead. A
+suspended user is *not* refused by `withCredits()` — closing that would mean a
+lookup on the hot path of every generation.
+
+**Deletion cascades over the moderation record.** Everything under the
+account goes, `generation_events` included — the evidence of whatever they
+were deleted for. Suspend is therefore the primary action, delete needs the
+account's email typed, and the confirmation spells out what is lost. The
+orphaned thumbnails are removed afterwards, and the figures worth keeping are
+snapshot into the log first.
+
+**"View as user" was cut, deliberately.** It means minting a session as
+someone else: the admin could spend their credits and edit their projects,
+with nothing on the user's side recording it. The read-only tabs answer what
+it was for.
+
 ### Status
 
-Phases 0–2. Auth, the shell, the generation log and the stats board are in.
-Users and Content are still placeholders naming the phase that fills them
-(3 and 4).
+Phases 0–3. Auth, the shell, the generation log, the stats board and the user
+list are in. Content is still a placeholder naming the phase that fills it (4)
+— and flags, which that phase introduces, are why no flag column appears on
+the user table yet.
 
 The usage panels read from `generation_events`, which starts empty — "no data
 yet" is the honest first-week state of half this dashboard, and the panels say
