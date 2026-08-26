@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import * as fs from "fs/promises";
 import * as path from "path";
 import { logger } from "@/utils/logger";
+import { requireLocal } from "@/lib/local/guard";
 
 // Supported file extensions
 const SUPPORTED_EXTENSIONS = ['png', 'jpg', 'jpeg', 'webp', 'gif', 'mp4', 'webm', 'mov', 'mp3', 'wav', 'ogg', 'flac', 'aac'];
@@ -31,6 +32,9 @@ const EXT_TO_MIME: Record<string, string> = {
 
 // POST: Load a generated image or video from the generations folder by ID
 export async function POST(request: NextRequest) {
+  const gate = requireLocal(request);
+  if (!gate.ok) return gate.response;
+
   let directoryPath: string | undefined;
   let imageId: string | undefined;
   try {

@@ -4,6 +4,7 @@ import { promisify } from "util";
 import { stat } from "fs/promises";
 import path from "path";
 import os from "os";
+import { requireLocal } from "@/lib/local/guard";
 
 const execFileAsync = promisify(execFile);
 
@@ -26,6 +27,9 @@ function isLocalhostRequest(req: NextRequest): boolean {
 }
 
 export async function POST(req: NextRequest) {
+  const gate = requireLocal(req);
+  if (!gate.ok) return gate.response;
+
     // Only allow requests from localhost
     if (!isLocalhostRequest(req)) {
         return NextResponse.json(

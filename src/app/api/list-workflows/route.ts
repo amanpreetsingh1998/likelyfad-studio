@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import * as fs from "fs/promises";
 import * as path from "path";
 import { validateWorkflowPath } from "@/utils/pathValidation";
+import { requireLocal } from "@/lib/local/guard";
 
 const MAX_DEPTH = 3;
 const SKIP_DIRS = new Set([".git", "node_modules", "__pycache__", ".next"]);
@@ -101,6 +102,9 @@ async function probeWorkflow(
 }
 
 export async function GET(request: NextRequest) {
+  const gate = requireLocal(request);
+  if (!gate.ok) return gate.response;
+
   const parentPath = request.nextUrl.searchParams.get("path");
 
   if (!parentPath) {

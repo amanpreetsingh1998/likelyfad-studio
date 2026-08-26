@@ -10,11 +10,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { saveSession, rotateLogFiles } from '@/utils/logger-server';
 import type { LogSession } from '@/utils/logger';
+import { requireLocal } from "@/lib/local/guard";
 
 /**
  * POST /api/logs - Save a logging session to disk
  */
 export async function POST(req: NextRequest) {
+  const gate = requireLocal(req);
+  if (!gate.ok) return gate.response;
+
   try {
     const body = await req.json();
     const session = body.session as LogSession;

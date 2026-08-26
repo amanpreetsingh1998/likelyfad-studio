@@ -4,6 +4,8 @@ import { promisify } from "util";
 import { writeFile, unlink } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
+import type { NextRequest } from "next/server";
+import { requireLocal } from "@/lib/local/guard";
 
 const execAsync = promisify(exec);
 
@@ -35,7 +37,10 @@ export function normalizeSelectedPath(selectedPath: string, platform: string): s
 }
 
 // GET: Open native directory picker and return the selected path
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const gate = requireLocal(request);
+  if (!gate.ok) return gate.response;
+
   const platform = process.platform;
 
   try {
