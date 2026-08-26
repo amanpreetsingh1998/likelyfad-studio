@@ -20,6 +20,7 @@ import { ComfyImportError } from "@/lib/comfy/server/import";
 import type { ComfyConnection } from "@/lib/comfy/types";
 import { comfyErrorResponse } from "../shared";
 import type { ComfyInspectResponse } from "../inspect/route";
+import { requireAuth } from "@/lib/auth/guard";
 
 export const maxDuration = 120;
 export const dynamic = "force-dynamic";
@@ -94,6 +95,9 @@ async function fetchCatalog(
 }
 
 export async function GET(request: NextRequest) {
+  const gate = await requireAuth();
+  if (!gate.ok) return gate.response;
+
   try {
     const { engine, connection } = engineFromRequest(request);
     const catalog = await fetchCatalog(connection, request.signal);
@@ -123,6 +127,9 @@ interface BlueprintImportRequest {
 }
 
 export async function POST(request: NextRequest) {
+  const gate = await requireAuth();
+  if (!gate.ok) return gate.response;
+
   try {
     const body = (await request.json()) as BlueprintImportRequest;
     if (!body?.id) {

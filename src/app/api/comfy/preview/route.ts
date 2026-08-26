@@ -18,6 +18,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { engineFromRequest } from "@/lib/comfy/server";
 import type { ComfyPreviewFrame } from "@/lib/comfy/server/engine";
 import { comfyErrorResponse } from "../shared";
+import { requireAuth } from "@/lib/auth/guard";
 
 export const maxDuration = 300;
 export const dynamic = "force-dynamic";
@@ -35,6 +36,9 @@ interface ComfyPreviewRequest {
 export type ComfyPreviewMessage = ComfyPreviewFrame;
 
 export async function POST(request: NextRequest) {
+  const gate = await requireAuth();
+  if (!gate.ok) return gate.response;
+
   // Outside the try: a body that is not JSON, or a job id that is not a string,
   // is the caller's mistake. Left to `comfyErrorResponse` the `SyntaxError`
   // becomes a 500, which reads as "the engine broke".

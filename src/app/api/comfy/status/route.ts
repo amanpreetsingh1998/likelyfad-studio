@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { engineFromRequest, getObjectInfo, invalidateObjectInfo } from "@/lib/comfy/server";
 import { comfyErrorResponse } from "../shared";
+import { requireAuth } from "@/lib/auth/guard";
 
 export const maxDuration = 60;
 export const dynamic = "force-dynamic";
@@ -28,6 +29,9 @@ export interface ComfyStatusResponse {
 }
 
 export async function POST(request: NextRequest) {
+  const gate = await requireAuth();
+  if (!gate.ok) return gate.response;
+
   try {
     const { engine, connection } = engineFromRequest(request);
 

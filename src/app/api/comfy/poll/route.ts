@@ -11,6 +11,7 @@ import { engineFromRequest } from "@/lib/comfy/server";
 import { collectRun, nameFailedOutput } from "@/lib/comfy/server/run";
 import type { ComfyAppDefinition, ComfyResolvedOutput } from "@/lib/comfy/types";
 import { comfyErrorResponse } from "../shared";
+import { requireAuth } from "@/lib/auth/guard";
 
 export const maxDuration = 300;
 export const dynamic = "force-dynamic";
@@ -50,6 +51,9 @@ export interface ComfyPollResponse {
 }
 
 export async function POST(request: NextRequest) {
+  const gate = await requireAuth();
+  if (!gate.ok) return gate.response;
+
   try {
     const body = (await request.json()) as ComfyPollRequest;
     if (!body?.jobId) {

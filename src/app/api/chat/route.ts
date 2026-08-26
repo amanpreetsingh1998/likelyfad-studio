@@ -5,10 +5,14 @@ import { buildWorkflowContext } from '@/lib/chat/contextBuilder';
 import { extractSubgraph } from '@/lib/chat/subgraphExtractor';
 import { WorkflowNode } from '@/types';
 import { WorkflowEdge } from '@/types/workflow';
+import { requireAuth } from "@/lib/auth/guard";
 
 export const maxDuration = 60; // 1 minute timeout
 
 export async function POST(request: Request) {
+  const gate = await requireAuth();
+  if (!gate.ok) return gate.response;
+
   try {
     const { messages, workflowState, selectedNodeIds } = await request.json() as {
       messages: UIMessage[];

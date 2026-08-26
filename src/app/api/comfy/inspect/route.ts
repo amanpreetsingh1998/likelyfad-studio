@@ -13,6 +13,7 @@ import { engineFromRequest } from "@/lib/comfy/server";
 import { inspectUpload } from "@/lib/comfy/server/import";
 import type { ComfyGraph, ComfyWorkflowInspection } from "@/lib/comfy/types";
 import { comfyErrorResponse } from "../shared";
+import { requireAuth } from "@/lib/auth/guard";
 
 export const maxDuration = 120;
 export const dynamic = "force-dynamic";
@@ -47,6 +48,9 @@ function nameFromFilename(filename: string | undefined): string {
 }
 
 export async function POST(request: NextRequest) {
+  const gate = await requireAuth();
+  if (!gate.ok) return gate.response;
+
   try {
     const raw = await request.text();
     // Bytes, not `raw.length`: that counts UTF-16 code units, so a workflow of
