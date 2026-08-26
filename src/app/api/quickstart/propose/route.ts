@@ -3,6 +3,7 @@ import { GoogleGenAI } from "@google/genai";
 import { buildProposalPrompt } from "@/lib/quickstart/proposalPrompt";
 import { parseJSONFromResponse } from "@/lib/quickstart/validation";
 import type { WorkflowProposal, WorkflowComplexity, NodeType } from "@/types";
+import { withCredits } from "@/lib/credits/guard";
 
 export const maxDuration = 60; // 1 minute timeout
 
@@ -160,7 +161,7 @@ function validateProposalShape(data: unknown): string | null {
   return null; // Valid
 }
 
-export async function POST(request: NextRequest) {
+async function handleQuickstart(request: NextRequest) {
   const requestId = `prop-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
   console.log(`[Propose:${requestId}] New request received`);
 
@@ -310,3 +311,16 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+/**
+ * Metered. This route calls Gemini on the server's own key, so it is a
+ * generation route in every sense that matters to billing even though it
+ * returns a workflow rather than a picture. Before this it had no gate at all:
+ * an unauthenticated POST bought a model call.
+ *
+ * Charged as "llm" against the same model id the handler actually sends.
+ */
+export const POST = withCredits(
+  () => ({ kind: "llm" as const, provider: "gemini", modelId: "gemini-3-flash-preview" }),
+  handleQuickstart
+);

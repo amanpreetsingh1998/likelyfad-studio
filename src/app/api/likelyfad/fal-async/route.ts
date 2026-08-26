@@ -24,6 +24,10 @@ import {
   fetchFalQueueResult,
 } from "@/app/api/generate/providers/fal";
 import type { GenerationInput, ModelCapability } from "@/lib/providers/types";
+import { requireAuth } from "@/lib/auth/guard";
+import { getBalance, getPendingTotal, recordPendingCharge } from "@/lib/credits/server";
+import { creditCostForRun, hasKnownPrice, runKindForMediaType } from "@/lib/credits/pricing";
+import { BALANCE_HEADER, CHARGED_HEADER } from "@/lib/credits/guard";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -57,7 +61,28 @@ function getApiKey(): string | null {
   return process.env.FAL_API_KEY || null;
 }
 
+/**
+ * Which run kind fal is being asked for, from the capabilities the caller sent.
+ * Mirrors what /api/generate derives from mediaType — the price depends on it.
+ */
+function runKindForFal(capabilities?: string[]) {
+  const caps = capabilities ?? [];
+  if (caps.some((c) => c.includes("video"))) return runKindForMediaType("video");
+  if (caps.some((c) => c.includes("audio"))) return runKindForMediaType("audio");
+  if (caps.some((c) => c.includes("3d"))) return runKindForMediaType("3d");
+  return runKindForMediaType("image");
+}
+
 export async function POST(request: NextRequest) {
+  // This route was a complete parallel path around withCredits(): an
+  // unauthenticated POST with action=submit dispatched a job to fal on the
+  // server's key, wrote no pending charge and no generation event, so the run
+  // was invisible to both the ledger and the moderation log. Verified before
+  // the fix — an anonymous request reached fal's API.
+  const gate = await requireAuth();
+  if (!gate.ok) return gate.response;
+  const { auth } = gate;
+
   const requestId = Math.random().toString(36).substring(7);
   let body: Body;
   try {
@@ -105,10 +130,48 @@ export async function POST(request: NextRequest) {
         dynamicInputs: processedDynamicInputs,
       };
 
+      // Only `submit` reaches a provider. `poll` and `fetch-result` are
+      // follow-ups to a run already charged for here, so metering them too
+      // would bill one generation three times.
+      const cost = {
+        kind: runKindForFal(body.capabilities),
+        provider: "fal",
+        modelId: body.modelId,
+      };
+      if (!hasKnownPrice(cost)) {
+        return NextResponse.json(
+          { success: false, error: "This model has no published price", code: "unpriced_model" },
+          { status: 409 }
+        );
+      }
+      const charge = creditCostForRun(cost);
+      const [balance, pending] = await Promise.all([
+        getBalance(auth.user.id),
+        getPendingTotal(auth.user.id),
+      ]);
+      if (balance - pending < charge) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Not enough credits: this step costs ${charge}, you have ${Math.max(balance - pending, 0)}`,
+            code: "insufficient_credits",
+          },
+          {
+            status: 402,
+            headers: { [BALANCE_HEADER]: String(balance), [CHARGED_HEADER]: String(pending) },
+          }
+        );
+      }
+
       const result = await submitToFalQueue(requestId, apiKey, genInput);
       if (!result.success) {
         return NextResponse.json({ success: false, error: result.error }, { status: 500 });
       }
+
+      // Recorded only now, for the same reason withCredits() defers it: a run
+      // that never reached fal is not a run the user should pay for.
+      await recordPendingCharge(auth.user.id, charge, cost);
+
       return NextResponse.json({
         success: true,
         falRequestId: result.falRequestId,
