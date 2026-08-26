@@ -25,3 +25,12 @@ global.DOMMatrixReadOnly = DOMMatrixReadOnlyMock as unknown as typeof DOMMatrixR
 afterEach(() => {
   cleanup();
 });
+
+// The local-filesystem routes (workflow, save-generation, open-file and the
+// rest) are gated by requireLocal(), which is opt-in so that a hosted
+// deployment cannot reach them — see src/lib/local/guard.ts.
+//
+// Their suites test what those routes do with a path, not whether the gate
+// works, so the suite opts in the same way a local desktop run does. The gate
+// has its own test: src/lib/local/__tests__/guard.test.ts.
+process.env.ENABLE_LOCAL_FILESYSTEM_ROUTES = "1";

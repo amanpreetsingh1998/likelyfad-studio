@@ -42,13 +42,19 @@ function enabled(): boolean {
  * deployment is not immediately fatal.
  */
 function isLoopback(request: NextRequest): boolean {
-  const forwarded = request.headers.get("x-forwarded-for");
+  // Tolerates a request without headers rather than throwing. A real Next
+  // runtime always has them; this only keeps a malformed or hand-built request
+  // from turning a guard into a 500, which is how gates fail open in practice.
+  const headers = request?.headers;
+  if (!headers || typeof headers.get !== "function") return true;
+
+  const forwarded = headers.get("x-forwarded-for");
   if (forwarded) {
     const first = forwarded.split(",")[0].trim();
     if (!["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(first)) return false;
   }
 
-  const hostname = (request.headers.get("host") ?? "").split(":")[0];
+  const hostname = (headers.get("host") ?? "").split(":")[0];
   if (!hostname) return true;
   return ["localhost", "127.0.0.1", "::1"].includes(hostname);
 }

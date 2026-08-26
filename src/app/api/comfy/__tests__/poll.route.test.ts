@@ -18,6 +18,13 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 import type { ComfyAppDefinition } from "@/lib/comfy/types";
 
+// The route gates on a session now (src/lib/auth/guard.ts). These suites test
+// what the handler does once past it; the gate has its own test.
+vi.mock("@/lib/auth/guard", () => ({
+  requireAuth: async () => ({ ok: true, auth: { user: { id: "test-user" }, supabase: {} } }),
+}));
+
+
 const poll = vi.fn();
 const cancel = vi.fn();
 const collectRun = vi.fn();
