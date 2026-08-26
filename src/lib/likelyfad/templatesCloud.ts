@@ -105,6 +105,7 @@ const MEDIA_FIELDS_TO_CLEAR: string[] = [
   "image",
   "outputImage",
   "outputVideo",
+  "outputGif",
   "outputAudio",
   "sourceImage",
   "annotatedImage",

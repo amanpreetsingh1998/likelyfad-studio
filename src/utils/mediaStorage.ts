@@ -600,6 +600,23 @@ async function externalizeNodeMedia(
       break;
     }
 
+    case "imageResize": {
+      const d = data as import("@/types").ImageResizeNodeData;
+      // Derived from the input image, so it is recomputed on the next run.
+      // Without this case the node fell through to `default`, which keeps the
+      // value as-is — writing the full base64 resize inline into the saved file.
+      newData = { ...d, outputImage: null };
+      break;
+    }
+
+    case "gifEncoder": {
+      const d = data as import("@/types").GifEncoderNodeData;
+      // Same as imageResize, and the worst case for leaving it inline: a GIF
+      // tuned to targetMaxBytes can be megabytes on its own.
+      newData = { ...d, outputGif: null };
+      break;
+    }
+
     case "glbViewer": {
       const d = data as import("@/types").GLBViewerNodeData;
       // Externalize captured viewport image
@@ -1275,6 +1292,13 @@ async function hydrateNodeMedia(
 
     case "removeBackground": {
       // removeBackground content is not persisted - it's regenerated on each workflow run
+      newData = data;
+      break;
+    }
+
+    case "imageResize":
+    case "gifEncoder": {
+      // Nothing to restore: both outputs are derived and were cleared on save.
       newData = data;
       break;
     }
