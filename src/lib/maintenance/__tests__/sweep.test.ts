@@ -19,6 +19,7 @@ import {
   normalizeMinutes,
   pruneGenerationEvents,
   runMaintenance,
+  sweepAbandonedRuns,
   sweepPendingCharges,
 } from "../sweep";
 
@@ -256,19 +257,92 @@ describe("pruneGenerationEvents", () => {
 });
 
 describe("runMaintenance", () => {
-  it("runs both jobs and reports them separately", async () => {
+  it("runs all three jobs and reports them separately", async () => {
     const { service, rpc } = makeService({
-      rpc: (fn) =>
-        fn === "sweep_stale_pending_charges"
-          ? { data: [{ user_id: "a", charged: 4, runs: 1, shortfall: 0 }], error: null }
-          : { data: [{ deleted_thumb_path: "a.webp" }], error: null },
+      rpc: (fn) => {
+        if (fn === "sweep_stale_pending_charges") {
+          return { data: [{ user_id: "a", charged: 4, runs: 1, shortfall: 0 }], error: null };
+        }
+        if (fn === "sweep_abandoned_runs") {
+          return {
+            data: [{ run_id: "r1", user_id: "a", charged: 2, runs: 1, shortfall: 0 }],
+            error: null,
+          };
+        }
+        return { data: [{ deleted_thumb_path: "a.webp" }], error: null };
+      },
     });
 
     const result = await runMaintenance(service);
 
-    expect(rpc).toHaveBeenCalledTimes(2);
+    expect(rpc).toHaveBeenCalledTimes(3);
     expect(result.settle.charged).toBe(4);
+    expect(result.runs.runs).toBe(1);
+    expect(result.runs.charged).toBe(2);
     expect(result.prune.rowsDeleted).toBe(1);
+  });
+
+  /**
+   * A closed tab leaves a run at 'running' forever. Left alone those rows
+   * permanently inflate the history page's run counts with runs that are
+   * neither successes nor failures.
+   */
+  it("closes abandoned runs and totals what they still owed", async () => {
+    const { service, rpc } = makeService({
+      rpc: (fn) =>
+        fn === "sweep_abandoned_runs"
+          ? {
+              data: [
+                { run_id: "r1", user_id: "a", charged: 5, runs: 2, shortfall: 0 },
+                { run_id: "r2", user_id: "b", charged: 0, runs: 0, shortfall: 0 },
+              ],
+              error: null,
+            }
+          : { data: [], error: null },
+    });
+
+    const result = await sweepAbandonedRuns(service);
+
+    expect(result).toEqual({
+      runs: 2,
+      charged: 5,
+      nodeRuns: 2,
+      shortfall: 0,
+      failed: null,
+    });
+    expect(rpc).toHaveBeenCalledWith("sweep_abandoned_runs", {
+      p_minutes: 60,
+      p_limit: 500,
+    });
+  });
+
+  // Same staleness argument as the charge sweep: closing a run that is still
+  // going would settle a live workflow mid-flight.
+  it("clamps the staleness window before it reaches SQL", async () => {
+    const { service, rpc } = makeService({ rpc: () => ({ data: [], error: null }) });
+    await sweepAbandonedRuns(service, { minutes: 0, limit: 99999 });
+    expect(rpc).toHaveBeenCalledWith("sweep_abandoned_runs", {
+      p_minutes: 1,
+      p_limit: 5000,
+    });
+  });
+
+  it("reports an abandoned-run failure instead of throwing", async () => {
+    const { service } = makeService({
+      rpc: () => ({ data: null, error: { message: "deadlock" } }),
+    });
+    const result = await sweepAbandonedRuns(service);
+    expect(result.failed).toBe("deadlock");
+    expect(result.runs).toBe(0);
+  });
+
+  it("treats no abandoned runs as a clean no-op", async () => {
+    const { service } = makeService({ rpc: () => ({ data: [], error: null }) });
+    expect(await sweepAbandonedRuns(service)).toMatchObject({
+      runs: 0,
+      charged: 0,
+      failed: null,
+    });
   });
 
   /**

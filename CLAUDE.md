@@ -177,8 +177,8 @@ turn that into the buy-credits modal. Every gated response carries
 
 1. Run `supabase/migrations/0003_credits.sql`, then `0004_workflow_settlement.sql`,
    then `0012_fix_settlement.sql`, then `0013_workflow_history.sql`, then
-   `0014_workflow_history_read.sql`, then `0015_model_latency.sql`, in the
-   Supabase SQL editor.
+   `0014_workflow_history_read.sql`, then `0015_model_latency.sql`, then
+   `0016_close_abandoned_runs.sql`, in the Supabase SQL editor.
 2. Add the three Razorpay vars above to `.env.local`.
 3. Razorpay dashboard → Settings → Webhooks → add
    `https://<domain>/api/credits/webhook` for `payment.captured`, using the
@@ -254,7 +254,7 @@ passes, so a handler cannot obtain it by forgetting to check.
    `0009_moderation.sql`, then `0010_admin_audit.sql`, then
    `0011_maintenance.sql`, then `0012_fix_settlement.sql`, then
    `0013_workflow_history.sql`, then `0014_workflow_history_read.sql`, then
-   `0015_model_latency.sql`.
+   `0015_model_latency.sql`, then `0016_close_abandoned_runs.sql`.
 2. Sign in once with the account that should be admin (there must be an
    `auth.users` row to point at).
 3. `select public.set_admin('you@example.com');`
@@ -509,12 +509,140 @@ The retention floor is **7 days, enforced in code**, not because 7 is right but
 because `days=0` would delete the whole moderation record and every usage
 panel's history in one call, and none of it can be backfilled.
 
+## Workflow History
+
+`/api/workflows` answers "every workflow I own, what one run of it costs, what
+models it uses, and how long it takes". The graph itself already lived in
+`public.projects`; what was missing was any way to attribute money to it.
+
+### Why `projects` and not a new `workflows` table
+
+The PRD specified `public.workflows` with a `graph` jsonb column. That was
+rejected on contact with the schema: `projects` already **is** the
+account-owned workflow — it holds `workflow_json`, `workflowStore`'s save path
+writes it, `ProjectListModal` reads it, and `media.project_id` has a foreign
+key onto it. A second table holding the same graphs would be two sources of
+truth for one canvas, drifting from the first save that did not happen to open
+the history page. The cost is cosmetic: `projects.id` is a client-minted
+`wf_<ts>_<rand>` text id, so every reference to it is `text`, not `uuid`.
+
+### The two invariants
+
+**1. The client picks *when*, never *how much*.** A `runId` in a request body
+is a grouping key. Cost always comes from the `pending_charges` rows the server
+wrote in `withCredits()`; models and timings come from `generation_events`. If
+you find yourself reading a credit amount, model list or duration out of a
+request body, stop — that is the vulnerability the whole pending-charges design
+exists to prevent.
+
+**2. Estimates are derived, never written down.** `est_credits` is the sum of
+`creditCostForRun()` over the graph's billable nodes — the same function the
+gate bills from, asserted by `estimateMatchesBilling.test.ts` at three levels
+(header, gate, stored estimate). A model with `hasKnownPrice() === false` makes
+the estimate **partial**, mirroring the 409 `unpriced_model` refusal; never
+substitute a guessed price.
+
+### The run entity
+
+`workflow_runs` is one row per execution. Before it, `pending_charges` and
+`generation_events` were flat per-node lists scoped only by `user_id`, so "what
+did workflow X cost" was unanswerable.
+
+- **The id is minted server-side** by `POST /api/workflows/runs` and handed to
+  the client. A client-chosen id would let one user file their charges under
+  another user's run — a billing fault *and* a read of someone else's history.
+  `record_pending_charge` re-checks ownership in SQL; that copy is the
+  load-bearing one, because it holds even if a caller forgets the other.
+- **`project_id` is `on delete set null`, and `project_name` is snapshot.**
+  Deleting a workflow must not erase the ledger's explanation of money already
+  spent — the same reason `admin_actions` snapshots the actor's email.
+- **`credits_charged` and the wall clock live on the run row**, not recomputed
+  from events, because retention prunes events and a run's cost has to outlive
+  them.
+- **`abandoned` is not `cancelled`.** Cancelled is a decision someone made;
+  abandoned is a tab that closed. They read identically in the ledger and mean
+  different things to whoever is asking why a run stopped.
+- **Every failure degrades.** An absent, malformed or foreign run id records an
+  untagged charge that settles through the user-wide path exactly as before. A
+  run row that cannot be written answers 200 with a null id. A history feature
+  must never be able to stop a user working.
+
+`settle_workflow_run` bills one run; `settle_pending_charges` is kept unchanged
+for the maintenance sweep's orphaned rows and for clients that send no run id.
+Both copy 0012's **lock-then-aggregate** shape — never `FOR UPDATE` on an
+aggregate, which is the exact form that failed on every call for that
+function's entire life while the mocked suites stayed green.
+
+### What the page shows, and what it must never show
+
+- **"Cost of one run" is the newest completed run, not a mean.** Runs vary — a
+  model swap, a different image count, a fallback — and averaging blends a
+  4-credit run and a 90-credit one into a number that describes neither. The
+  range rides alongside so variance is visible, and only when successful runs
+  actually disagree: a range of 38 to 38 says nothing.
+- **Time is wall clock**, `finished_at - started_at`, never the sum of node
+  durations. Nodes run concurrently, so that sum overstates elapsed time in the
+  direction that makes the product look slower than it is.
+- **Models are what ran**, read from the run's events, because the graph can be
+  edited after the run and the charge cannot.
+- **Never invent a number.** Never run: "not run yet". Runs but no success: "no
+  successful run yet", plus the failure count. A failed read: "could not load".
+  Both readers return a `failed` marker precisely so that "you have no
+  workflows" and "the query broke" cannot render identically.
+- **Label which number is showing.** The measured figure and the estimate are
+  different kinds of claim; unlabelled in the same column, a guess looks like a
+  measurement.
+
+**No backfill is possible.** Existing charges and events carry no run id and
+there is no way to infer one from timestamps without guessing. History starts
+the day the migrations are applied — the same honest position
+`generation_events` already takes, and the UI has to say so.
+
+### Files
+
+| Purpose | Location |
+|---------|----------|
+| Runs, attribution columns, `settle_workflow_run` | `supabase/migrations/0013_workflow_history.sql` |
+| History aggregates | `supabase/migrations/0014_workflow_history_read.sql` |
+| Per-model measured latency | `supabase/migrations/0015_model_latency.sql` |
+| Abandoned-run sweep | `supabase/migrations/0016_close_abandoned_runs.sql` |
+| Run lifecycle (server) | `src/lib/workflows/runs.ts` |
+| Run open (client) | `src/lib/workflows/startRun.ts` |
+| History readers | `src/lib/workflows/history.ts` |
+| Estimate engine | `src/lib/workflows/estimate.ts` |
+| Attribution entry point | `src/lib/credits/guard.ts` (`withCredits`) |
+| Ambient run id for executors | `src/store/execution/activeRun.ts` |
+
+### Routes
+
+| Route | Purpose |
+|-------|---------|
+| `GET /api/workflows` | The caller's history, one page |
+| `POST /api/workflows/runs` | Open a run; returns a server-minted id |
+| `GET /api/workflows/[id]/runs` | One workflow's runs. **Ownership-checked**, 404 otherwise |
+| `POST /api/workflows/[id]/estimate` | Reprice from the **stored** graph; takes no graph |
+
+### Setup
+
+Run `0013_workflow_history.sql`, then `0014_workflow_history_read.sql`, then
+`0015_model_latency.sql`, then `0016_close_abandoned_runs.sql`. `0012` must be
+applied first — everything here reads the numbers settlement writes, so
+applying it on top of the broken function would build a history page that
+faithfully reports every workflow as having cost nothing.
+
 ## Scheduled maintenance
 
-`POST /api/cron/maintenance` runs the two jobs that had been written and left
-uncalled for months, both waiting on a scheduler this project did not have:
-settling abandoned workflow charges, and applying retention to
-`generation_events`.
+`POST /api/cron/maintenance` runs three jobs: settling abandoned workflow
+charges, closing abandoned runs, and applying retention to
+`generation_events`. The first and last had been written and left uncalled
+for months, both waiting on a scheduler this project did not have.
+
+The abandoned-run sweep is the run-level twin of the charge sweep.
+`executeWorkflow` closes its run on both exit paths, but neither runs if the
+tab is closed or the machine sleeps mid-render — and a row left at `running`
+permanently inflates the history page's counts with a run that is neither a
+success nor a failure. It is ordered *after* the charge sweep, which has
+usually already billed the money, so the run sweep only closes the row.
 
 POST rather than GET, because it moves money and deletes rows; a GET that does
 either is one prefetch away from doing it by accident.
@@ -551,6 +679,7 @@ while a working settle rode along with it.
 | Purpose | Location |
 |---------|----------|
 | Sweep SQL + supporting index | `supabase/migrations/0011_maintenance.sql` |
+| Abandoned-run sweep | `supabase/migrations/0016_close_abandoned_runs.sql` |
 | Both jobs, clamps, storage cleanup | `src/lib/maintenance/sweep.ts` |
 | Shared-secret gate | `src/lib/maintenance/guard.ts` |
 | Route | `src/app/api/cron/maintenance/route.ts` |
@@ -898,7 +1027,7 @@ Point the live tier at a local ComfyUI with
 
 ## API Routes
 
-There are **50** route files under `src/app/api/`; this table covers the ones
+There are **54** route files under `src/app/api/`; this table covers the ones
 worth knowing before changing anything. The credits and admin routes are
 documented in their own sections above. `find src/app/api -name route.ts` is
 the complete list.
@@ -956,7 +1085,16 @@ the complete list.
 
 | Route | Timeout | Purpose |
 |-------|---------|---------|
-| `/api/cron/maintenance` | 5 min | Settle abandoned charges + apply retention. Shared-secret gated |
+| `/api/cron/maintenance` | 5 min | Settle abandoned charges, close abandoned runs, apply retention. Shared-secret gated |
+
+**Workflow history**
+
+| Route | Timeout | Purpose |
+|-------|---------|---------|
+| `GET /api/workflows` | default | The caller's workflow history, one page |
+| `POST /api/workflows/runs` | default | Open a run; returns a server-minted id |
+| `GET /api/workflows/[id]/runs` | default | One workflow's runs. **Ownership-checked**, 404 otherwise |
+| `POST /api/workflows/[id]/estimate` | default | Reprice from the **stored** graph; takes no graph |
 
 ## localStorage Keys
 

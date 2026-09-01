@@ -61,8 +61,20 @@ export type PruneResult = {
   failed: string | null;
 };
 
+export type AbandonedRunsResult = {
+  /** Runs closed as abandoned. */
+  runs: number;
+  /** Credits those runs still owed when they were swept. */
+  charged: number;
+  /** Node runs those credits paid for. */
+  nodeRuns: number;
+  shortfall: number;
+  failed: string | null;
+};
+
 export type MaintenanceResult = {
   settle: SweepResult;
+  runs: AbandonedRunsResult;
   prune: PruneResult;
 };
 
@@ -223,12 +235,76 @@ export async function pruneGenerationEvents(
   return { rowsDeleted, thumbsDeleted, thumbsOrphaned, failed: null };
 }
 
-/** Both jobs. Sequential, so the two never contend for the same rows. */
+/**
+ * Close the runs a browser never closed.
+ *
+ * executeWorkflow closes its run on both exit paths, but neither runs if the
+ * tab is closed or the machine sleeps mid-render. Those rows sit at 'running'
+ * forever, permanently inflating the run counts on the history page with runs
+ * that are neither successes nor failures.
+ *
+ * Ordered AFTER the user-wide settle sweep on purpose. That one bills every
+ * unsettled row a user has, including rows belonging to an abandoned run — so
+ * by the time this runs there is usually nothing left to charge and the job is
+ * only closing the row. Reversing the order would work too, but this way the
+ * money moves through one path in the common case rather than two.
+ */
+export async function sweepAbandonedRuns(
+  service: SupabaseClient,
+  opts: { minutes?: number; limit?: number } = {}
+): Promise<AbandonedRunsResult> {
+  const minutes = normalizeMinutes(opts.minutes ?? DEFAULT_STALE_MINUTES);
+  const limit = normalizeLimit(opts.limit ?? DEFAULT_SWEEP_LIMIT);
+
+  const empty: AbandonedRunsResult = {
+    runs: 0,
+    charged: 0,
+    nodeRuns: 0,
+    shortfall: 0,
+    failed: null,
+  };
+
+  const { data, error } = await service.rpc("sweep_abandoned_runs", {
+    p_minutes: minutes,
+    p_limit: limit,
+  });
+
+  if (error) {
+    console.error("[maintenance] abandoned-run sweep failed:", error.message);
+    return { ...empty, failed: error.message };
+  }
+
+  const rows = (data ?? []) as Array<{
+    charged: number | null;
+    runs: number | null;
+    shortfall: number | null;
+  }>;
+
+  return rows.reduce<AbandonedRunsResult>(
+    (acc, row) => ({
+      runs: acc.runs + 1,
+      charged: acc.charged + (row.charged ?? 0),
+      nodeRuns: acc.nodeRuns + (row.runs ?? 0),
+      shortfall: acc.shortfall + (row.shortfall ?? 0),
+      failed: null,
+    }),
+    empty
+  );
+}
+
+/**
+ * All three jobs. Sequential, so none of them contend for the same rows.
+ *
+ * Each reports its own failure and none aborts the others: a broken prune must
+ * not stop settlement from running for a week, which is exactly what a single
+ * shared failure path would cause.
+ */
 export async function runMaintenance(
   service: SupabaseClient,
   opts: { minutes?: number; limit?: number; days?: number } = {}
 ): Promise<MaintenanceResult> {
   const settle = await sweepPendingCharges(service, opts);
+  const runs = await sweepAbandonedRuns(service, opts);
   const prune = await pruneGenerationEvents(service, opts);
-  return { settle, prune };
+  return { settle, runs, prune };
 }

@@ -64,12 +64,16 @@ export async function POST(request: NextRequest) {
   }
 
   const result = await runMaintenance(service, opts);
-  const ok = result.settle.failed === null && result.prune.failed === null;
+  const ok =
+    result.settle.failed === null &&
+    result.runs.failed === null &&
+    result.prune.failed === null;
 
   console.log("[maintenance] run complete", {
     ok,
     settledUsers: result.settle.users,
     creditsCharged: result.settle.charged,
+    runsAbandoned: result.runs.runs,
     rowsPruned: result.prune.rowsDeleted,
     thumbsOrphaned: result.prune.thumbsOrphaned,
   });
