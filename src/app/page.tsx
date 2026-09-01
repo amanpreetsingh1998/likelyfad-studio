@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ReactFlowProvider } from "@xyflow/react";
 import { Header } from "@/components/Header";
 import { WorkflowCanvas } from "@/components/WorkflowCanvas";
@@ -98,6 +98,41 @@ function Studio() {
     setShowProjectList(false);
     setShowQuickstart(true);
   }, [clearWorkflow, setShowQuickstart]);
+
+  // Open a workflow named in the URL: /?project=wf_123_abc
+  //
+  // This is how the history page's "Open" button gets here. Read from
+  // window.location rather than useSearchParams() because the latter forces
+  // this whole page under a Suspense boundary at build time, and the studio is
+  // not a page that should suspend.
+  //
+  // THE PARAM IS STRIPPED BEFORE THE LOAD, NOT AFTER.
+  //
+  // Leaving it in the address bar means a refresh silently reloads the saved
+  // copy over whatever is on the canvas — so the user's next edit-then-refresh
+  // discards their work with no prompt. Stripping first also makes this a
+  // one-shot: React 18 mounts effects twice in development, and the second
+  // pass finds no param rather than racing the first load.
+  const projectLoadedRef = useRef(false);
+  useEffect(() => {
+    if (projectLoadedRef.current) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const projectId = params.get("project");
+    if (!projectId) return;
+
+    projectLoadedRef.current = true;
+
+    params.delete("project");
+    const query = params.toString();
+    window.history.replaceState(
+      null,
+      "",
+      window.location.pathname + (query ? `?${query}` : "")
+    );
+
+    void handleSelectProject(projectId);
+  }, [handleSelectProject]);
   // === LIKELYFAD CUSTOM END ===
 
   useEffect(() => {

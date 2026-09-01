@@ -11,6 +11,8 @@ import { WorkflowBrowserModal } from "./WorkflowBrowserModal";
 import { SaveTemplateModal } from "./likelyfad/SaveTemplateModal";
 import { AccountButton } from "./auth/AccountButton";
 import { CreditBadge } from "./credits/CreditBadge";
+import Link from "next/link";
+import { useAuthGateStore } from "@/store/authGateStore";
 // === LIKELYFAD CUSTOM END ===
 
 function CommentsNavigationIcon() {
@@ -176,6 +178,11 @@ export function Header() {
   }, [revertToSnapshot]);
 
   // === LIKELYFAD CUSTOM START === (Projects button)
+  // Only an explicit signed-in status shows the history link. "unknown" — the
+  // state before AuthProvider resolves the session — deliberately hides it,
+  // so the button appears once rather than flickering in after a beat.
+  const signedIn = useAuthGateStore((state) => state.status === "signed-in");
+
   // Rendered in both header branches. It used to live only in the
   // "no project configured" branch, so opening any workflow hid it and left
   // the cloud project list unreachable without clearing the canvas first.
@@ -191,6 +198,26 @@ export function Header() {
       </svg>
     </button>
   );
+
+  // History, next to Projects and rendered in both header branches for the
+  // same reason Projects is: it used to be easy to put a button in only the
+  // "no project configured" branch and make it unreachable once a workflow
+  // was open.
+  //
+  // Signed-in only. /workflows redirects a signed-out visitor to /signin
+  // anyway (proxy.ts), but offering a link that bounces you to a sign-in page
+  // is a worse answer than not offering it.
+  const historyButton = signedIn ? (
+    <Link
+      href="/workflows"
+      className="p-1.5 text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 rounded transition-colors"
+      title="Workflow history — what each workflow costs to run"
+    >
+      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6l4 2m5-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+    </Link>
+  ) : null;
   // === LIKELYFAD CUSTOM END ===
 
   const settingsButtons = (
@@ -270,6 +297,7 @@ export function Header() {
                 <div className="flex items-center gap-0.5 ml-2 pl-2 border-l border-neutral-700/50">
                   {/* === LIKELYFAD CUSTOM START === (Projects button) */}
                   {projectsButton}
+                  {historyButton}
                   {/* === LIKELYFAD CUSTOM END === */}
                   <button
                     onClick={() => canSave ? saveToFile() : handleOpenSettings()}
@@ -357,6 +385,7 @@ export function Header() {
                 <div className="flex items-center gap-0.5 ml-2 pl-2 border-l border-neutral-700/50">
                   {/* === LIKELYFAD CUSTOM START === (Projects button) */}
                   {projectsButton}
+                  {historyButton}
                   {/* === LIKELYFAD CUSTOM END === */}
                   <button
                     onClick={handleNewProject}

@@ -598,6 +598,40 @@ there is no way to infer one from timestamps without guessing. History starts
 the day the migrations are applied — the same honest position
 `generation_events` already takes, and the UI has to say so.
 
+### The page
+
+`/workflows` is server-rendered on first paint with real numbers — the same
+approach as `/admin`, for the same reason — then refetches through
+`GET /api/workflows` on search, sort or paging without a navigation.
+
+There is **no auth gate in the page**. `proxy.ts` already redirects any
+non-public path to `/signin`, so reaching the file means there is a session;
+repeating the check would be a second source of truth answering later. The data
+gates itself regardless, because `user_workflow_history` scopes to `auth.uid()`
+rather than taking an id.
+
+**Four states render as "nothing on screen" and three are different facts:** no
+workflows at all, no search matches, a failed read, and a page of results. The
+failed read is the one that must never be mistaken for the others — telling
+someone they have no workflows when the query broke is the most alarming thing
+this page could do, which is why both readers return a `failed` marker rather
+than an empty array.
+
+**Sorting picks a column, not a direction**, matching the admin user list: each
+option has one useful order and the reverse doubles the states to answer a
+question this page is not for. Changing the filter resets to page one, or page
+three of everything silently becomes page three of a one-match filter.
+
+The card's derived subtitle is deliberately shallow — node count and model
+names, not "2 image generations, 1 LLM". The richer summary needs the graph,
+and loading every workflow's graph to render a list is exactly the N+1 that
+`user_workflow_history` exists to avoid.
+
+`Open` navigates to `/?project=<id>`, which the studio reads on mount. **The
+param is stripped before the load, not after:** leaving it in the address bar
+means a refresh silently reloads the saved copy over whatever is on the canvas,
+discarding the user's work with no prompt.
+
 ### Files
 
 | Purpose | Location |
@@ -612,6 +646,8 @@ the day the migrations are applied — the same honest position
 | Estimate engine | `src/lib/workflows/estimate.ts` |
 | Attribution entry point | `src/lib/credits/guard.ts` (`withCredits`) |
 | Ambient run id for executors | `src/store/execution/activeRun.ts` |
+| Page shell and server-read first paint | `src/app/workflows/` |
+| List, card, run drawer | `src/components/workflows/` |
 
 ### Routes
 
