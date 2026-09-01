@@ -1,0 +1,234 @@
+/**
+ * The two maintenance jobs this project wrote and never ran.
+ *
+ * Both were finished long ago as SQL and left uncalled for the same reason:
+ * nothing here runs on a timer. `settle_pending_charges` (0004) closes the
+ * closed-tab billing leak, `prune_generation_events` (0006) enforces
+ * retention, and `sweep_stale_pending_charges` (0011) is the enumeration the
+ * first one was missing. This module invokes them and does the part SQL
+ * cannot: deleting storage objects.
+ *
+ * Nothing here throws for an ordinary failure. A maintenance run is
+ * unattended, so a thrown error is a stack trace nobody reads at 3am. Each job
+ * reports what it did and what broke, and the route returns both — a job that
+ * fails is a fact in the response, not an exception that hides the job beside
+ * it.
+ */
+
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { MODERATION_BUCKET } from "@/lib/admin/thumbnails";
+
+/**
+ * How long a pending charge must sit before a sweep will settle it.
+ *
+ * Must exceed the longest workflow anyone runs, or the sweep bills a live one
+ * mid-flight — see the argument in 0011. The longest single route timeout in
+ * this app is 5 minutes, so an hour is generous on purpose.
+ */
+export const DEFAULT_STALE_MINUTES = 60;
+
+/** Users settled per invocation. Bounds the first run after an outage. */
+export const DEFAULT_SWEEP_LIMIT = 500;
+
+/**
+ * Retention window for generation_events.
+ *
+ * This is the moderation record and the entire input to the stats board, so
+ * the default is long. Shortening it silently shortens the dashboard's memory.
+ */
+export const DEFAULT_RETENTION_DAYS = 180;
+
+/** Supabase caps a single storage remove(); chunked well under it. */
+const STORAGE_REMOVE_CHUNK = 100;
+
+export type SweepResult = {
+  /** Users whose charges were settled. */
+  users: number;
+  /** Credits actually debited across all of them. */
+  charged: number;
+  /** Node runs those credits paid for. */
+  runs: number;
+  /** Credits owed that no balance covered. */
+  shortfall: number;
+  failed: string | null;
+};
+
+export type PruneResult = {
+  rowsDeleted: number;
+  thumbsDeleted: number;
+  /** Storage keys the row delete orphaned because their removal failed. */
+  thumbsOrphaned: number;
+  failed: string | null;
+};
+
+export type MaintenanceResult = {
+  settle: SweepResult;
+  prune: PruneResult;
+};
+
+/** Clamp to [1, 10080] (a week). Rejects junk rather than passing it through. */
+export function normalizeMinutes(raw: unknown): number {
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return DEFAULT_STALE_MINUTES;
+  return Math.min(10080, Math.max(1, Math.floor(n)));
+}
+
+/** Clamp to [1, 5000]. */
+export function normalizeLimit(raw: unknown): number {
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return DEFAULT_SWEEP_LIMIT;
+  return Math.min(5000, Math.max(1, Math.floor(n)));
+}
+
+/**
+ * Clamp to [7, 3650].
+ *
+ * The floor is not cosmetic. This deletes the only record of what users
+ * generated, and it cannot be backfilled — a fat-fingered `days=0` would erase
+ * the moderation log and every usage panel's history in one call.
+ */
+export function normalizeDays(raw: unknown): number {
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return DEFAULT_RETENTION_DAYS;
+  return Math.min(3650, Math.max(7, Math.floor(n)));
+}
+
+/**
+ * Settle every workflow the browser never settled.
+ *
+ * A shortfall means the affordability check in `withCredits()` let through
+ * more than the balance covered. It is surfaced rather than swallowed because
+ * it is likelier here than on the client path: a user can spend down to
+ * nothing during the hour a stale row waits.
+ */
+export async function sweepPendingCharges(
+  service: SupabaseClient,
+  opts: { minutes?: number; limit?: number } = {}
+): Promise<SweepResult> {
+  const minutes = normalizeMinutes(opts.minutes ?? DEFAULT_STALE_MINUTES);
+  const limit = normalizeLimit(opts.limit ?? DEFAULT_SWEEP_LIMIT);
+
+  const empty: SweepResult = {
+    users: 0,
+    charged: 0,
+    runs: 0,
+    shortfall: 0,
+    failed: null,
+  };
+
+  const { data, error } = await service.rpc("sweep_stale_pending_charges", {
+    p_minutes: minutes,
+    p_limit: limit,
+  });
+
+  if (error) {
+    console.error("[maintenance] settle sweep failed:", error.message);
+    return { ...empty, failed: error.message };
+  }
+
+  const rows = (data ?? []) as Array<{
+    user_id: string;
+    charged: number | null;
+    runs: number | null;
+    shortfall: number | null;
+  }>;
+
+  const result = rows.reduce<SweepResult>(
+    (acc, row) => ({
+      users: acc.users + 1,
+      charged: acc.charged + (row.charged ?? 0),
+      runs: acc.runs + (row.runs ?? 0),
+      shortfall: acc.shortfall + (row.shortfall ?? 0),
+      failed: null,
+    }),
+    empty
+  );
+
+  if (result.shortfall > 0) {
+    console.warn("[maintenance] swept with a shortfall", {
+      shortfall: result.shortfall,
+      users: result.users,
+    });
+  }
+
+  return result;
+}
+
+/**
+ * Delete generation_events past the retention window, and their thumbnails.
+ *
+ * ORDER: rows first, then storage — the opposite of `removeContent()`, and
+ * deliberately so. There, the row survives the removal, so a live thumbnail it
+ * could no longer reach would be hidden evidence; storage has to go first.
+ * Here the row is gone entirely, so there is nothing left to mislead anyone,
+ * and the worst case is an orphaned object. Litter beats a dangling reference,
+ * and SQL cannot do both halves in one transaction anyway.
+ *
+ * Orphans are counted and returned rather than retried. A repeat failure means
+ * storage is broken, which is not something a retry loop inside a cron handler
+ * is going to fix.
+ */
+export async function pruneGenerationEvents(
+  service: SupabaseClient,
+  opts: { days?: number } = {}
+): Promise<PruneResult> {
+  const days = normalizeDays(opts.days ?? DEFAULT_RETENTION_DAYS);
+
+  const { data, error } = await service.rpc("prune_generation_events", {
+    p_days: days,
+  });
+
+  if (error) {
+    console.error("[maintenance] prune failed:", error.message);
+    return {
+      rowsDeleted: 0,
+      thumbsDeleted: 0,
+      thumbsOrphaned: 0,
+      failed: error.message,
+    };
+  }
+
+  const rows = (data ?? []) as Array<{ deleted_thumb_path: string | null }>;
+  const rowsDeleted = rows.length;
+
+  // Most rows carry no thumbnail — video, audio and 3D runs never get one — so
+  // the key list is normally much shorter than the row count.
+  const keys = rows
+    .map((row) => row.deleted_thumb_path)
+    .filter((key): key is string => typeof key === "string" && key.length > 0);
+
+  let thumbsDeleted = 0;
+  let thumbsOrphaned = 0;
+
+  for (let i = 0; i < keys.length; i += STORAGE_REMOVE_CHUNK) {
+    const chunk = keys.slice(i, i + STORAGE_REMOVE_CHUNK);
+    const { error: removeError } = await service.storage
+      .from(MODERATION_BUCKET)
+      .remove(chunk);
+
+    if (removeError) {
+      // Loudly, and with the keys: the rows are already gone, so this log line
+      // is the only remaining record that these objects exist.
+      console.error(
+        "[maintenance] orphaned thumbnails, rows already deleted:",
+        removeError.message,
+        chunk
+      );
+      thumbsOrphaned += chunk.length;
+    } else {
+      thumbsDeleted += chunk.length;
+    }
+  }
+
+  return { rowsDeleted, thumbsDeleted, thumbsOrphaned, failed: null };
+}
+
+/** Both jobs. Sequential, so the two never contend for the same rows. */
+export async function runMaintenance(
+  service: SupabaseClient,
+  opts: { minutes?: number; limit?: number; days?: number } = {}
+): Promise<MaintenanceResult> {
+  const settle = await sweepPendingCharges(service, opts);
+  const prune = await pruneGenerationEvents(service, opts);
+  return { settle, prune };
+}
