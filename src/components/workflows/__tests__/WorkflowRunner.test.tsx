@@ -23,6 +23,7 @@ const { state, mockLoadWorkflow, mockExecute, mockStop, mockUpdate, mockSetAutoS
       mockSetAutoSave,
       state: {
         nodes: [] as WorkflowNode[],
+        edges: [] as Array<Record<string, unknown>>,
         isRunning: false,
         loadWorkflow: mockLoadWorkflow,
         executeWorkflow: mockExecute,
@@ -37,7 +38,7 @@ vi.mock("@/store/workflowStore", () => ({
   useWorkflowStore: (selector: (s: typeof state) => unknown) => selector(state),
 }));
 
-import { WorkflowRunner, collectOutputs } from "../WorkflowRunner";
+import { WorkflowRunner, collectInputs, collectOutputs } from "../WorkflowRunner";
 
 function node(type: string, data: Record<string, unknown> = {}): WorkflowNode {
   return {
@@ -48,8 +49,13 @@ function node(type: string, data: Record<string, unknown> = {}): WorkflowNode {
   } as unknown as WorkflowNode;
 }
 
-async function renderRunner(nodes: WorkflowNode[], isOwner = false) {
+async function renderRunner(
+  nodes: WorkflowNode[],
+  isOwner = false,
+  edges: Array<Record<string, unknown>> = []
+) {
   state.nodes = nodes;
+  state.edges = edges;
   const result = render(
     <WorkflowRunner
       projectId="wf_1_abc"
@@ -66,6 +72,7 @@ async function renderRunner(nodes: WorkflowNode[], isOwner = false) {
 beforeEach(() => {
   vi.clearAllMocks();
   state.nodes = [];
+  state.edges = [];
   state.isRunning = false;
   mockLoadWorkflow.mockResolvedValue(undefined);
 });
@@ -126,12 +133,18 @@ describe("the input fields", () => {
     expect(screen.getByText("3D model")).toBeTruthy();
   });
 
+  // Transformers and control flow derive their content from upstream; a runner
+  // filling them in would be editing the workflow rather than running it.
+  // (Generation nodes are the one exception, and only for their own prompt —
+  // see the internal-prompt suite below.)
   it("does not offer fields for nodes the author owns", async () => {
     await renderRunner([
-      node("nanoBanana", {}),
-      node("llmGenerate", {}),
       node("router", {}),
+      node("switch", {}),
       node("promptConstructor", { template: "x" }),
+      node("array", { inputText: "a,b" }),
+      node("imageResize", {}),
+      node("comfyApp", {}),
     ]);
     expect(screen.getByText(/takes no inputs/i)).toBeTruthy();
   });
@@ -207,12 +220,14 @@ describe("the output panel", () => {
 });
 
 describe("collectOutputs", () => {
-  it("prefers an explicit output node", () => {
+  // The explicit output leads, because the author placed it to say which
+  // result is the point — but a generation the author did not wire up is still
+  // shown rather than dropped. See "outputs no longer hide each other".
+  it("puts an explicit output node first", () => {
     const items = collectOutputs([
       node("nanoBanana", { outputImage: "data:image/png;base64,GEN" }),
       node("output", { image: "data:image/png;base64,OUT" }),
     ]);
-    expect(items).toHaveLength(1);
     expect(items[0].value).toContain("OUT");
   });
 
@@ -267,5 +282,148 @@ describe("collectOutputs", () => {
 
   it("returns nothing for a graph that has produced nothing", () => {
     expect(collectOutputs([node("prompt", { prompt: "x" })])).toHaveLength(0);
+  });
+});
+
+/**
+ * A workflow does not need a `prompt` node at all: every generation executor
+ * resolves `connectedInputs.text ?? nodeData.inputPrompt`, so the author can
+ * type straight into the generation node. Those workflows previously showed no
+ * text field whatsoever and failed with the executor's own message.
+ */
+describe("generation nodes that carry their own prompt", () => {
+  it("offers a text field when nothing is wired into the node", async () => {
+    await renderRunner([node("nanoBanana", { inputPrompt: "a red chair" })]);
+    expect(screen.getByDisplayValue("a red chair")).toBeTruthy();
+  });
+
+  it("writes to the field the executor actually reads", async () => {
+    await renderRunner([node("nanoBanana", { inputPrompt: "" })]);
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "a blue chair" },
+    });
+    expect(mockUpdate).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ inputPrompt: "a blue chair" })
+    );
+  });
+
+  // The connection wins in that `??`, so an editable box here would be a
+  // control that silently does nothing.
+  it("offers no field when a prompt node is already feeding it", async () => {
+    const gen = node("nanoBanana", { inputPrompt: "ignored" });
+    const prompt = node("prompt", { prompt: "the real one" });
+    await renderRunner(
+      [prompt, gen],
+      false,
+      [{ source: prompt.id, target: gen.id, sourceHandle: "text", targetHandle: "text" }]
+    );
+    // Only the prompt node's own field.
+    expect(screen.getAllByRole("textbox")).toHaveLength(1);
+    expect(screen.getByDisplayValue("the real one")).toBeTruthy();
+  });
+
+  // A router relays text on the same handle, so following node types rather
+  // than handles would miss it.
+  it("counts text arriving through a router as wired", async () => {
+    const gen = node("generateVideo", { inputPrompt: "x" });
+    await renderRunner(
+      [gen],
+      false,
+      [{ source: "router-1", target: gen.id, sourceHandle: "text", targetHandle: "text" }]
+    );
+    expect(screen.queryByRole("textbox")).toBeNull();
+  });
+
+  it("names the prompt after what the node generates", async () => {
+    await renderRunner([
+      node("generateVideo", { inputPrompt: "" }),
+      node("generateAudio", { inputPrompt: "" }),
+      node("llmGenerate", { inputPrompt: "" }),
+      node("generate3d", { inputPrompt: "" }),
+    ]);
+    expect(screen.getByText("Video prompt")).toBeTruthy();
+    expect(screen.getByText("Audio prompt")).toBeTruthy();
+    expect(screen.getByText("Text prompt")).toBeTruthy();
+    expect(screen.getByText("3D prompt")).toBeTruthy();
+  });
+
+  it("numbers two internal prompts of the same kind", async () => {
+    await renderRunner([
+      node("nanoBanana", { inputPrompt: "" }),
+      node("nanoBanana", { inputPrompt: "" }),
+    ]);
+    expect(screen.getByText("Prompt 1")).toBeTruthy();
+    expect(screen.getByText("Prompt 2")).toBeTruthy();
+  });
+});
+
+describe("collectInputs", () => {
+  it("treats an unwired generation node as a text input", () => {
+    const inputs = collectInputs([node("nanoBanana", { inputPrompt: "" })], []);
+    expect(inputs).toHaveLength(1);
+    expect(inputs[0].spec.field).toBe("inputPrompt");
+  });
+
+  it("ignores a generation node fed by an image only", () => {
+    const gen = node("nanoBanana", { inputPrompt: "" });
+    const inputs = collectInputs(
+      [gen],
+      [{ source: "img-1", target: gen.id, sourceHandle: "image", targetHandle: "image" }] as never
+    );
+    // An image edge is not text, so the prompt is still the runner's to give.
+    expect(inputs).toHaveLength(1);
+  });
+
+  it("ignores comfyApp, whose inputs are its own settings", () => {
+    expect(collectInputs([node("comfyApp", {})], [])).toHaveLength(0);
+  });
+});
+
+/**
+ * The old rule was "an explicit output node wins, full stop", which hid real
+ * results — an image on an output node and a stitched clip wired to nothing
+ * showed the image and silently dropped the video.
+ */
+describe("outputs no longer hide each other", () => {
+  it("shows a result that is wired to no output node", () => {
+    const items = collectOutputs([
+      node("output", { image: "IMG" }),
+      node("videoStitch", { outputVideo: "VID" }),
+    ]);
+    expect(items.map((i) => i.value).sort()).toEqual(["IMG", "VID"]);
+  });
+
+  it("shows a result once when it is wired into an output node", () => {
+    const items = collectOutputs([
+      node("generateVideo", { outputVideo: "SAME" }),
+      node("output", { video: "SAME" }),
+    ]);
+    expect(items).toHaveLength(1);
+  });
+
+  it("keeps the explicit output first, because the author said it is the point", () => {
+    const items = collectOutputs([
+      node("nanoBanana", { outputImage: "GEN" }),
+      node("output", { image: "OUT" }),
+    ]);
+    expect(items[0].value).toBe("OUT");
+  });
+
+  // The other reported gap: a GIF had no output field at all.
+  it("shows an encoded GIF", () => {
+    const items = collectOutputs([node("gifEncoder", { outputGif: "GIF" })]);
+    expect(items).toHaveLength(1);
+    expect(items[0].kind).toBe("image");
+  });
+
+  it("shows every stage of a video pipeline that ends in no output node", () => {
+    const items = collectOutputs([
+      node("videoTrim", { outputVideo: "TRIM" }),
+      node("easeCurve", { outputVideo: "EASE" }),
+      node("videoStitch", { outputVideo: "STITCH" }),
+    ]);
+    expect(items).toHaveLength(3);
+    expect(items.every((i) => i.kind === "video")).toBe(true);
   });
 });

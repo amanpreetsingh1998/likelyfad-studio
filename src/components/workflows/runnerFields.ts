@@ -129,8 +129,40 @@ export const GENERATION_OUTPUT_FIELDS: Array<{ field: string; kind: OutputKind }
   { field: "outputVideo", kind: "video" },
   { field: "outputAudio", kind: "audio" },
   { field: "output3dUrl", kind: "model3d" },
+  // gifEncoder. Treated as an image here for the same reason
+  // getConnectedInputs treats it as one: a GIF is delivered as a data URL an
+  // <img> renders, and it flows down image handles.
+  { field: "outputGif", kind: "image" },
   { field: "outputText", kind: "text" },
 ];
+
+/**
+ * Nodes that carry their own prompt.
+ *
+ * Every generation executor resolves its text as
+ *
+ *     text = connectedInputs.text ?? nodeData.inputPrompt
+ *
+ * so a workflow does not need a separate `prompt` node at all — the author can
+ * type straight into the generation node. A run page that only offered `prompt`
+ * nodes therefore showed **no text field whatsoever** for those workflows, and
+ * the run failed with the executor's own words: "Missing text input - connect a
+ * prompt node or set internal prompt".
+ *
+ * THE FIELD IS OFFERED ONLY WHEN NOTHING IS WIRED INTO IT. The connection wins
+ * in that `??`, so rendering an editable box on a node fed by a prompt node
+ * would be a control that silently does nothing.
+ */
+export const INTERNAL_PROMPT_TYPES: readonly string[] = [
+  "nanoBanana",
+  "generateVideo",
+  "generateAudio",
+  "generate3d",
+  "llmGenerate",
+];
+
+/** The data key those nodes read their own prompt from. */
+export const INTERNAL_PROMPT_FIELD = "inputPrompt";
 
 /**
  * Node types that are deliberately neither an input nor an output here.
@@ -144,8 +176,10 @@ export const RUNNER_IGNORED: readonly string[] = [
   // Transformers over other nodes' text.
   "promptConstructor",
   "array",
-  // Generation nodes: their outputs are read through GENERATION_OUTPUT_FIELDS,
-  // and their inputs come from the graph.
+  // Generation nodes: their media inputs come from the graph and their outputs
+  // are read through GENERATION_OUTPUT_FIELDS. Their *text* is the exception —
+  // see INTERNAL_PROMPT_TYPES, which offers `inputPrompt` when nothing is wired
+  // into the node.
   "nanoBanana",
   "generateVideo",
   "generateAudio",

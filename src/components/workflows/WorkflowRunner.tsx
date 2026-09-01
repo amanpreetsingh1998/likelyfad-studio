@@ -40,9 +40,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useWorkflowStore, type WorkflowFile } from "@/store/workflowStore";
-import type { WorkflowNode } from "@/types";
+import type { WorkflowEdge, WorkflowNode } from "@/types";
 import {
   GENERATION_OUTPUT_FIELDS,
+  INTERNAL_PROMPT_FIELD,
+  INTERNAL_PROMPT_TYPES,
   RUNNER_INPUTS,
   RUNNER_OUTPUTS,
   type InputSpec,
@@ -68,6 +70,7 @@ export function WorkflowRunner({
   const stopWorkflow = useWorkflowStore((s) => s.stopWorkflow);
   const updateNodeData = useWorkflowStore((s) => s.updateNodeData);
   const nodes = useWorkflowStore((s) => s.nodes);
+  const edges = useWorkflowStore((s) => s.edges);
   const isRunning = useWorkflowStore((s) => s.isRunning);
 
   const [ready, setReady] = useState(false);
@@ -104,7 +107,7 @@ export function WorkflowRunner({
       );
   }, [graph, projectId, title, loadWorkflow, setAutoSaveEnabled]);
 
-  const inputs = useMemo(() => collectInputs(nodes), [nodes]);
+  const inputs = useMemo(() => collectInputs(nodes, edges), [nodes, edges]);
   const outputs = useMemo(() => collectOutputs(nodes), [nodes]);
   const errors = useMemo(
     () =>
@@ -244,25 +247,50 @@ type ResolvedInput = { node: WorkflowNode; spec: InputSpec; label: string };
  * has more than one of a kind — "Prompt" twice with no way to tell them apart
  * is worse than "Prompt 1" and "Prompt 2".
  */
-function collectInputs(nodes: WorkflowNode[]): ResolvedInput[] {
+export function collectInputs(
+  nodes: WorkflowNode[],
+  edges: WorkflowEdge[] = []
+): ResolvedInput[] {
+  const specFor = (node: WorkflowNode): InputSpec | null => {
+    if (!node.type) return null;
+
+    const direct = RUNNER_INPUTS[node.type];
+    if (direct) return direct;
+
+    // A generation node that carries its own prompt, with nothing wired into
+    // it. The executor resolves `connected ?? inputPrompt`, so this field is
+    // the only text the run will get — and offering it on a node that IS fed
+    // would be a control that silently does nothing.
+    if (
+      INTERNAL_PROMPT_TYPES.includes(node.type) &&
+      !hasIncomingText(node.id, edges)
+    ) {
+      return {
+        kind: "text",
+        field: INTERNAL_PROMPT_FIELD,
+        label: labelForGenerationNode(node.type),
+      };
+    }
+
+    return null;
+  };
+
   const counts = new Map<string, number>();
   for (const node of nodes) {
-    if (node.type && RUNNER_INPUTS[node.type]) {
-      counts.set(node.type, (counts.get(node.type) ?? 0) + 1);
-    }
+    const spec = specFor(node);
+    if (spec) counts.set(spec.label, (counts.get(spec.label) ?? 0) + 1);
   }
 
   const seen = new Map<string, number>();
   const out: ResolvedInput[] = [];
 
   for (const node of nodes) {
-    if (!node.type) continue;
-    const spec = RUNNER_INPUTS[node.type];
+    const spec = specFor(node);
     if (!spec) continue;
 
     const data = node.data as Record<string, unknown>;
-    const index = (seen.get(node.type) ?? 0) + 1;
-    seen.set(node.type, index);
+    const index = (seen.get(spec.label) ?? 0) + 1;
+    seen.set(spec.label, index);
 
     const authored =
       typeof data.label === "string" && data.label.trim()
@@ -273,12 +301,47 @@ function collectInputs(nodes: WorkflowNode[]): ResolvedInput[] {
 
     const label =
       authored ??
-      ((counts.get(node.type) ?? 0) > 1 ? `${spec.label} ${index}` : spec.label);
+      ((counts.get(spec.label) ?? 0) > 1 ? `${spec.label} ${index}` : spec.label);
 
     out.push({ node, spec, label });
   }
 
   return out;
+}
+
+/**
+ * Is any text already flowing into this node?
+ *
+ * Matched on the handle names rather than the source node's type, because a
+ * router or switch relays text under the same `text` handle it received it on
+ * — so following types would miss a prompt that reaches the node through one.
+ */
+function hasIncomingText(nodeId: string, edges: WorkflowEdge[]): boolean {
+  return edges.some(
+    (edge) =>
+      edge.target === nodeId &&
+      (isTextHandle(edge.sourceHandle) || isTextHandle(edge.targetHandle))
+  );
+}
+
+function isTextHandle(handle: string | null | undefined): boolean {
+  return typeof handle === "string" && handle.toLowerCase().startsWith("text");
+}
+
+/** "Prompt" for whatever this node generates, so the field reads as an input. */
+function labelForGenerationNode(type: string): string {
+  switch (type) {
+    case "generateVideo":
+      return "Video prompt";
+    case "generateAudio":
+      return "Audio prompt";
+    case "generate3d":
+      return "3D prompt";
+    case "llmGenerate":
+      return "Text prompt";
+    default:
+      return "Prompt";
+  }
 }
 
 function InputField({
@@ -411,9 +474,10 @@ type OutputItem = {
 /**
  * What this run produced.
  *
- * Explicit output nodes win, because an author who placed one has said which
- * result is the point. When a workflow has none, the generation nodes' own
- * outputs are shown instead rather than an empty panel — a workflow that made
+ * Explicit output nodes come first, because an author who placed one has said
+ * which result is the point. Everything else a node produced follows, deduped
+ * by value — so a result that is wired into an output node appears once, and a
+ * result that is wired to nothing still appears at all. A workflow that made
  * something and shows nothing reads as a failure.
  */
 export function collectOutputs(nodes: WorkflowNode[]): OutputItem[] {
@@ -436,12 +500,23 @@ export function collectOutputs(nodes: WorkflowNode[]): OutputItem[] {
     }
   }
 
-  if (items.length > 0) return items;
+  // Then everything else that was produced, EXCEPT what is already on screen.
+  //
+  // The earlier rule was "an explicit output node wins, full stop", which hid
+  // real results: a workflow with an output node showing an image and a
+  // videoStitch producing a clip that was not wired into it displayed the
+  // image and silently dropped the video. Deduping by value instead means an
+  // output node fed by a generation node shows that result once, and a result
+  // nothing is wired to still shows.
+  const seen = new Set(items.map((item) => item.value));
 
   for (const node of nodes) {
     const data = node.data as Record<string, unknown>;
     for (const { field, kind } of GENERATION_OUTPUT_FIELDS) {
-      push(items, node.id, field, kind, data[field]);
+      const value = data[field];
+      if (typeof value !== "string" || !value || seen.has(value)) continue;
+      seen.add(value);
+      push(items, node.id, field, kind, value);
     }
   }
 

@@ -698,12 +698,26 @@ table and fails on any type that is in neither the input, output nor the
 explicitly-ignored list, so a node added later arrives as a decision rather
 than an absence.
 
-Inputs are the five leaf types that hold content: `prompt`, `imageInput`,
-`audioInput`, `videoInput`, `glbViewer`. Outputs prefer an explicit `output`,
-`outputGallery`, `imageCompare` or `glbViewer` node, and fall back to the
-generation nodes' own `outputImage` / `outputVideo` / `outputAudio` /
-`output3dUrl` / `outputText` — the same typed mirrors `outputsToNodeData`
-writes for a Comfy app.
+Inputs are the five leaf types that hold content — `prompt`, `imageInput`,
+`audioInput`, `videoInput`, `glbViewer` — **plus a generation node's own
+`inputPrompt` when nothing is wired into it.** That last one is not an extra:
+every generation executor resolves `connectedInputs.text ?? nodeData
+.inputPrompt`, so a workflow needs no `prompt` node at all and the author can
+type straight into the node. Those workflows previously showed no text field
+whatsoever and failed with the executor's own words, "Missing text input -
+connect a prompt node or set internal prompt". The field is offered only when
+no text edge feeds the node, because the connection wins in that `??` and an
+editable box on a fed node would silently do nothing. Wiring is detected by
+handle name, not source type, since a router relays text on the same handle.
+
+Outputs list the explicit `output`, `outputGallery`, `imageCompare` and
+`glbViewer` nodes first — the author placed those to say which result is the
+point — then everything else a node produced, **deduped by value**. The earlier
+rule was "an explicit output wins, full stop", which hid real results: an image
+on an output node plus a stitched clip wired to nothing showed the image and
+dropped the video. The fallback covers `outputImage`, `outputVideo`,
+`outputAudio`, `output3dUrl`, `outputGif` and `outputText` — the same typed
+mirrors `outputsToNodeData` writes for a Comfy app, plus the GIF encoder's.
 
 **Replacing a file clears its `<field>Ref`.** Saved workflows store media as a
 storage reference with the inline value stripped; setting only the inline value
