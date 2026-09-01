@@ -90,6 +90,33 @@ export async function saveProject(
     console.error("Failed to save project:", error);
     throw new Error(error.message);
   }
+
+  // Reprice for the history page. Fire-and-forget on purpose: the graph is
+  // already saved, and an estimate is a convenience shown before a workflow
+  // has ever run. Making the user wait on it — or fail a save because of it —
+  // would be trading something that matters for something that does not.
+  //
+  // The route takes no graph. It re-reads the row we just wrote and prices it
+  // server-side with the same function the credit gate bills from, so nothing
+  // the browser sends can influence the figure a user is quoted.
+  void repriceProject(id);
+}
+
+/**
+ * Ask the server to recompute this workflow's cost and duration estimate.
+ *
+ * Never throws. A stale estimate is a cosmetic problem on one card; a save
+ * that fails is not.
+ */
+async function repriceProject(id: string): Promise<void> {
+  try {
+    await fetch(`/api/workflows/${encodeURIComponent(id)}/estimate`, {
+      method: "POST",
+    });
+  } catch {
+    // Offline, or the route is not deployed. The card falls back to whatever
+    // estimate it already had, and to "not run yet" if it had none.
+  }
 }
 
 export async function loadProject(

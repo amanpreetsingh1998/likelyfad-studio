@@ -177,7 +177,8 @@ turn that into the buy-credits modal. Every gated response carries
 
 1. Run `supabase/migrations/0003_credits.sql`, then `0004_workflow_settlement.sql`,
    then `0012_fix_settlement.sql`, then `0013_workflow_history.sql`, then
-   `0014_workflow_history_read.sql`, in the Supabase SQL editor.
+   `0014_workflow_history_read.sql`, then `0015_model_latency.sql`, in the
+   Supabase SQL editor.
 2. Add the three Razorpay vars above to `.env.local`.
 3. Razorpay dashboard → Settings → Webhooks → add
    `https://<domain>/api/credits/webhook` for `payment.captured`, using the
@@ -252,7 +253,8 @@ passes, so a handler cannot obtain it by forgetting to check.
    then `0007_admin_stats.sql`, then `0008_admin_users.sql`, then
    `0009_moderation.sql`, then `0010_admin_audit.sql`, then
    `0011_maintenance.sql`, then `0012_fix_settlement.sql`, then
-   `0013_workflow_history.sql`, then `0014_workflow_history_read.sql`.
+   `0013_workflow_history.sql`, then `0014_workflow_history_read.sql`, then
+   `0015_model_latency.sql`.
 2. Sign in once with the account that should be admin (there must be an
    `auth.users` row to point at).
 3. `select public.set_admin('you@example.com');`

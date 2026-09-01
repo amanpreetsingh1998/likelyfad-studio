@@ -11,6 +11,7 @@
 
 import { describe, it, expect } from "vitest";
 import { calculatePredictedCost } from "@/utils/costCalculator";
+import { estimateWorkflow } from "@/lib/workflows/estimate";
 import { creditCostForRun } from "../pricing";
 import { creditsForUsd } from "../rates";
 import { FAL_PRICING } from "@/lib/likelyfad/fal-pricing.generated";
@@ -107,5 +108,77 @@ describe("the header agrees with what the gate charges", () => {
       creditCostForRun({ kind: "image", provider: "gemini", modelId: "nano-banana-pro", resolution: "1K" });
 
     expect(headerCredits(nodes)).toBe(billed);
+  });
+});
+
+/**
+ * The stored workflow estimate is a THIRD computation of the same number: the
+ * header does it in the browser, the gate does it per node on the server, and
+ * estimateWorkflow does it over a whole saved graph so the history page can
+ * show a cost for a workflow that has never run.
+ *
+ * It is the one of the three a user sees WITHOUT having spent anything, so a
+ * drift here is a quoted price that the first run then disagrees with.
+ */
+describe("the stored workflow estimate agrees with what the gate charges", () => {
+  it("matches the gate for a mixed graph", () => {
+    if (!falImageModel) return;
+    const nodes = [
+      imageNode("a", "fal", falImageModel),
+      imageNode("b", "gemini", "nano-banana-pro", "4K"),
+      imageNode("c", "gemini", "nano-banana-pro", "1K"),
+    ];
+
+    const billed =
+      creditCostForRun({ kind: "image", provider: "fal", modelId: falImageModel, resolution: "1K" }) +
+      creditCostForRun({ kind: "image", provider: "gemini", modelId: "nano-banana-pro", resolution: "4K" }) +
+      creditCostForRun({ kind: "image", provider: "gemini", modelId: "nano-banana-pro", resolution: "1K" });
+
+    const estimate = estimateWorkflow(nodes);
+    expect(estimate.credits).toBe(billed);
+    expect(estimate.partial).toBe(false);
+  });
+
+  it("agrees with the header, which is the number the user saw first", () => {
+    if (!falImageModel) return;
+    const nodes = [
+      imageNode("a", "fal", falImageModel),
+      imageNode("b", "gemini", "nano-banana-pro", "1K"),
+    ];
+    expect(estimateWorkflow(nodes).credits).toBe(headerCredits(nodes));
+  });
+
+  // Mirrors the 409 unpriced_model refusal: the total becomes a floor, and
+  // says so, rather than pricing the unknown node at nothing in silence.
+  it("marks the estimate partial rather than pricing an unknown model at zero", () => {
+    const nodes = [
+      imageNode("a", "gemini", "nano-banana-pro", "1K"),
+      imageNode("b", "fal", "fal-ai/does-not-exist"),
+    ];
+    const priced = creditCostForRun({
+      kind: "image",
+      provider: "gemini",
+      modelId: "nano-banana-pro",
+      resolution: "1K",
+    });
+
+    const estimate = estimateWorkflow(nodes);
+    expect(estimate.partial).toBe(true);
+    expect(estimate.credits).toBe(priced);
+    // Counted, so the UI can say how much of the graph it could not price.
+    expect(estimate.billableNodes).toBe(2);
+  });
+
+  it("charges nothing for a graph with no billable nodes", () => {
+    const estimate = estimateWorkflow([
+      { id: "p", type: "prompt", data: {} },
+      { id: "o", type: "output", data: {} },
+    ]);
+    expect(estimate).toMatchObject({ credits: 0, partial: false, billableNodes: 0 });
+  });
+
+  it("survives a graph that is not an array", () => {
+    expect(estimateWorkflow(null).credits).toBe(0);
+    expect(estimateWorkflow(undefined).billableNodes).toBe(0);
   });
 });
