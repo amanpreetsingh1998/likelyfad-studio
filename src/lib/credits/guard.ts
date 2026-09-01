@@ -31,6 +31,7 @@ import {
   promptFromBody,
   recordGenerationEvent,
 } from "@/lib/moderation/events";
+import { runBelongsTo } from "@/lib/workflows/runs";
 
 /** Balance minus what this run's workflow already owes. */
 export const BALANCE_HEADER = "X-Credits-Balance";
@@ -132,6 +133,20 @@ export function withCredits(
       );
     }
 
+    // Which workflow execution this node belongs to. A grouping key and
+    // nothing else: it groups charges and events so history can say what a
+    // workflow cost, and it can never influence what is charged.
+    //
+    // Verified against the caller before use, because an unchecked run id from
+    // the browser would let a user file charges against someone else's run —
+    // both a billing fault and a read of another account's history. Resolved
+    // here rather than inside the two writers so one request costs one lookup.
+    //
+    // An absent, malformed or foreign run id degrades to an untagged charge,
+    // which settles through the user-wide path exactly as before this feature
+    // existed. Billing must never break because history is unavailable.
+    const runId = await resolveRunId(auth.user.id, body.runId);
+
     const startedAt = Date.now();
     const response = await handler(request);
     const durationMs = Date.now() - startedAt;
@@ -145,7 +160,7 @@ export function withCredits(
     // one records nothing, so there is no refund path to get wrong.
     if (succeeded) {
       try {
-        pending = await recordPendingCharge(auth.user.id, charge, cost);
+        pending = await recordPendingCharge(auth.user.id, charge, cost, runId);
       } catch (err) {
         // The generation succeeded; failing to record the charge must not turn
         // that into an error for the user. Logged loudly — it is lost revenue.
@@ -165,6 +180,7 @@ export function withCredits(
       body,
       payload,
       succeeded,
+      runId,
     });
 
     const headers = new Headers(response.headers);
@@ -237,6 +253,7 @@ function logGeneration(args: {
   body: Record<string, unknown>;
   payload: Record<string, unknown> | null;
   succeeded: boolean;
+  runId: string | null;
 }): void {
   const { payload, succeeded } = args;
 
@@ -266,7 +283,27 @@ function logGeneration(args: {
         outputKind ?? (typeof payload?.text === "string" ? "text" : null),
       outputText: typeof payload?.text === "string" ? payload.text : null,
       taskId: isPending ? taskId : null,
+      runId: args.runId,
     });
 
   deferAfterResponse(work);
+}
+
+/**
+ * Validate the run id a request carried, or return null.
+ *
+ * Null on every doubtful path — absent, not a string, not this user's, or a
+ * lookup that failed. The caller treats null as "record this charge untagged",
+ * which is the pre-history behaviour and still bills correctly.
+ */
+async function resolveRunId(
+  userId: string,
+  value: unknown
+): Promise<string | null> {
+  if (typeof value !== "string" || !value) return null;
+  try {
+    return (await runBelongsTo(userId, value)) ? value : null;
+  } catch {
+    return null;
+  }
 }

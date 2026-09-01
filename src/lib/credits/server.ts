@@ -44,11 +44,18 @@ export async function getBalance(userId: string): Promise<number> {
  *
  * Returns the user's new unsettled total, which the route stamps on the
  * response so the UI can show a live "this run so far" figure.
+ *
+ * `runId` groups this charge under one workflow execution so history can say
+ * what that workflow cost. It is a grouping key only — the amount comes from
+ * `credits`, which the server derived from its own rate card. The SQL function
+ * drops a run id that is not this user's rather than raising, so a bad one
+ * costs the history entry and never the billing.
  */
 export async function recordPendingCharge(
   userId: string,
   credits: number,
-  cost: RunCostInput
+  cost: RunCostInput,
+  runId?: string | null
 ): Promise<number> {
   const supabase = getServiceClient();
   const { data, error } = await supabase.rpc("record_pending_charge", {
@@ -56,6 +63,7 @@ export async function recordPendingCharge(
     p_credits: credits,
     p_kind: cost.kind,
     p_model_id: cost.modelId ?? null,
+    p_run_id: runId ?? null,
   });
 
   if (error) throw new Error(`Could not record charge: ${error.message}`);
@@ -100,6 +108,51 @@ export async function settlePendingCharges(
   const { data, error } = await supabase.rpc("settle_pending_charges", {
     p_user_id: userId,
     p_reason: reason,
+  });
+
+  if (error) throw new Error(`Could not settle run: ${error.message}`);
+
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) return { charged: 0, balance: 0, runs: 0, shortfall: 0 };
+
+  return {
+    charged: row.charged as number,
+    balance: row.balance as number,
+    runs: row.runs as number,
+    shortfall: row.shortfall as number,
+  };
+}
+
+/**
+ * Bill exactly one workflow run, and close the run out.
+ *
+ * The run-scoped counterpart to settlePendingCharges. Preferred whenever the
+ * client knows which run it is closing, because it produces one ledger line
+ * per execution instead of one per "everything this user owed at that moment"
+ * — which is what makes a per-workflow cost answerable at all.
+ *
+ * settlePendingCharges is kept, not replaced: the maintenance sweep still
+ * needs the user-wide path for orphaned rows that belong to no run.
+ *
+ * Idempotent in the way that matters. The second call finds no unsettled rows
+ * for the run and returns a zero charge, leaving the figures already written
+ * on the run row untouched — which the client depends on, because it settles
+ * from a finally block a retry or a double-click can reach twice.
+ *
+ * A run id that is not this user's settles nothing and returns zero. That is
+ * the honest answer rather than an error, and it declines to confirm whether
+ * the run exists.
+ */
+export async function settleWorkflowRun(
+  userId: string,
+  runId: string,
+  status: "completed" | "failed" | "cancelled" | "abandoned" = "completed"
+): Promise<SettlementResult> {
+  const supabase = getServiceClient();
+  const { data, error } = await supabase.rpc("settle_workflow_run", {
+    p_user_id: userId,
+    p_run_id: runId,
+    p_status: status,
   });
 
   if (error) throw new Error(`Could not settle run: ${error.message}`);

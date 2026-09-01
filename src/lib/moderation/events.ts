@@ -52,6 +52,15 @@ export type RecordGenerationInput = {
   outputText?: string | null;
   /** Provider task id, for runs completed later by the poll route. */
   taskId?: string | null;
+  /**
+   * The workflow execution this run belongs to, when there is one.
+   *
+   * Verified against the caller in withCredits() before it reaches here, so
+   * this is already known to be the user's own run. Null for anything that is
+   * not a workflow execution — a single node fired from the canvas, the
+   * quickstart proposer — and for every row written before this shipped.
+   */
+  runId?: string | null;
 };
 
 function clamp(value: string | null | undefined, max: number): string | null {
@@ -116,6 +125,7 @@ export async function recordGenerationEvent(
         status: input.status,
         error: clamp(input.error, 500),
         task_id: input.taskId ?? null,
+        run_id: input.runId ?? null,
         completed_at: input.status === "pending" ? null : new Date().toISOString(),
       })
       .select("id")
