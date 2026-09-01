@@ -4,8 +4,8 @@
  * Regenerate with:  npm run fal:pricing
  * Source: the `endpointBilling` payload on each fal.ai model page.
  *
- * 916 of 919 models priced (100%).
- * Billing units seen: 1 (2), images (207), units (59), megapixels (225), seconds (163), processed megapixels (17), compute seconds (94), 1000 tokens (12), generations (17), 1m tokens (6), videos (66), credits (13), minutes (2), 5 seconds (7), video segments (21),  (4), input seconds (1).
+ * 934 of 939 models priced (99%).
+ * Billing units seen: 1 (2), images (214), units (59), megapixels (225), seconds (174), processed megapixels (17), compute seconds (94), 1000 tokens (12), generations (17), 1m tokens (6), videos (66), credits (13), minutes (2), 5 seconds (7), video segments (21),  (4), input seconds (1).
  *
  * `price` is per ONE `unit`, not per run. Converting to a per-run cost needs
  * the run's own context — duration for `seconds`, output size for
@@ -31,6 +31,11 @@ export const FAL_PRICING: Record<string, FalPriceEntry> = {
   "alibaba/happy-horse/v1.1/text-to-video": { price: 0.14, unit: "seconds" },
   "alibaba/qwen-image-3/edit": { price: 0.01, unit: "units" },
   "alibaba/qwen-image-3/text-to-image": { price: 0.01, unit: "units" },
+  "alibaba/wan-3.0-prime/image-to-video": { price: 0.05, unit: "seconds" },
+  "alibaba/wan-3.0-prime/text-to-video": { price: 0.05, unit: "seconds" },
+  "alibaba/wan-3.0/image-to-video": { price: 0.05, unit: "seconds" },
+  "alibaba/wan-3.0/reference-to-video": { price: 0.05, unit: "seconds" },
+  "alibaba/wan-3.0/text-to-video": { price: 0.05, unit: "seconds" },
   "argil/avatars/text-to-video": { price: 0.0225, unit: "input seconds" },
   "blackforestlabs/flux-3/first-last-frame-to-video": { price: 0.085, unit: "seconds" },
   "blackforestlabs/flux-3/first-last-frame-to-video/draft": { price: 0.03, unit: "seconds" },
@@ -43,6 +48,7 @@ export const FAL_PRICING: Record<string, FalPriceEntry> = {
   "bria/embed-product": { price: 0.04, unit: "images" },
   "bria/extract-object": { price: 0.02, unit: "images" },
   "bria/fibo-bbq-preview/generate": { price: 0.04, unit: "images" },
+  "bria/fibo-edit-1.5/edit": { price: 0.04, unit: "images" },
   "bria/fibo-edit/add_object_by_text": { price: 0.04, unit: "images" },
   "bria/fibo-edit/blend": { price: 0.04, unit: "images" },
   "bria/fibo-edit/colorize": { price: 0.04, unit: "images" },
@@ -55,6 +61,7 @@ export const FAL_PRICING: Record<string, FalPriceEntry> = {
   "bria/fibo-edit/restyle": { price: 0.04, unit: "images" },
   "bria/fibo-edit/rewrite_text": { price: 0.04, unit: "images" },
   "bria/fibo-edit/sketch_to_colored_image": { price: 0.04, unit: "images" },
+  "bria/fibo-gen-1.5/text-to-image": { price: 0.04, unit: "images" },
   "bria/fibo-lite/generate": { price: 0.036, unit: "images" },
   "bria/fibo/generate": { price: 0.04, unit: "images" },
   "bria/genfill/v2": { price: 0.04, unit: "megapixels" },
@@ -851,9 +858,13 @@ export const FAL_PRICING: Record<string, FalPriceEntry> = {
   "google/gemini-omni-flash": { price: 1, unit: "units" },
   "google/gemini-omni-flash/image-to-video": { price: 1, unit: "units" },
   "google/gemini-omni-flash/reference-to-video": { price: 1, unit: "units" },
+  "google/gemini-omni-flash/v1.1/image-to-video": { price: 0.03, unit: "seconds" },
+  "google/gemini-omni-flash/v1.1/reference-to-video": { price: 0.03, unit: "seconds" },
+  "google/gemini-omni-flash/v1.1/text-to-video": { price: 0.03, unit: "seconds" },
   "google/nano-banana-2-lite": { price: 1, unit: "units" },
   "google/nano-banana-lite": { price: 1, unit: "units" },
   "google/nano-banana-lite/edit": { price: 1, unit: "units" },
+  "google/virtual-try-on": { price: 0.075, unit: "images" },
   "hitem3d/hi3d/image-to-relief": { price: 0.02, unit: "credits" },
   "ideogram/v4": { price: 0.01, unit: "units" },
   "ideogram/v4/fast": { price: 0.007, unit: "units" },
@@ -884,6 +895,9 @@ export const FAL_PRICING: Record<string, FalPriceEntry> = {
   "microsoft/mai-image-2.5-pro": { price: 1.5, unit: "credits" },
   "microsoft/mai-image-2.5-pro/edit": { price: 1.5, unit: "credits" },
   "microsoft/mai-image-2.5/edit": { price: 1, unit: "credits" },
+  "minimax/h3-max/image-to-video": { price: 0.025, unit: "seconds" },
+  "minimax/h3-max/reference-to-video": { price: 0.05, unit: "seconds" },
+  "minimax/h3-max/text-to-video": { price: 0.025, unit: "seconds" },
   "minimax/h3/image-to-video": { price: 0.05, unit: "seconds" },
   "minimax/h3/image-to-video/lora": { price: 0.0625, unit: "seconds" },
   "minimax/h3/reference-to-video": { price: 0.05, unit: "seconds" },
@@ -899,6 +913,10 @@ export const FAL_PRICING: Record<string, FalPriceEntry> = {
   "openai/gpt-image-2/edit": { price: 1, unit: "units" },
   "pixelcut/background-removal": { price: 0.016, unit: "images" },
   "pixelcut/product-photo": { price: 0.024, unit: "images" },
+  "recraft/v4/style/pro/text-to-image": { price: 0.1, unit: "images" },
+  "recraft/v4/style/pro/text-to-vector": { price: 0.12, unit: "images" },
+  "recraft/v4/style/text-to-image": { price: 0.035, unit: "images" },
+  "recraft/v4/style/text-to-vector": { price: 0.05, unit: "images" },
   "reve/2.1/edit": { price: 0.25, unit: "images" },
   "reve/2.1/remix": { price: 0.25, unit: "images" },
   "reve/2.1/text-to-image": { price: 0.25, unit: "images" },
@@ -943,6 +961,8 @@ export const FAL_PRICING: Record<string, FalPriceEntry> = {
 
 /** Endpoints whose price could not be read on the last run. */
 export const FAL_UNPRICED: string[] = [
+  "meta/muse-image/edit",
+  "meta/muse-image/text-to-image",
   "wan/v2.6/text-to-video",
   "fal-ai/invisible-watermark",
   "fal-ai/hunyuan-video-img2vid-lora"
