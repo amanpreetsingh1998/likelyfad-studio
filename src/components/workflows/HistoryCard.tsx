@@ -33,13 +33,20 @@ export function HistoryCard({
   entry,
   onOpenRuns,
   onOpen,
+  onRun,
+  onTogglePublished,
   canOpen = true,
+  busy = false,
 }: {
   entry: WorkflowHistoryEntry;
   /** Opens the run drawer. Disabled when there is nothing to show. */
   onOpenRuns: () => void;
-  /** Loads this workflow onto the canvas. */
+  /** Loads this workflow onto the canvas. Owners only. */
   onOpen: () => void;
+  /** Goes to the run page, which is how anyone without the canvas runs it. */
+  onRun: () => void;
+  /** Publish or withdraw. Owners only; the database refuses anyone else. */
+  onTogglePublished: () => void;
   /**
    * Whether the canvas is reachable by this caller. The studio is admin-only,
    * so the button is omitted rather than disabled for everyone else: a
@@ -47,6 +54,8 @@ export function HistoryCard({
    * answer is that this surface simply is not theirs.
    */
   canOpen?: boolean;
+  /** A publish request is in flight for this card. */
+  busy?: boolean;
 }) {
   const { lastSuccess, estimate } = entry;
   const hasRuns = entry.runCount > 0;
@@ -63,15 +72,60 @@ export function HistoryCard({
           </p>
         </div>
 
-        {canOpen && (
+        <div className="flex shrink-0 items-center gap-2">
+          {/*
+            Shared with you, not yours. Said plainly rather than left to be
+            inferred from which buttons are missing — a user needs to know why
+            they cannot edit something before they go looking for the control.
+          */}
+          {!entry.isOwner && (
+            <span
+              title="Published by the workflow's author. You can run it; only they can change it."
+              className="cursor-help rounded-full border border-neutral-700 bg-neutral-800/60 px-2 py-0.5 text-[11px] text-neutral-400"
+            >
+              Shared
+            </span>
+          )}
+
+          {/* Publishing is an owner's right. The database enforces it too. */}
+          {entry.isOwner && (
+            <button
+              type="button"
+              onClick={onTogglePublished}
+              disabled={busy}
+              title={
+                entry.isPublished
+                  ? "Available to every signed-in user. Withdrawing stops new runs; it does not touch runs already made."
+                  : "Publish so any signed-in user can run this. They spend their own credits; they cannot edit it."
+              }
+              className={`rounded border px-2.5 py-1 text-xs transition-colors disabled:opacity-50 ${
+                entry.isPublished
+                  ? "border-emerald-900/60 bg-emerald-950/40 text-emerald-300 hover:bg-emerald-950/70"
+                  : "border-neutral-700 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
+              }`}
+            >
+              {entry.isPublished ? "Published" : "Publish"}
+            </button>
+          )}
+
           <button
             type="button"
-            onClick={onOpen}
-            className="shrink-0 rounded border border-neutral-700 px-2.5 py-1 text-xs text-neutral-300 transition-colors hover:bg-neutral-800 hover:text-neutral-100"
+            onClick={onRun}
+            className="rounded border border-neutral-700 px-2.5 py-1 text-xs text-neutral-300 transition-colors hover:bg-neutral-800 hover:text-neutral-100"
           >
-            Open
+            Run
           </button>
-        )}
+
+          {canOpen && entry.isOwner && (
+            <button
+              type="button"
+              onClick={onOpen}
+              className="rounded border border-neutral-700 px-2.5 py-1 text-xs text-neutral-300 transition-colors hover:bg-neutral-800 hover:text-neutral-100"
+            >
+              Open
+            </button>
+          )}
+        </div>
       </header>
 
       <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 border-t border-neutral-800/70 px-4 py-3 sm:grid-cols-4">

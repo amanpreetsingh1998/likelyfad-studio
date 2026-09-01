@@ -178,7 +178,8 @@ turn that into the buy-credits modal. Every gated response carries
 1. Run `supabase/migrations/0003_credits.sql`, then `0004_workflow_settlement.sql`,
    then `0012_fix_settlement.sql`, then `0013_workflow_history.sql`, then
    `0014_workflow_history_read.sql`, then `0015_model_latency.sql`, then
-   `0016_close_abandoned_runs.sql`, in the Supabase SQL editor.
+   `0016_close_abandoned_runs.sql`, then
+   `0017_published_workflows.sql`, in the Supabase SQL editor.
 2. Add the three Razorpay vars above to `.env.local`.
 3. Razorpay dashboard → Settings → Webhooks → add
    `https://<domain>/api/credits/webhook` for `payment.captured`, using the
@@ -198,6 +199,7 @@ promote an admin is a UI that can be tricked into promoting one.
 |---------|-----|------|
 | `/signin`, `/auth/*` | anyone | — |
 | `/workflows` | any signed-in user | `src/proxy.ts` (sign-in wall) |
+| `/workflows/[id]/run` | owner, or anyone if published | RLS on `projects` (0001 + 0017) |
 | `/` — the studio | **admin only** | `src/proxy.ts` (`isAdminPath`) |
 | `/admin/*` | **admin only** | `src/proxy.ts` (`isAdminPath`) |
 | `/api/admin/*` | admin only | `requireAdmin()` in `src/lib/admin/guard.ts` |
@@ -283,7 +285,8 @@ passes, so a handler cannot obtain it by forgetting to check.
    `0009_moderation.sql`, then `0010_admin_audit.sql`, then
    `0011_maintenance.sql`, then `0012_fix_settlement.sql`, then
    `0013_workflow_history.sql`, then `0014_workflow_history_read.sql`, then
-   `0015_model_latency.sql`, then `0016_close_abandoned_runs.sql`.
+   `0015_model_latency.sql`, then `0016_close_abandoned_runs.sql`, then
+   `0017_published_workflows.sql`.
 2. Sign in once with the account that should be admin (there must be an
    `auth.users` row to point at).
 3. `select public.set_admin('you@example.com');`
@@ -627,6 +630,69 @@ there is no way to infer one from timestamps without guessing. History starts
 the day the migrations are applied — the same honest position
 `generation_events` already takes, and the UI has to say so.
 
+### Published workflows
+
+The studio is admin-only, so a non-admin cannot build a workflow — which would
+leave them with a history page that could only ever be empty. Publishing is the
+other half: the admin builds a workflow and marks it available, and any
+signed-in user can run it from `/workflows/[id]/run`.
+
+**Publishing shares the recipe, never the kitchen.** It is a read grant on one
+`projects` row and nothing more:
+
+- The workflow stays owned by whoever built it. Only they can edit, rename,
+  unpublish or delete it — enforced by `projects` having **no** insert/update/
+  delete policy for anyone else, not by hiding buttons.
+- Runs, charges, generation events and outputs belong to whoever ran them. A
+  user running the admin's workflow spends **their own** credits, gets their
+  own `workflow_runs` row and their own outputs, and the admin sees none of it.
+- Every figure on the card is the caller's own. `user_workflow_history` scopes
+  its run statistics to `auth.uid()`, so on a shared workflow "cost of one run"
+  means what it cost *you*. Showing the admin's cost to a user would be a
+  number about somebody else presented as a number about you.
+
+**A column, not a `shared_workflows` table.** A join table is the right shape
+for "shared with these specific people". This is "available to everyone signed
+in", which is one bit — a table would add a row per user per workflow to
+express a value that is the same for all of them, and every catalogue read
+would carry a join to discover it. If per-user sharing is ever wanted, that is
+when the table earns its place and `is_published` becomes the "everyone"
+special case.
+
+**`published_at` is stored, not inferred.** "When did this become available" is
+a question the owner will ask and a boolean cannot answer. Unpublishing clears
+it: the next publish is a new event, not a resumption of the old one.
+
+### The run page
+
+`/workflows/[id]/run` is the surface a non-admin has instead of the canvas: the
+workflow's `prompt` and `imageInput` nodes as a form, a Run button, and the
+outputs.
+
+**It reuses `executeWorkflow()`.** Not a reimplementation — the same store, the
+same executors, the same credit gate, run row, generation log and settlement. A
+second execution path would be a second thing to keep correct about money, and
+the first to drift.
+
+**A runner may fill in inputs and nothing else.** They cannot add a node, wire
+an edge, change a model or alter what anything costs. That is not enforced by
+hiding controls: the workflow belongs to its owner, `projects` has no update
+policy for anyone else, and every price is derived server-side from the model
+id, never from anything the page sends.
+
+**Saving is off, deliberately.** Running writes outputs into node data; on the
+canvas that is eventually autosaved back to the workflow, and here it must not
+be, because the workflow is usually somebody else's. Autosave is disabled
+before the graph is loaded — not after — so no timer can fire in the gap, and
+the page mounts no save control. Two users running the same workflow therefore
+cannot overwrite each other's outputs into it.
+
+**Access is RLS, not an `isAdmin()` call.** The page reads `projects` through
+the caller's own client, and there are exactly two select policies: your own
+rows (0001) and published rows (0017). A workflow that is neither yours nor
+published returns nothing and the page answers 404 — without that file knowing
+anything about who is allowed what.
+
 ### The page
 
 `/workflows` is server-rendered on first paint with real numbers — the same
@@ -675,7 +741,9 @@ discarding the user's work with no prompt.
 | Estimate engine | `src/lib/workflows/estimate.ts` |
 | Attribution entry point | `src/lib/credits/guard.ts` (`withCredits`) |
 | Ambient run id for executors | `src/store/execution/activeRun.ts` |
+| Publishing + catalogue SQL | `supabase/migrations/0017_published_workflows.sql` |
 | Page shell and server-read first paint | `src/app/workflows/` |
+| Run page (reuses `executeWorkflow`) | `src/components/workflows/WorkflowRunner.tsx` |
 | List, card, run drawer | `src/components/workflows/` |
 
 ### Routes
@@ -686,12 +754,13 @@ discarding the user's work with no prompt.
 | `POST /api/workflows/runs` | Open a run; returns a server-minted id |
 | `GET /api/workflows/[id]/runs` | One workflow's runs. **Ownership-checked**, 404 otherwise |
 | `POST /api/workflows/[id]/estimate` | Reprice from the **stored** graph; takes no graph |
+| `POST /api/workflows/[id]/publish` | Share a workflow with every signed-in user, or withdraw it. **Owner only** |
 
 ### Setup
 
 Run `0013_workflow_history.sql`, then `0014_workflow_history_read.sql`, then
-`0015_model_latency.sql`, then `0016_close_abandoned_runs.sql`. `0012` must be
-applied first — everything here reads the numbers settlement writes, so
+`0015_model_latency.sql`, then `0016_close_abandoned_runs.sql`, then
+`0017_published_workflows.sql`. `0012` must be applied first — everything here reads the numbers settlement writes, so
 applying it on top of the broken function would build a history page that
 faithfully reports every workflow as having cost nothing.
 
@@ -1160,6 +1229,7 @@ the complete list.
 | `POST /api/workflows/runs` | default | Open a run; returns a server-minted id |
 | `GET /api/workflows/[id]/runs` | default | One workflow's runs. **Ownership-checked**, 404 otherwise |
 | `POST /api/workflows/[id]/estimate` | default | Reprice from the **stored** graph; takes no graph |
+| `POST /api/workflows/[id]/publish` | default | Publish/withdraw. **Owner-checked** in route and SQL |
 
 ## localStorage Keys
 

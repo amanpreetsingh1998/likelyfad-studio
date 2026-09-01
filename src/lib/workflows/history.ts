@@ -53,6 +53,16 @@ export type WorkflowHistoryEntry = {
   nodeCount: number | null;
   createdAt: string;
   updatedAt: string;
+  /**
+   * Whether the caller built this workflow, or is only allowed to run it.
+   *
+   * An owner gets Open and a publish toggle; everyone else gets Run. The
+   * distinction is decided in SQL against auth.uid(), never inferred client
+   * side from whose name is on the card.
+   */
+  isOwner: boolean;
+  /** Available to every signed-in user. Only the owner can change this. */
+  isPublished: boolean;
   runCount: number;
   successCount: number;
   failedCount: number;
@@ -134,6 +144,10 @@ function toEntry(row: Record<string, unknown>): WorkflowHistoryEntry {
     nodeCount: asNumber(row.node_count),
     createdAt: asString(row.created_at) ?? "",
     updatedAt: asString(row.updated_at) ?? "",
+    // Defaults to "not mine": a row whose ownership we could not determine
+    // must not hand out an edit affordance.
+    isOwner: row.is_owner === true,
+    isPublished: row.is_published === true,
     runCount: Number(row.run_count ?? 0),
     successCount: Number(row.success_count ?? 0),
     failedCount: Number(row.failed_count ?? 0),

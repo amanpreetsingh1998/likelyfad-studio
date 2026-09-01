@@ -5,11 +5,15 @@
  * this ever routes. Same arrangement, and same reasoning, as the admin layout.
  *
  * Unlike /admin, this page is for EVERY signed-in user — it is where a
- * non-admin lands and the only surface they have. The studio at / and the
- * dashboard under /admin are both admin-only, so the links out of here are
- * rendered only for whoever can actually follow them: a link that bounces you
- * straight back is worse than no link, because it reads as a broken page
- * rather than a closed door.
+ * non-admin lands and, apart from the run pages beneath it, the only surface
+ * they have. So the account menu and the credit balance live here rather than
+ * only in the studio header: this is the one place a user can sign out from,
+ * and running a workflow spends their credits, so the balance has to be
+ * visible where the spending happens.
+ *
+ * The links OUT of here are rendered only for whoever can follow them. The
+ * studio is admin-only; a link that bounces you straight back reads as broken
+ * software rather than a closed door.
  *
  * Narrower than /admin's max-w-7xl. The cards here are four figures and a
  * title; stretched to the admin width their columns drift far enough apart
@@ -19,6 +23,9 @@
 import Link from "next/link";
 import { getAuthedContext } from "@/lib/supabase/server";
 import { isAdmin } from "@/lib/admin/guard";
+import { AccountButton } from "@/components/auth/AccountButton";
+import { CreditBadge } from "@/components/credits/CreditBadge";
+import { BuyCreditsModal } from "@/components/credits/BuyCreditsModal";
 
 export default async function WorkflowsLayout({
   children,
@@ -43,11 +50,42 @@ export default async function WorkflowsLayout({
               <span className="text-sm text-neutral-600">/</span>
             </>
           ) : null}
-          <span className="text-sm text-neutral-200">Workflows</span>
+
+          <Link
+            href="/workflows"
+            className="text-sm text-neutral-200 transition-colors hover:text-neutral-100"
+          >
+            Workflows
+          </Link>
+
+          {admin && (
+            <Link
+              href="/admin"
+              className="text-sm text-neutral-500 transition-colors hover:text-neutral-200"
+            >
+              Admin
+            </Link>
+          )}
+
+          <div className="ml-auto flex items-center gap-3">
+            {/* Running spends credits, so the balance belongs on the page
+                where the running happens — and the badge is also the way into
+                buying more. */}
+            <CreditBadge />
+            <AccountButton />
+          </div>
         </div>
       </nav>
 
       <main className="mx-auto max-w-5xl px-6 py-8">{children}</main>
+
+      {/*
+        A run refused for want of credits answers 402 and the executors open
+        this modal. Without it mounted here, a user would hit the wall with
+        nothing to do about it — the studio has always had one, and this page
+        now spends money too.
+      */}
+      <BuyCreditsModal />
     </div>
   );
 }

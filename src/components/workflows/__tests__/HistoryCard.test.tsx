@@ -21,6 +21,8 @@ function entry(overrides: Partial<WorkflowHistoryEntry> = {}): WorkflowHistoryEn
     nodeCount: 6,
     createdAt: "2026-08-01T00:00:00Z",
     updatedAt: "2026-08-20T00:00:00Z",
+    isOwner: true,
+    isPublished: false,
     runCount: 7,
     successCount: 6,
     failedCount: 1,
@@ -45,7 +47,13 @@ function entry(overrides: Partial<WorkflowHistoryEntry> = {}): WorkflowHistoryEn
 
 function renderCard(e: WorkflowHistoryEntry) {
   return render(
-    <HistoryCard entry={e} onOpen={vi.fn()} onOpenRuns={vi.fn()} />
+    <HistoryCard
+      entry={e}
+      onOpen={vi.fn()}
+      onOpenRuns={vi.fn()}
+      onRun={vi.fn()}
+      onTogglePublished={vi.fn()}
+    />
   );
 }
 
@@ -141,7 +149,13 @@ describe("a workflow that has run but never succeeded", () => {
   it("still offers the run list, which is where the failures are", () => {
     const onOpenRuns = vi.fn();
     render(
-      <HistoryCard entry={failing} onOpen={vi.fn()} onOpenRuns={onOpenRuns} />
+      <HistoryCard
+        entry={failing}
+        onOpen={vi.fn()}
+        onOpenRuns={onOpenRuns}
+        onRun={vi.fn()}
+        onTogglePublished={vi.fn()}
+      />
     );
     fireEvent.click(screen.getByText("4"));
     expect(onOpenRuns).toHaveBeenCalled();
@@ -250,9 +264,128 @@ describe("opening a workflow", () => {
   it("hands the canvas the workflow the card names", () => {
     const onOpen = vi.fn();
     render(
-      <HistoryCard entry={entry()} onOpen={onOpen} onOpenRuns={vi.fn()} />
+      <HistoryCard
+        entry={entry()}
+        onOpen={onOpen}
+        onOpenRuns={vi.fn()}
+        onRun={vi.fn()}
+        onTogglePublished={vi.fn()}
+      />
     );
     fireEvent.click(screen.getByText("Open"));
     expect(onOpen).toHaveBeenCalled();
+  });
+});
+
+/**
+ * A shared workflow is somebody else's. The card has to make that legible
+ * BEFORE the user goes looking for an edit control that is not there — and it
+ * has to keep the run affordance, because running is the whole point of
+ * sharing one.
+ */
+describe("a workflow shared with you", () => {
+  const shared = entry({ isOwner: false, isPublished: true });
+
+  function renderShared(overrides = {}) {
+    return render(
+      <HistoryCard
+        entry={shared}
+        onOpen={vi.fn()}
+        onOpenRuns={vi.fn()}
+        onRun={vi.fn()}
+        onTogglePublished={vi.fn()}
+        {...overrides}
+      />
+    );
+  }
+
+  it("says it is shared rather than leaving it to be inferred", () => {
+    renderShared();
+    expect(screen.getByText("Shared")).toBeTruthy();
+  });
+
+  it("offers no way to edit it", () => {
+    renderShared();
+    expect(screen.queryByText("Open")).toBeNull();
+  });
+
+  it("offers no publish control — that is the author's right", () => {
+    renderShared();
+    expect(screen.queryByText("Publish")).toBeNull();
+    expect(screen.queryByText("Published")).toBeNull();
+  });
+
+  it("still offers Run, which is what sharing is for", () => {
+    const onRun = vi.fn();
+    renderShared({ onRun });
+    fireEvent.click(screen.getByText("Run"));
+    expect(onRun).toHaveBeenCalled();
+  });
+});
+
+describe("publishing, as the owner", () => {
+  it("offers Publish on a workflow that is not shared", () => {
+    renderCard(entry({ isOwner: true, isPublished: false }));
+    expect(screen.getByText("Publish")).toBeTruthy();
+    expect(screen.queryByText("Shared")).toBeNull();
+  });
+
+  it("shows the published state rather than the action, once published", () => {
+    renderCard(entry({ isOwner: true, isPublished: true }));
+    expect(screen.getByText("Published")).toBeTruthy();
+  });
+
+  it("says what withdrawing does and does not undo", () => {
+    renderCard(entry({ isOwner: true, isPublished: true }));
+    expect(screen.getByText("Published").getAttribute("title")).toMatch(
+      /does not touch runs already made/i
+    );
+  });
+
+  it("reports the toggle to its caller", () => {
+    const onTogglePublished = vi.fn();
+    render(
+      <HistoryCard
+        entry={entry({ isOwner: true, isPublished: false })}
+        onOpen={vi.fn()}
+        onOpenRuns={vi.fn()}
+        onRun={vi.fn()}
+        onTogglePublished={onTogglePublished}
+      />
+    );
+    fireEvent.click(screen.getByText("Publish"));
+    expect(onTogglePublished).toHaveBeenCalled();
+  });
+
+  it("refuses a second click while one is in flight", () => {
+    render(
+      <HistoryCard
+        entry={entry({ isOwner: true, isPublished: false })}
+        onOpen={vi.fn()}
+        onOpenRuns={vi.fn()}
+        onRun={vi.fn()}
+        onTogglePublished={vi.fn()}
+        busy
+      />
+    );
+    expect(screen.getByText("Publish").hasAttribute("disabled")).toBe(true);
+  });
+});
+
+describe("an owner who cannot reach the studio", () => {
+  // canOpen is false for a non-admin. Run must survive that; Open must not.
+  it("keeps Run and drops Open", () => {
+    render(
+      <HistoryCard
+        entry={entry({ isOwner: true })}
+        onOpen={vi.fn()}
+        onOpenRuns={vi.fn()}
+        onRun={vi.fn()}
+        onTogglePublished={vi.fn()}
+        canOpen={false}
+      />
+    );
+    expect(screen.queryByText("Open")).toBeNull();
+    expect(screen.getByText("Run")).toBeTruthy();
   });
 });

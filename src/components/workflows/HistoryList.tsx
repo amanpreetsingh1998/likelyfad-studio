@@ -64,6 +64,8 @@ export function HistoryList({
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(false);
   const [drawer, setDrawer] = useState<{ id: string; title: string } | null>(null);
+  /** The workflow whose publish state is currently in flight, if any. */
+  const [publishing, setPublishing] = useState<string | null>(null);
 
   // The seeded page is only valid for the query it was read with. Skipping the
   // first refetch keeps that page on screen instead of flashing it away and
@@ -123,6 +125,53 @@ export function HistoryList({
       router.push(`/?project=${encodeURIComponent(projectId)}`);
     },
     [router]
+  );
+
+  const runWorkflow = useCallback(
+    (projectId: string) => {
+      router.push(`/workflows/${encodeURIComponent(projectId)}/run`);
+    },
+    [router]
+  );
+
+  /**
+   * Publish or withdraw, then re-read.
+   *
+   * The new state comes from the server's reply rather than from flipping the
+   * value locally: the request can be refused — the row may have been deleted,
+   * or never have been the caller's — and showing "Published" for a call that
+   * did not publish anything is worse than showing nothing happened.
+   */
+  const togglePublished = useCallback(
+    async (projectId: string, next: boolean) => {
+      setPublishing(projectId);
+      try {
+        const response = await fetch(
+          `/api/workflows/${encodeURIComponent(projectId)}/publish`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ published: next }),
+          }
+        );
+        if (!response.ok) return;
+
+        const result = await response.json();
+        setPage((current) => ({
+          ...current,
+          entries: current.entries.map((entry) =>
+            entry.projectId === projectId
+              ? { ...entry, isPublished: result.isPublished === true }
+              : entry
+          ),
+        }));
+      } catch {
+        // Offline. The card keeps the state the server last confirmed.
+      } finally {
+        setPublishing(null);
+      }
+    },
+    []
   );
 
   const showing = page.entries.length;
@@ -189,7 +238,7 @@ export function HistoryList({
           <p className="mt-1 text-xs text-neutral-600">
             {canOpenStudio
               ? "Build one on the canvas and save it — it will appear here with what it costs to run."
-              : "Workflows saved to your account will appear here with what they cost to run."}
+              : "Nothing has been shared with you yet. Published workflows will appear here, ready to run."}
           </p>
         </div>
       )}
@@ -203,7 +252,12 @@ export function HistoryList({
               key={entry.projectId}
               entry={entry}
               canOpen={canOpenStudio}
+              busy={publishing === entry.projectId}
               onOpen={() => openWorkflow(entry.projectId)}
+              onRun={() => runWorkflow(entry.projectId)}
+              onTogglePublished={() =>
+                togglePublished(entry.projectId, !entry.isPublished)
+              }
               onOpenRuns={() =>
                 setDrawer({ id: entry.projectId, title: entry.title })
               }
