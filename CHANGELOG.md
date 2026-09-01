@@ -6,6 +6,83 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+The accounts release. Runs are billed to a signed-in user, credits are bought
+with real money, and there is an admin dashboard over the top of it.
+
+### Added
+
+- **Credits** — Every run is charged to the signed-in user. New accounts get a
+  free grant; more are bought through Razorpay. A workflow is billed as **one
+  debit, not one per node**: each node run records a pending charge server-side
+  as it happens, and the whole run settles when it finishes. The client picks
+  the moment to settle; it never supplies the amount, so a browser that lies
+  about what it ran still pays for what actually reached a provider.
+- **Prices are derived, never hand-written** — Run cost is computed from the
+  provider rate card, the margin and the FX rate. There used to be a
+  hand-maintained table of credit prices, and it drifted until every image sold
+  at about half of cost; a test now asserts that no model is billed below what
+  it costs us.
+- **fal.ai pricing** — fal publishes no pricing field on its models API and has
+  no billing endpoint, so `npm run fal:pricing` scrapes the price embedded in
+  each model page across the whole catalogue. Unbillable models are refused
+  with a clear error rather than guessed at, and the model picker now shows the
+  same number the credit gate bills from. The models route also follows the
+  cursor, which it previously did not — about 90% of the catalogue was hidden.
+- **Admin dashboard** (`/admin`) — Overview, Users, Content and Audit, behind a
+  single-admin gate the database enforces rather than application code. Signed
+  out is a 401; signed in without the seat is a **404**, because there is no
+  benefit in confirming the surface exists to whoever just probed for it.
+- **Generation log** — One row per billable run: user, model, prompt, status,
+  credits, duration and a 256px thumbnail. Before this, nothing recorded what
+  users generated — outputs lived as base64 inside autosaved workflow JSON and
+  prompts were stored nowhere at all. It is the one part of the dashboard that
+  cannot be backfilled, so its history starts here.
+- **Stats board** — Signups, revenue, runs by kind and a model leaderboard,
+  aggregated in Postgres rather than by pulling rows into Node. A panel that
+  fails says so instead of rendering a zero, because a zero is a number an
+  admin would believe.
+- **User list** — Accounts with credit, generation and project aggregates in
+  one query, and a drawer with Projects, Generations and Ledger tabs. Granting,
+  refunding, suspending and deleting are all logged and all idempotent.
+- **Moderation feed** — The generation log with review state attached: state
+  tabs, a type filter, search over prompts and emails, and per-card flag,
+  clear, remove and suspend.
+- **Audit log** — Everything the admin did, readable at last. The table had
+  been written to since the user list shipped, but nothing could read it, and a
+  log nobody can read is a log first seen with an incident already underway.
+- **Scheduled maintenance** (`POST /api/cron/maintenance`) — Settles workflow
+  charges the browser abandoned, and applies retention to the generation log.
+  Both jobs existed as SQL for months and had never once run, because nothing
+  here runs on a timer.
+
+### Fixed
+
+- **The poll route is authenticated** — `/api/generate/poll` was the one
+  generation route reachable without a session, where a guessed task id
+  returned someone else's media and spent our provider key. Completion now
+  matches on the user and the task together, never the task alone.
+- **Quickstart templates were missing** — All six preset templates (Product
+  Shot, Model Product, Colour Variations, Background Swap, Style Transfer,
+  Scene Composite) had been deleted by accident, leaving the template browser
+  empty while every consumer still expected them.
+- **The test suite was grading itself on a fraction of itself** — Below Node
+  22.12, a transitive CommonJS/ESM conflict inside jsdom killed the test worker,
+  and vitest reported the affected files as "no tests" rather than as failures,
+  so they left the run instead of breaking it. Among them was the admin
+  gate's own test file. Fixing collection surfaced 183 real failures across 19 files,
+  all now fixed; `engines.node` is `>=22.12`.
+
+### Notes
+
+Two coverage gaps in moderation are stated in the UI rather than papered over:
+nothing generated before the log shipped can be reviewed at all, and video,
+audio and 3D runs have no thumbnail, so they are judged on their prompt alone.
+
+Suspending an account blocks sign-in and token refresh, but an access token
+already issued keeps working until it expires, up to an hour. The drawer says
+so rather than implying the session is dead.
+
+
 ## [1.9.0] - 2026-08-06
 
 The ComfyUI release. A ComfyUI workflow becomes a node on the canvas, wired to

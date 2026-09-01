@@ -25,6 +25,9 @@ KIE_API_KEY=your_kie_api_key        # Optional, for Kie.ai models (Sora, Veo, Kl
 NEXT_PUBLIC_RAZORPAY_KEY_ID=rzp_test_xxxxx  # public; the browser checkout needs it
 RAZORPAY_KEY_SECRET=your_razorpay_secret    # server only
 RAZORPAY_WEBHOOK_SECRET=your_webhook_secret # server only; set when adding the webhook
+
+# Scheduled maintenance (see "Scheduled maintenance" below)
+CRON_SECRET=long_random_value               # server only; the route refuses everything without it
 ```
 
 ## Credit System
@@ -138,10 +141,33 @@ A failed or cancelled workflow still pays for the nodes that already dispatched;
 that money is spent regardless. Settling twice is harmless — the second call
 finds nothing unsettled.
 
-**Known gap:** a tab closed mid-run never settles, so those rows stay unbilled.
-This is deliberate and temporary. The fix is a sweep job settling rows older
-than N minutes — `settle_pending_charges` already takes just a user id, so it
-needs no new logic, only a scheduler.
+**Settlement was broken from 0004 until 0012, and nothing noticed.**
+`settle_pending_charges` opened with `FOR UPDATE` on an aggregate query, which
+Postgres rejects at plan time. plpgsql does not plan a function body until the
+first call, so `create function` accepted it and the failure only ever appeared
+at runtime — on every single invocation, in the first statement. That function
+is the only thing that debits credits for a workflow, so for its whole life no
+run was ever billed: `pending_charges` accumulated and settlement never wrote a
+`credit_transactions` row.
+
+It surfaced the first time the 0011 maintenance sweep called it from something
+that reported the error instead of swallowing it. `0012_fix_settlement.sql`
+splits the lock from the aggregate and writes off the backlog — the rows are
+kept, marked settled against no transaction, so what the bug cost stays
+answerable.
+
+**The lesson worth keeping: the tests could not have caught this.** Everything
+around settlement is mocked, so the whole credit system was green against a
+function that never once ran. Anything that only exists as SQL needs to be
+exercised against a real database before it is believed.
+
+**The closed-tab leak is swept, not fixed at the source.** A tab closed
+mid-run still never settles itself, so those rows sit unbilled until
+`POST /api/cron/maintenance` picks them up — see "Scheduled maintenance"
+below. The note that used to sit here said this needed "no new logic, only a
+scheduler". That was half right: `settle_pending_charges` does take just a
+user id, but a sweep has to know *which* users are owed, and enumerating them
+is `sweep_stale_pending_charges` in `0011_maintenance.sql`.
 
 A refused step returns **402** with `code: "insufficient_credits"`; the executors
 turn that into the buy-credits modal. Every gated response carries
@@ -149,7 +175,8 @@ turn that into the buy-credits modal. Every gated response carries
 
 ### Setup
 
-1. Run `supabase/migrations/0003_credits.sql`, then `0004_workflow_settlement.sql`, in the Supabase SQL editor.
+1. Run `supabase/migrations/0003_credits.sql`, then `0004_workflow_settlement.sql`,
+   then `0012_fix_settlement.sql`, in the Supabase SQL editor.
 2. Add the three Razorpay vars above to `.env.local`.
 3. Razorpay dashboard → Settings → Webhooks → add
    `https://<domain>/api/credits/webhook` for `payment.captured`, using the
@@ -222,7 +249,8 @@ passes, so a handler cannot obtain it by forgetting to check.
 
 1. Run `supabase/migrations/0005_admin.sql`, then `0006_generation_events.sql`,
    then `0007_admin_stats.sql`, then `0008_admin_users.sql`, then
-   `0009_moderation.sql`, then `0010_admin_audit.sql`.
+   `0009_moderation.sql`, then `0010_admin_audit.sql`, then
+   `0011_maintenance.sql`, then `0012_fix_settlement.sql`.
 2. Sign in once with the account that should be admin (there must be an
    `auth.users` row to point at).
 3. `select public.set_admin('you@example.com');`
@@ -456,19 +484,72 @@ history is read.
 
 ### Status
 
-Phases 0–4, plus the audit log. Every tab of the dashboard is real: auth, the
-shell, the generation log, the stats board, the user list, the moderation feed
-and the record of what the admin did.
+Phases 0–4, plus the audit log and the maintenance sweep. Every tab of the
+dashboard is real: auth, the shell, the generation log, the stats board, the
+user list, the moderation feed and the record of what the admin did.
 
 The usage panels read from `generation_events`, which starts empty — "no data
 yet" is the honest first-week state of half this dashboard, and the panels say
 so rather than drawing empty axes that look like a bug.
 
-**Retention is not wired up.** `prune_generation_events(days)` exists and
-returns the thumbnail keys it deleted — SQL cannot remove storage objects, so a
-caller must pass those to the storage API. It needs a scheduler this project
-does not have, the same gap that keeps `settle_pending_charges` from closing
-the closed-tab billing leak.
+**Retention runs from the maintenance endpoint.**
+`prune_generation_events(days)` returns the thumbnail keys it deleted, because
+SQL cannot remove storage objects; `pruneGenerationEvents()` passes them to the
+storage API. Rows go first and storage second — the opposite order to
+`removeContent()`, and deliberately: there the row survives, so a live
+thumbnail it can no longer reach would be hidden evidence, while here the row
+is gone entirely and the worst case is an orphaned object. Litter beats a
+dangling reference.
+
+The retention floor is **7 days, enforced in code**, not because 7 is right but
+because `days=0` would delete the whole moderation record and every usage
+panel's history in one call, and none of it can be backfilled.
+
+## Scheduled maintenance
+
+`POST /api/cron/maintenance` runs the two jobs that had been written and left
+uncalled for months, both waiting on a scheduler this project did not have:
+settling abandoned workflow charges, and applying retention to
+`generation_events`.
+
+POST rather than GET, because it moves money and deletes rows; a GET that does
+either is one prefetch away from doing it by accident.
+
+```bash
+curl -X POST https://<domain>/api/cron/maintenance \
+     -H "Authorization: Bearer $CRON_SECRET"
+```
+
+Hourly is the intended cadence, from any scheduler that can make an HTTP
+request — this app runs behind its own `server.js`, so there is no platform
+cron to lean on. Running it more often is harmless: settling finds nothing
+inside the staleness window, and pruning is a no-op once the tail is gone.
+
+**There is no session here.** That makes `CRON_SECRET` the only thing guarding
+a route that spends money, so the gate is modelled on `requireAdmin()` and
+fails closed the same way: an unset secret refuses *every* request rather than
+admitting all of them, the comparison is constant-time over a hash so a length
+mismatch is a refusal rather than a thrown 500, and the refusal is **404**
+rather than 401.
+
+**Staleness is the safety argument.** A workflow that is still running also has
+unsettled rows, so the sweep only touches charges older than `p_minutes`
+(default 60; the longest route timeout in the app is 5). Sweeping too early
+would not overcharge — every row is a provider call that really happened — but
+it would split one workflow across two ledger lines, which is a confusing thing
+to hand a user reading their history.
+
+**Always 200 when the caller is authorised, even if a job failed.** The body
+reports each job separately and `ok` says whether both succeeded. A scheduler
+watching only the status code would otherwise retry a broken prune forever
+while a working settle rode along with it.
+
+| Purpose | Location |
+|---------|----------|
+| Sweep SQL + supporting index | `supabase/migrations/0011_maintenance.sql` |
+| Both jobs, clamps, storage cleanup | `src/lib/maintenance/sweep.ts` |
+| Shared-secret gate | `src/lib/maintenance/guard.ts` |
+| Route | `src/app/api/cron/maintenance/route.ts` |
 
 ## Architecture Overview
 
@@ -495,7 +576,11 @@ Likelyfad Studio is a node-based visual workflow editor for AI image generation.
 
 ### State Management
 
-All application state lives in `workflowStore.ts` using Zustand. Key patterns:
+State lives in `workflowStore.ts` using Zustand; **per-node execution logic does
+not** — it was split out into `src/store/execution/`, one module per node kind
+(`nanoBananaExecutor.ts`, `llmGenerateExecutor.ts`, `comfyAppExecutor.ts`, the
+video and image processing executors, and so on), with `executeNode.ts`
+dispatching and `runWithFallback.ts` handling the fallback model. Key patterns:
 - `useWorkflowStore()` hook provides access to nodes, edges, and all actions
 - `executeWorkflow(startFromNodeId?)` runs the pipeline via topological sort
 - `getConnectedInputs(nodeId)` retrieves upstream data for a node
@@ -512,6 +597,12 @@ All application state lives in `workflowStore.ts` using Zustand. Key patterns:
 
 ## AI Models
 
+**Seven providers**, not two. `ProviderType` in `src/types/providers.ts` is
+`gemini | openai | anthropic | replicate | fal | kie | wavespeed`, and each has
+an adapter under `src/app/api/generate/providers/`. The models below are the
+built-in defaults; most of the catalogue is fetched from the provider at
+runtime through `/api/models`, so it is not enumerable here.
+
 Image generation models (these exist and are recently released):
 - `gemini-2.5-flash-image` → internal name: `nano-banana`
 - `gemini-3-pro-image-preview` → internal name: `nano-banana-pro`
@@ -522,19 +613,66 @@ LLM models:
 
 ## Node Types
 
+The authoritative list is the `NodeType` union in `src/types/nodes.ts` — all
+28 of them. If this table and that union disagree, the union is right.
+
+**Inputs**
+
 | Type | Purpose | Inputs | Outputs |
 |------|---------|--------|---------|
 | `imageInput` | Load/upload images | reference | image |
-| `annotation` | Draw on images (Konva) | image | image |
-| `prompt` | Text prompt input | none | text |
-| `nanoBanana` | AI image generation | image, text | image |
-| `llmGenerate` | AI text generation | text, image | text |
-| `splitGrid` | Split image into grid cells | image | reference |
-| `generateAudio` | AI audio/TTS generation | text | audio |
 | `audioInput` | Load/upload audio files | audio | audio |
-| `glbViewer` | Load/display 3D GLB models | none | image |
+| `videoInput` | Load/upload video files | none | video |
+| `prompt` | Text prompt input | none | text |
+| `promptConstructor` | Build a prompt from parts | text | text |
+| `array` | Fan a list out to downstream nodes | any | any |
+
+**Generation**
+
+| Type | Purpose | Inputs | Outputs |
+|------|---------|--------|---------|
+| `nanoBanana` | AI image generation | image, text | image |
+| `generateVideo` | AI video generation | image, text | video |
+| `generateAudio` | AI audio/TTS generation | text | audio |
+| `generate3d` | AI 3D model generation | image, text | model |
+| `llmGenerate` | AI text generation | text, image | text |
 | `comfyApp` | Run a ComfyUI workflow as a node | schema-driven | schema-driven |
+
+**Image processing**
+
+| Type | Purpose | Inputs | Outputs |
+|------|---------|--------|---------|
+| `annotation` | Draw on images (Konva) | image | image |
+| `splitGrid` | Split image into grid cells | image | reference |
+| `imageResize` | Resize an image | image | image |
+| `removeBackground` | Cut the subject out | image | image |
+| `imageCompare` | Show two images side by side | image | none |
+
+**Video processing**
+
+| Type | Purpose | Inputs | Outputs |
+|------|---------|--------|---------|
+| `videoStitch` | Join clips into one video | video | video |
+| `videoTrim` | Trim a clip | video | video |
+| `videoFrameGrab` | Pull a still from a clip | video | image |
+| `gifEncoder` | Encode frames to GIF | image, video | image |
+| `easeCurve` | Easing curve for timing | none | curve |
+
+**Control flow**
+
+| Type | Purpose | Inputs | Outputs |
+|------|---------|--------|---------|
+| `router` | Send input down one of several paths | any | any |
+| `switch` | Pick between inputs | any | any |
+| `conditionalSwitch` | Pick based on a condition | any, text | any |
+
+**Output**
+
+| Type | Purpose | Inputs | Outputs |
+|------|---------|--------|---------|
 | `output` | Display final result | image | none |
+| `outputGallery` | Collect many results in a grid | image | none |
+| `glbViewer` | Load/display 3D GLB models | none | image |
 
 ## Node Connection System
 
@@ -756,21 +894,65 @@ Point the live tier at a local ComfyUI with
 
 ## API Routes
 
-All routes in `src/app/api/`:
+There are **50** route files under `src/app/api/`; this table covers the ones
+worth knowing before changing anything. The credits and admin routes are
+documented in their own sections above. `find src/app/api -name route.ts` is
+the complete list.
+
+**Generation**
 
 | Route | Timeout | Purpose |
 |-------|---------|---------|
-| `/api/generate` | 5 min | Image generation via Gemini |
-| `/api/llm` | 1 min | Text generation (Google/OpenAI) |
+| `/api/generate` | 5 min | Image/video/3D generation across all seven providers |
+| `/api/generate/poll` | default | Complete an async provider task. **Authenticated** — matches on `(user_id, task_id)`, never the task alone |
+| `/api/llm` | 1 min | Text generation (Google/OpenAI/Anthropic) |
+| `/api/models` | default | Model catalogue across providers |
+| `/api/models/[modelId]` | default | Parameter schema for one model |
+| `/api/providers/fal/models` | default | fal catalogue, cursor-followed and cached 5 min |
+| `/api/providers/replicate/models` | default | Replicate catalogue |
+
+**Workflows and media**
+
+| Route | Timeout | Purpose |
+|-------|---------|---------|
 | `/api/workflow` | default | Save/load workflow files |
+| `/api/list-workflows` | default | Discover workflows under a directory |
+| `/api/workflow-images` | default | Save an image beside its workflow |
 | `/api/save-generation` | default | Auto-save generated images |
-| `/api/logs` | default | Session logging |
+| `/api/load-generation` | default | Read a saved generation back |
+| `/api/images/[id]` | default | Serve a stored image |
+| `/api/likelyfad/projects` | default | Cloud projects (list/create) |
+| `/api/likelyfad/media` | default | Cloud media upload/fetch |
+| `/api/likelyfad/templates` | default | Cloud templates |
+| `/api/community-workflows` | default | Shared workflow gallery |
+
+**ComfyUI**
+
+| Route | Timeout | Purpose |
+|-------|---------|---------|
 | `/api/comfy/status` | 1 min | Probe the configured ComfyUI engine |
 | `/api/comfy/inspect` | 2 min | Workflow upload → node contract |
 | `/api/comfy/blueprints` | 2 min | List/import ComfyUI Blueprints |
 | `/api/comfy/run` | 5 min | Submit a Comfy app run |
 | `/api/comfy/poll` | 5 min | Poll a run and collect its outputs |
 | `/api/comfy/preview` | 5 min | Stream a running job's preview images (NDJSON) |
+
+**Assistant, quickstart and local tooling**
+
+| Route | Timeout | Purpose |
+|-------|---------|---------|
+| `/api/chat` | default | AI assistant that edits the graph via tool calls |
+| `/api/quickstart` | default | Instantiate a preset template |
+| `/api/quickstart/propose` | default | Propose a workflow from a prompt |
+| `/api/logs` | default | Session logging |
+| `/api/env-status` | default | Which provider keys are configured |
+| `/api/open-file`, `/api/open-directory`, `/api/browse-directory` | default | Local filesystem helpers; localhost-only, home-directory-scoped |
+
+**Maintenance**
+
+| Route | Timeout | Purpose |
+|-------|---------|---------|
+| `/api/cron/maintenance` | 5 min | Settle abandoned charges + apply retention. Shared-secret gated |
 
 ## localStorage Keys
 
