@@ -17,6 +17,14 @@ export const MODERATION_BUCKET = "moderation";
 const THUMB_TTL_SECONDS = 300;
 
 /**
+ * Longer than a thumbnail's, because a moderator opening a full video may
+ * still be watching it five minutes later and a link that dies mid-playback is
+ * a link that gets re-requested. Still short: this is evidence, and one pasted
+ * into a chat window should stop working the same day.
+ */
+const MEDIA_TTL_SECONDS = 1800;
+
+/**
  * Sign a batch of keys, returning path → URL.
  *
  * Never throws. A failure to sign costs the pictures, not the page — the
@@ -26,6 +34,27 @@ const THUMB_TTL_SECONDS = 300;
 export async function signThumbnails(
   service: SupabaseClient,
   paths: string[]
+): Promise<Map<string, string>> {
+  return signKeys(service, paths, THUMB_TTL_SECONDS);
+}
+
+/**
+ * The same, for full-resolution outputs.
+ *
+ * Separate from signThumbnails only for the TTL — the bucket, the privacy and
+ * the failure behaviour are identical.
+ */
+export async function signMedia(
+  service: SupabaseClient,
+  paths: string[]
+): Promise<Map<string, string>> {
+  return signKeys(service, paths, MEDIA_TTL_SECONDS);
+}
+
+async function signKeys(
+  service: SupabaseClient,
+  paths: string[],
+  ttlSeconds: number
 ): Promise<Map<string, string>> {
   const signed = new Map<string, string>();
 
@@ -37,7 +66,7 @@ export async function signThumbnails(
   try {
     const { data, error } = await service.storage
       .from(MODERATION_BUCKET)
-      .createSignedUrls(unique, THUMB_TTL_SECONDS);
+      .createSignedUrls(unique, ttlSeconds);
 
     if (error) {
       console.error("[admin] thumbnail signing failed:", error.message);

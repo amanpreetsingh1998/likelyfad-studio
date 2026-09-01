@@ -195,7 +195,8 @@ turn that into the buy-credits modal. Every gated response carries
    `0014_workflow_history_read.sql`, then `0015_model_latency.sql`, then
    `0016_close_abandoned_runs.sql`, then
    `0017_published_workflows.sql`, then `0018_published_media.sql`, then
-   `0019_fix_ambiguous_balance.sql`, in the Supabase SQL editor.
+   `0019_fix_ambiguous_balance.sql`, then `0020_moderation_full_media.sql`, in
+   the Supabase SQL editor.
 2. Add the three Razorpay vars above to `.env.local`.
 3. Razorpay dashboard → Settings → Webhooks → add
    `https://<domain>/api/credits/webhook` for `payment.captured`, using the
@@ -318,7 +319,7 @@ passes, so a handler cannot obtain it by forgetting to check.
    `0013_workflow_history.sql`, then `0014_workflow_history_read.sql`, then
    `0015_model_latency.sql`, then `0016_close_abandoned_runs.sql`, then
    `0017_published_workflows.sql`, then `0018_published_media.sql`, then
-   `0019_fix_ambiguous_balance.sql`.
+   `0019_fix_ambiguous_balance.sql`, then `0020_moderation_full_media.sql`.
 2. Sign in once with the account that should be admin (there must be an
    `auth.users` row to point at).
 3. `select public.set_admin('you@example.com');`
@@ -370,9 +371,31 @@ event id with no user prefix, so the shape never invites an owner-scoped policy
 later.
 
 **Video, audio and 3D get no thumbnail** — a representative frame needs a
-decoder that does not run server-side here, so those runs are moderated on
-their prompt alone. A real gap in visual coverage, recorded rather than papered
-over.
+decoder that does not run server-side here. They are no longer moderated on
+their prompt alone, though: since `0020` the **full output is kept too**, so
+the feed's tile opens a real video or audio player for them.
+
+**The full output is stored beside the thumbnail** (`0020`), in the same
+`moderation` bucket, keyed `<eventId>-full.<ext>` with no user prefix. This
+reverses 0006's decision to keep only a 256px webp. That was right about
+triage — is this worth a second look — and wrong about adjudication: a
+moderator deciding whether to suspend an account cannot read text in a
+thumbnail or identify a face in one, and video and audio had no visual record
+at all.
+
+The storage objection from 0006 stands and is answered rather than ignored: a
+per-object ceiling (`MAX_MEDIA_BYTES`, 50 MB) bounds one run, and retention
+deletes the media with its row — which is why `prune_generation_events` had to
+return both keys in the same migration. Returning only the thumbnail would
+orphan every full-resolution object forever, since the row naming it is gone.
+
+**Removal deletes both objects.** Taking down only the thumbnail would leave
+the larger, more damaging copy in the bucket for anyone who could still sign
+its key. "Removed" has to mean removed.
+
+Be deliberate about what this means: every generated output now has a second
+copy the user cannot reach or delete, held for the retention window. That is
+what a moderation record is, and it is a real obligation.
 
 **Nothing here throws.** Every failure path logs and returns null. By the time
 any of it runs the generation has succeeded and the credits are committed; a
@@ -386,6 +409,8 @@ is silent, so failures log loudly enough to find.
 | Table, indexes, `moderation` bucket, retention | `supabase/migrations/0006_generation_events.sql` |
 | Record / complete an event | `src/lib/moderation/events.ts` |
 | 256px webp encoder | `src/lib/moderation/thumbnail.ts` |
+| Full-output fetch + size ceiling | `src/lib/moderation/media.ts` |
+| Full-size viewer | `src/components/admin/content/MediaViewer.tsx` |
 | `after()` wrapper | `src/lib/moderation/defer.ts` |
 | Write site | `src/lib/credits/guard.ts` |
 | Async completion | `src/app/api/generate/poll/route.ts` |

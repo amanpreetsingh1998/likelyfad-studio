@@ -55,6 +55,7 @@ export type SweepResult = {
 
 export type PruneResult = {
   rowsDeleted: number;
+  /** Storage objects removed — thumbnails and full media together. */
   thumbsDeleted: number;
   /** Storage keys the row delete orphaned because their removal failed. */
   thumbsOrphaned: number;
@@ -200,13 +201,21 @@ export async function pruneGenerationEvents(
     };
   }
 
-  const rows = (data ?? []) as Array<{ deleted_thumb_path: string | null }>;
+  const rows = (data ?? []) as Array<{
+    deleted_thumb_path: string | null;
+    deleted_media_path: string | null;
+  }>;
   const rowsDeleted = rows.length;
 
-  // Most rows carry no thumbnail — video, audio and 3D runs never get one — so
-  // the key list is normally much shorter than the row count.
+  // BOTH objects, or retention leaks. The row that named the full-resolution
+  // copy is now gone, so an unremoved one can never be found again — it would
+  // sit in the bucket forever, which for full media is the difference between
+  // litter and an unbounded bill.
+  //
+  // Most rows still carry no thumbnail (video, audio and 3D never get one), so
+  // the key list stays much shorter than the row count.
   const keys = rows
-    .map((row) => row.deleted_thumb_path)
+    .flatMap((row) => [row.deleted_thumb_path, row.deleted_media_path])
     .filter((key): key is string => typeof key === "string" && key.length > 0);
 
   let thumbsDeleted = 0;

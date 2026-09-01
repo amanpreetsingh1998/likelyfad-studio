@@ -29,6 +29,7 @@ import type {
   ModerationState,
 } from "@/lib/admin/moderation";
 import { EMPTY_COUNTS } from "@/lib/admin/moderation";
+import { MediaViewer } from "./MediaViewer";
 import {
   formatAgo,
   formatDateTime,
@@ -57,6 +58,14 @@ export function ContentFeed({ initial }: { initial: ModerationFeed }) {
   const [offset, setOffset] = useState(initial.offset);
   const [loading, setLoading] = useState(false);
   const [fetchFailed, setFetchFailed] = useState(false);
+  /**
+   * The row whose output is open, if any.
+   *
+   * The row itself rather than an id: the signed URLs on it are already in
+   * hand and short-lived, and looking the row up again on every render would
+   * mean the viewer went blank the moment a refresh reordered the feed.
+   */
+  const [viewing, setViewing] = useState<ModerationRow | null>(null);
 
   const limit = initial.limit;
   const hydrated = useRef(false);
@@ -217,7 +226,12 @@ export function ContentFeed({ initial }: { initial: ModerationFeed }) {
           }`}
         >
           {rows.map((row) => (
-            <GenerationCard key={row.id} row={row} onChanged={refresh} />
+            <GenerationCard
+              key={row.id}
+              row={row}
+              onChanged={refresh}
+              onOpen={() => setViewing(row)}
+            />
           ))}
         </div>
       )}
@@ -241,6 +255,10 @@ export function ContentFeed({ initial }: { initial: ModerationFeed }) {
             Next
           </button>
         </div>
+      )}
+
+      {viewing && (
+        <MediaViewer row={viewing} onClose={() => setViewing(null)} />
       )}
     </div>
   );
@@ -273,9 +291,12 @@ function EmptyFeed({ filtered }: { filtered: boolean }) {
 function GenerationCard({
   row,
   onChanged,
+  onOpen,
 }: {
   row: ModerationRow;
   onChanged: () => void;
+  /** Opens the full output over the feed. */
+  onOpen: () => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -320,18 +341,41 @@ function GenerationCard({
       }`}
     >
       <div className="flex gap-3">
-        <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded bg-neutral-950 text-center text-[10px] uppercase tracking-wide text-neutral-600">
+        {/*
+          The tile opens the full output. A thumbnail settles whether a run is
+          worth a second look; it does not settle what the run depicts, and a
+          suspension decision rests on the second question.
+
+          Still a button when there is no picture — video and audio have no
+          thumbnail but do have media now, and those are exactly the runs that
+          used to be reviewed on their prompt alone.
+        */}
+        <button
+          type="button"
+          onClick={onOpen}
+          disabled={!row.media_url && !row.thumb_url}
+          title={
+            row.media_url
+              ? "Open the full output"
+              : row.thumb_url
+              ? "Open — only a thumbnail was kept for this run"
+              : "Nothing was stored for this run"
+          }
+          className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded bg-neutral-950 text-center text-[10px] uppercase tracking-wide text-neutral-600 transition-opacity enabled:hover:opacity-75 disabled:cursor-default"
+        >
           {row.thumb_url ? (
             <img src={row.thumb_url} alt="" className="h-full w-full object-cover" />
           ) : row.content_removed_at ? (
             "Removed"
+          ) : row.media_url ? (
+            <span className="px-1 text-neutral-400">
+              {row.output_kind ?? row.kind}
+              <span className="mt-0.5 block text-neutral-600">view</span>
+            </span>
           ) : (
-            // Video, audio and 3D never had one: a representative frame needs
-            // a decoder that does not run server-side here, so these are
-            // reviewed on their prompt alone. Say which it is.
             <span className="px-1">{row.output_kind ?? row.kind}</span>
           )}
-        </div>
+        </button>
 
         <div className="min-w-0 flex-1">
           <p className="line-clamp-3 text-sm leading-relaxed text-neutral-200">

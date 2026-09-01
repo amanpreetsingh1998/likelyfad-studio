@@ -16,6 +16,7 @@
 
 import { getServiceClient } from "@/lib/supabase/server";
 import { makeThumbnail } from "./thumbnail";
+import { fetchMedia } from "./media";
 import type { RunKind } from "@/lib/credits/pricing";
 
 const TABLE = "generation_events";
@@ -99,6 +100,41 @@ async function storeThumbnail(
 }
 
 /**
+ * Keep the output itself, returning what was stored.
+ *
+ * Keyed `<eventId>-full.<ext>`, beside the thumbnail and under the same rules:
+ * no user prefix, in a bucket with no storage policies, so the subject of the
+ * record cannot delete the evidence.
+ *
+ * Null when there was nothing to keep, when the provider link had already
+ * expired, or when the object was over the ceiling. All three are ordinary,
+ * and none of them is worth failing a generation over.
+ */
+async function storeMedia(
+  eventId: string,
+  output: string | null | undefined,
+  declaredType?: string | null
+): Promise<{ path: string; type: string; bytes: number } | null> {
+  const media = await fetchMedia(output, declaredType);
+  if (!media) return null;
+
+  const path = `${eventId}-full.${media.extension}`;
+  const { error } = await getServiceClient()
+    .storage.from(BUCKET)
+    .upload(path, media.body, {
+      contentType: media.contentType,
+      upsert: true,
+    });
+
+  if (error) {
+    console.warn("[moderation] media upload failed:", error.message);
+    return null;
+  }
+
+  return { path, type: media.contentType, bytes: media.body.length };
+}
+
+/**
  * Log one run. Returns the event id, or null if nothing was written.
  *
  * The row lands first and the thumbnail follows in a second write, rather than
@@ -142,12 +178,24 @@ export async function recordGenerationEvent(
 
     const eventId = data.id as string;
 
-    const thumbPath = await storeThumbnail(eventId, input.output);
-    if (thumbPath) {
-      await getServiceClient()
-        .from(TABLE)
-        .update({ thumb_path: thumbPath })
-        .eq("id", eventId);
+    // Both in parallel: they read the same provider URL and neither depends on
+    // the other, so serialising them would double the wait for no benefit.
+    // The row already exists, so either failing costs only what it stored.
+    const [thumbPath, media] = await Promise.all([
+      storeThumbnail(eventId, input.output),
+      storeMedia(eventId, input.output, input.outputKind),
+    ]);
+
+    const updates: Record<string, unknown> = {};
+    if (thumbPath) updates.thumb_path = thumbPath;
+    if (media) {
+      updates.media_path = media.path;
+      updates.media_type = media.type;
+      updates.media_bytes = media.bytes;
+    }
+
+    if (Object.keys(updates).length > 0) {
+      await getServiceClient().from(TABLE).update(updates).eq("id", eventId);
     }
 
     return eventId;
@@ -196,7 +244,14 @@ export async function completeGenerationEvent(params: {
     if (!data?.id) return;
 
     const eventId = data.id as string;
-    const thumbPath = await storeThumbnail(eventId, params.output);
+
+    // The asynchronous path is where video most often lands — Kie's long
+    // running tasks answer here rather than inline — so it needs the full
+    // media just as much as the direct path does.
+    const [thumbPath, media] = await Promise.all([
+      storeThumbnail(eventId, params.output),
+      storeMedia(eventId, params.output, params.outputKind),
+    ]);
 
     await getServiceClient()
       .from(TABLE)
@@ -205,6 +260,9 @@ export async function completeGenerationEvent(params: {
         output_kind: params.outputKind ?? null,
         error: clamp(params.error, 500),
         thumb_path: thumbPath,
+        media_path: media?.path ?? null,
+        media_type: media?.type ?? null,
+        media_bytes: media?.bytes ?? null,
         completed_at: new Date().toISOString(),
       })
       .eq("id", eventId);

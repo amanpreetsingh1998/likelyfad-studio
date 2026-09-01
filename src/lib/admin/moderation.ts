@@ -16,7 +16,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { signThumbnails, MODERATION_BUCKET } from "./thumbnails";
+import { signThumbnails, signMedia, MODERATION_BUCKET } from "./thumbnails";
 import { normalizeOffset, normalizeSearch } from "./users";
 
 /** Rows per page of the feed. Cards, not table rows — they are big. */
@@ -55,6 +55,20 @@ export type ModerationRow = {
   total_count: number;
   /** Signed and short-lived. Null when there never was one, or it was removed. */
   thumb_url: string | null;
+  /**
+   * The output at full resolution, signed and short-lived.
+   *
+   * What a suspension decision actually rests on: a thumbnail settles whether
+   * a run is worth a second look, not what it depicts. Null when the run
+   * produced nothing storable, when the provider link had expired by the time
+   * we fetched it, when it was over the size ceiling, or when the content has
+   * been removed.
+   */
+  media_url: string | null;
+  /** MIME type, so the viewer picks img / video / audio rather than guessing. */
+  media_type: string | null;
+  /** So a moderator knows what they are about to load before they load it. */
+  media_bytes: number | null;
 };
 
 export type ModerationCounts = {
@@ -175,19 +189,31 @@ export async function getModerationFeed(
     }
 
     const rows = (feed.data ?? []) as Array<
-      Omit<ModerationRow, "thumb_url"> & { thumb_path: string | null }
+      Omit<ModerationRow, "thumb_url" | "media_url"> & {
+        thumb_path: string | null;
+        media_path: string | null;
+      }
     >;
 
-    const signed = await signThumbnails(
-      service,
-      rows.map((row) => row.thumb_path).filter((path): path is string => !!path)
-    );
+    // Two batches rather than one: the TTLs differ, and a moderator watching a
+    // video needs longer than a grid of thumbnails does.
+    const [signedThumbs, signedMedia] = await Promise.all([
+      signThumbnails(
+        service,
+        rows.map((row) => row.thumb_path).filter((p): p is string => !!p)
+      ),
+      signMedia(
+        service,
+        rows.map((row) => row.media_path).filter((p): p is string => !!p)
+      ),
+    ]);
 
     return {
       ...base,
-      rows: rows.map(({ thumb_path, ...row }) => ({
+      rows: rows.map(({ thumb_path, media_path, ...row }) => ({
         ...row,
-        thumb_url: thumb_path ? signed.get(thumb_path) ?? null : null,
+        thumb_url: thumb_path ? signedThumbs.get(thumb_path) ?? null : null,
+        media_url: media_path ? signedMedia.get(media_path) ?? null : null,
       })),
       total: rows[0]?.total_count ?? 0,
       // A failed count costs the tab labels, not the feed — so it is null
@@ -240,10 +266,15 @@ export async function setModerationState(
 }
 
 /**
- * Delete a run's thumbnail, keeping the row.
+ * Delete a run's media, keeping the row.
  *
- * The picture is what has to go; the prompt, the model and the account are
- * the record of what happened and stay. `thumb_path` is cleared in the same
+ * BOTH objects go — the thumbnail and the full-resolution copy. Removing only
+ * the thumbnail would take the picture out of the feed while leaving the
+ * larger, more damaging copy sitting in the bucket, reachable by anyone who
+ * could still sign its key. "Removed" has to mean removed.
+ *
+ * The pictures are what has to go; the prompt, the model and the account are
+ * the record of what happened and stay. Both paths are cleared in the same
  * write, so nothing tries to sign a key that no longer resolves.
  *
  * Storage first, then the row: a failed delete that had already marked the
@@ -256,19 +287,23 @@ export async function removeContent(
 ): Promise<{ id: string; user_id: string; removed: boolean } | null> {
   const { data: row, error: readError } = await service
     .from("generation_events")
-    .select("id, user_id, thumb_path, content_removed_at")
+    .select("id, user_id, thumb_path, media_path, content_removed_at")
     .eq("id", eventId)
     .maybeSingle();
 
   if (readError) throw new Error(readError.message);
   if (!row) return null;
 
-  if (row.thumb_path) {
+  const keys = [row.thumb_path, row.media_path].filter(
+    (key): key is string => typeof key === "string" && key.length > 0
+  );
+
+  if (keys.length > 0) {
     const { error } = await service.storage
       .from(MODERATION_BUCKET)
-      .remove([row.thumb_path as string]);
+      .remove(keys);
     if (error) {
-      console.error("[admin] thumbnail delete failed:", error.message);
+      console.error("[admin] media delete failed:", error.message);
       throw new Error(error.message);
     }
   }
@@ -277,6 +312,9 @@ export async function removeContent(
     .from("generation_events")
     .update({
       thumb_path: null,
+      media_path: null,
+      media_type: null,
+      media_bytes: null,
       content_removed_at: row.content_removed_at ?? new Date().toISOString(),
     })
     .eq("id", eventId);

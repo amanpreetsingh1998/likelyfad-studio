@@ -31,6 +31,8 @@ const EVENT = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 let inserted: Record<string, unknown> | null;
 let updated: Record<string, unknown> | null;
 let uploaded: { path: string } | null;
+/** Every key uploaded for this call — thumbnail and full media both. */
+let uploads: string[];
 let selectFilters: Record<string, unknown>;
 let selectResult: { data: unknown; error: unknown };
 let insertResult: { data: unknown; error: unknown };
@@ -61,6 +63,7 @@ function stubSupabase() {
       from: () => ({
         upload: async (path: string) => {
           uploaded = { path };
+          uploads.push(path);
           return { error: null };
         },
       }),
@@ -75,6 +78,7 @@ beforeEach(() => {
   inserted = null;
   updated = null;
   uploaded = null;
+  uploads = [];
   selectFilters = {};
   selectResult = { data: null, error: null };
   insertResult = { data: { id: EVENT }, error: null };
@@ -156,8 +160,11 @@ describe("recordGenerationEvent", () => {
       output: "data:image/png;base64,AAAA",
     });
 
-    expect(uploaded?.path).toBe(`${EVENT}.webp`);
-    expect(uploaded?.path).not.toContain(USER);
+    const thumb = uploads.find((key) => key.endsWith(".webp"));
+    expect(thumb).toBe(`${EVENT}.webp`);
+    // No user prefix, ever: a per-user path is the shape that invites an
+    // owner-scoped policy, which would hand the subject their own evidence.
+    for (const key of uploads) expect(key).not.toContain(USER);
     expect(updated).toMatchObject({ thumb_path: `${EVENT}.webp` });
   });
 
