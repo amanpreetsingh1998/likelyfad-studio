@@ -10,6 +10,7 @@ import { pollGenerateTask } from "./pollTaskCompletion";
 import { runWithFallback } from "./runWithFallback";
 import type { NodeExecutionContext } from "./types";
 import { syncBalanceFromResponse, handleInsufficientCredits } from "@/store/creditStore";
+import { withRunId } from "./activeRun";
 
 export interface GenerateVideoOptions {
   /** When true, falls back to stored inputImages/inputPrompt if no connections provide them. */
@@ -107,7 +108,7 @@ export async function executeGenerateVideo(
       const response = await fetch("/api/generate", {
         method: "POST",
         headers,
-        body: JSON.stringify(requestPayload),
+        body: JSON.stringify(withRunId(requestPayload)),
         ...(signal ? { signal } : {}),
       });
 

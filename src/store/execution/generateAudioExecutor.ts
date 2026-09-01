@@ -10,6 +10,7 @@ import { pollGenerateTask } from "./pollTaskCompletion";
 import { runWithFallback } from "./runWithFallback";
 import type { NodeExecutionContext } from "./types";
 import { syncBalanceFromResponse, handleInsufficientCredits } from "@/store/creditStore";
+import { withRunId } from "./activeRun";
 
 export interface GenerateAudioOptions {
   /** When true, falls back to stored inputPrompt if no connections provide it. */
@@ -98,7 +99,7 @@ export async function executeGenerateAudio(
       const response = await fetch("/api/generate", {
         method: "POST",
         headers,
-        body: JSON.stringify(requestPayload),
+        body: JSON.stringify(withRunId(requestPayload)),
         ...(signal ? { signal } : {}),
       });
 

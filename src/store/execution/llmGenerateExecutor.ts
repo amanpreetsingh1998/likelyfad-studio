@@ -15,6 +15,7 @@ import type {
 import { runWithFallback } from "./runWithFallback";
 import type { NodeExecutionContext } from "./types";
 import { syncBalanceFromResponse, handleInsufficientCredits } from "@/store/creditStore";
+import { withRunId } from "./activeRun";
 
 export interface LlmGenerateOptions {
   /** When true, falls back to stored inputImages/inputPrompt if no connections provide them. */
@@ -88,14 +89,16 @@ export async function executeLlmGenerate(
       const response = await fetch("/api/llm", {
         method: "POST",
         headers,
-        body: JSON.stringify({
-          prompt: finalText,
-          ...(images.length > 0 && { images }),
-          provider: llmProvider,
-          model: llmModel,
-          temperature,
-          maxTokens,
-        }),
+        body: JSON.stringify(
+          withRunId({
+            prompt: finalText,
+            ...(images.length > 0 && { images }),
+            provider: llmProvider,
+            model: llmModel,
+            temperature,
+            maxTokens,
+          })
+        ),
         ...(signal ? { signal } : {}),
       });
 

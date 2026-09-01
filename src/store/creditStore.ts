@@ -126,15 +126,23 @@ export function handleInsufficientCredits(payload: {
  * Called from executeWorkflow's exit paths. The server owns the amount — this
  * only says "the run is over". Failures are swallowed: an unsettled run is lost
  * revenue, not a reason to show the user an error about a workflow that worked.
+ *
+ * `runId` bills that one execution and closes its run row, so the ledger and
+ * the history page get one line per workflow rather than one per "everything
+ * this user owed at that moment". It is a grouping key: it selects which rows
+ * to bill and cannot change what they cost. Without one the server falls back
+ * to settling everything unsettled, which is what happened before runs existed
+ * and is still correct — just less legible in the history.
  */
 export async function settleRun(
-  status: "completed" | "failed" | "cancelled"
+  status: "completed" | "failed" | "cancelled",
+  runId?: string | null
 ): Promise<void> {
   try {
     const response = await fetch("/api/credits/settle", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status }),
+      body: JSON.stringify(runId ? { status, runId } : { status }),
     });
     if (!response.ok) return;
 

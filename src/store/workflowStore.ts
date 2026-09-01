@@ -33,6 +33,8 @@ import { externalizeWorkflowMedia, hydrateWorkflowMedia } from "@/utils/mediaSto
 import { ensureProjectRow, saveProject } from "@/lib/likelyfad/cloud-storage";
 import { isSignedIn, requireAuth } from "./authGateStore";
 import { settleRun } from "@/store/creditStore";
+import { setActiveRunId } from "@/store/execution/activeRun";
+import { startWorkflowRun } from "@/lib/workflows/startRun";
 // === LIKELYFAD CUSTOM END ===
 import { EditOperation, applyEditOperations as executeEditOps } from "@/lib/chat/editOperations";
 import { findNearestFreePosition } from "@/utils/spatialLayout";
@@ -1620,6 +1622,34 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
     };
     set({ isRunning: true, pausedAtNodeId: null, currentNodeIds: [], skippedNodeIds: new Set(), _abortController: abortController });
 
+    // === LIKELYFAD CUSTOM START === (workflow history)
+    // Open a run so every charge and every generation event this execution
+    // makes can be grouped under one workflow. The id is minted by the server
+    // — the client picks the moment a run starts, never its identity, for the
+    // same reason it picks the moment to settle but never the amount.
+    //
+    // MUST come after isRunning is set. The guard at the top of this function
+    // is `if (get().isRunning) return`, so an await placed between that check
+    // and this set would give two concurrent Run clicks a window to both pass
+    // it and execute every node twice — which is a double bill, not just a
+    // duplicate render. workflowStore.integration.test.ts pins the ordering.
+    //
+    // Awaited rather than fired off: a node that dispatched before the id
+    // arrived would be billed to nothing and quietly missing from the run's
+    // cost. One round trip against a workflow about to call providers is cheap.
+    //
+    // A null id is not a failure to handle. The workflow runs regardless and
+    // its charges settle through the user-wide path exactly as they did before
+    // history existed; only the history entry is lost. A feature for reading
+    // the past must never stop someone working in the present.
+    const runId = await startWorkflowRun({
+      projectId: get().workflowId,
+      projectName: get().workflowName,
+      nodeCount: nodes.length,
+    });
+    setActiveRunId(runId);
+    // === LIKELYFAD CUSTOM END ===
+
     // Start logging session
     await logger.startSession();
 
@@ -1978,7 +2008,17 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
       // === LIKELYFAD CUSTOM START === (credits)
       // Bill the whole run in one debit. The server already recorded what each
       // node cost as it ran; this only says the workflow is over.
-      void settleRun(abortController.signal.aborted ? "cancelled" : "completed");
+      //
+      // The ambient run id is cleared FIRST, and the local copy is what gets
+      // settled. settleRun is fire-and-forget, so leaving the module value set
+      // would let a node regenerated from the canvas moments later attach its
+      // charge to a run that has already been billed — money the sweep would
+      // have to find, against a workflow that never spent it.
+      setActiveRunId(null);
+      void settleRun(
+        abortController.signal.aborted ? "cancelled" : "completed",
+        runId
+      );
       // === LIKELYFAD CUSTOM END ===
 
       saveLogSession();
@@ -2001,11 +2041,15 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
 
       // === LIKELYFAD CUSTOM START === (credits)
       // A failed or cancelled run still pays for the nodes that already
-      // reached a provider — that money is spent either way.
+      // reached a provider — that money is spent either way. Settling also
+      // closes the run row, so a workflow that threw does not sit 'running'
+      // waiting for the maintenance sweep to call it abandoned.
+      setActiveRunId(null);
       void settleRun(
         error instanceof DOMException && error.name === "AbortError"
           ? "cancelled"
-          : "failed"
+          : "failed",
+        runId
       );
       // === LIKELYFAD CUSTOM END ===
 
