@@ -10,32 +10,44 @@
  * the same code. A second execution path would be a second thing to keep
  * correct about billing, and the first one to drift out of step.
  *
+ * WHICH FIELDS APPEAR
+ *
+ * From `runnerFields.ts`, not from a switch here. The first version of this
+ * page handled `prompt` and `imageInput` and silently ignored the other 26
+ * node types, so a workflow taking audio, video or a 3D model showed no field
+ * for it and ran with whatever the author last saved — which looks exactly
+ * like a broken workflow. The table is walked by a coverage test, so a node
+ * type added later surfaces as a decision rather than an absence.
+ *
  * WHAT THIS PAGE IS NOT
  *
- * It is not an editor. A runner may fill in the inputs the workflow exposes —
- * its prompt and image nodes — and nothing else. They cannot add a node, wire
- * an edge, change a model or alter what anything costs. That is not enforced
- * by hiding controls: the workflow belongs to its owner, `projects` has no
- * update policy for anyone else, and the price of every node is decided
- * server-side from the model id, never from anything this page sends.
+ * It is not an editor. A runner may fill in the inputs the workflow exposes
+ * and nothing else — no node, edge, model or price. That is not enforced by
+ * hiding controls: the workflow belongs to its owner, `projects` has no update
+ * policy for anyone else, and every price is derived server-side from the
+ * model id, never from anything this page sends.
  *
  * SAVING IS OFF, DELIBERATELY.
  *
  * Running writes outputs into node data. On the canvas that is eventually
  * autosaved back to the workflow; here it must not be, because the workflow is
- * usually somebody else's. Autosave is switched off on mount and this page
- * mounts no save control — so a run leaves the stored graph untouched, and two
- * users running the same workflow cannot overwrite each other's outputs into
- * it.
+ * usually somebody else's. Autosave is switched off before the graph is loaded
+ * — not after — and this page mounts no save control, so a run leaves the
+ * stored graph untouched and two users cannot overwrite each other's outputs
+ * into it.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useWorkflowStore, type WorkflowFile } from "@/store/workflowStore";
 import type { WorkflowNode } from "@/types";
-
-/** Nodes a runner is allowed to fill in. Everything else is the author's. */
-const INPUT_TYPES = new Set(["prompt", "imageInput"]);
+import {
+  GENERATION_OUTPUT_FIELDS,
+  RUNNER_INPUTS,
+  RUNNER_OUTPUTS,
+  type InputSpec,
+  type OutputKind,
+} from "./runnerFields";
 
 export function WorkflowRunner({
   projectId,
@@ -80,22 +92,27 @@ export function WorkflowRunner({
     void loadWorkflow({
       ...(graph as unknown as WorkflowFile),
       // The stored id, so the run row this execution opens attributes to this
-      // workflow. It is what makes the run show up in history under the right
-      // name — and it is a grouping key only; it cannot affect what is billed.
+      // workflow. A grouping key only; it cannot affect what is billed.
       id: projectId,
       name: title,
     })
       .then(() => setReady(true))
       .catch((err: unknown) =>
-        setLoadError(err instanceof Error ? err.message : "Could not load this workflow.")
+        setLoadError(
+          err instanceof Error ? err.message : "Could not load this workflow."
+        )
       );
   }, [graph, projectId, title, loadWorkflow, setAutoSaveEnabled]);
 
-  const inputs = useMemo(
-    () => nodes.filter((n) => n.type && INPUT_TYPES.has(n.type)),
+  const inputs = useMemo(() => collectInputs(nodes), [nodes]);
+  const outputs = useMemo(() => collectOutputs(nodes), [nodes]);
+  const errors = useMemo(
+    () =>
+      nodes
+        .map((n) => (n.data as Record<string, unknown>).error)
+        .filter((e): e is string => typeof e === "string" && e.length > 0),
     [nodes]
   );
-  const outputs = useMemo(() => collectOutputs(nodes), [nodes]);
 
   const run = useCallback(async () => {
     setHasRun(true);
@@ -105,9 +122,7 @@ export function WorkflowRunner({
   if (loadError) {
     return (
       <Shell title={title} description={description}>
-        <p className="rounded border border-red-900/60 bg-red-950/30 px-3 py-2 text-sm text-red-300">
-          {loadError}
-        </p>
+        <Failed>{loadError}</Failed>
       </Shell>
     );
   }
@@ -121,7 +136,12 @@ export function WorkflowRunner({
   }
 
   return (
-    <Shell title={title} description={description} isOwner={isOwner} projectId={projectId}>
+    <Shell
+      title={title}
+      description={description}
+      isOwner={isOwner}
+      projectId={projectId}
+    >
       <section className="mt-6">
         <h2 className="text-[11px] uppercase tracking-wide text-neutral-500">
           Inputs
@@ -134,10 +154,12 @@ export function WorkflowRunner({
           </p>
         ) : (
           <div className="mt-3 space-y-4">
-            {inputs.map((node) => (
+            {inputs.map(({ node, spec, label }) => (
               <InputField
                 key={node.id}
                 node={node}
+                spec={spec}
+                label={label}
                 disabled={isRunning}
                 onChange={(data) => updateNodeData(node.id, data)}
               />
@@ -146,7 +168,7 @@ export function WorkflowRunner({
         )}
       </section>
 
-      <div className="mt-6 flex items-center gap-3 border-t border-neutral-800 pt-5">
+      <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-neutral-800 pt-5">
         {isRunning ? (
           <>
             <button
@@ -172,6 +194,17 @@ export function WorkflowRunner({
         )}
       </div>
 
+      {/* A node that failed says so here. Without this the page would show an
+          empty Output panel and no reason for it, which reads as "nothing
+          happened" rather than "this went wrong". */}
+      {errors.length > 0 && !isRunning && (
+        <div className="mt-4 space-y-2">
+          {errors.map((message, index) => (
+            <Failed key={index}>{message}</Failed>
+          ))}
+        </div>
+      )}
+
       <section className="mt-8">
         <h2 className="text-[11px] uppercase tracking-wide text-neutral-500">
           Output
@@ -180,17 +213,17 @@ export function WorkflowRunner({
         {outputs.length === 0 ? (
           <p className="mt-2 text-sm text-neutral-500">
             {/*
-              Deliberately not "no output" — before a run there is nothing to
-              have, which is a different fact from a run that produced nothing.
+              Before a run there is nothing to have, which is a different fact
+              from a run that produced nothing.
             */}
             {hasRun && !isRunning
-              ? "This run produced no output. Check the run history for what failed."
+              ? "This run produced no output. Any errors are shown above; the run history has the rest."
               : "Results will appear here once you run this workflow."}
           </p>
         ) : (
           <div className="mt-3 grid gap-4 sm:grid-cols-2">
             {outputs.map((item, index) => (
-              <Output key={`${item.nodeId}-${index}`} item={item} />
+              <Output key={`${item.nodeId}-${item.field}-${index}`} item={item} />
             ))}
           </div>
         )}
@@ -198,6 +231,290 @@ export function WorkflowRunner({
     </Shell>
   );
 }
+
+// ─── inputs ────────────────────────────────────────────────────────────────
+
+type ResolvedInput = { node: WorkflowNode; spec: InputSpec; label: string };
+
+/**
+ * The fields to draw, in graph order.
+ *
+ * Labelled from the node's own `label` where the author set one, because they
+ * named it for a reason. Otherwise the type's name, numbered when a workflow
+ * has more than one of a kind — "Prompt" twice with no way to tell them apart
+ * is worse than "Prompt 1" and "Prompt 2".
+ */
+function collectInputs(nodes: WorkflowNode[]): ResolvedInput[] {
+  const counts = new Map<string, number>();
+  for (const node of nodes) {
+    if (node.type && RUNNER_INPUTS[node.type]) {
+      counts.set(node.type, (counts.get(node.type) ?? 0) + 1);
+    }
+  }
+
+  const seen = new Map<string, number>();
+  const out: ResolvedInput[] = [];
+
+  for (const node of nodes) {
+    if (!node.type) continue;
+    const spec = RUNNER_INPUTS[node.type];
+    if (!spec) continue;
+
+    const data = node.data as Record<string, unknown>;
+    const index = (seen.get(node.type) ?? 0) + 1;
+    seen.set(node.type, index);
+
+    const authored =
+      typeof data.label === "string" && data.label.trim()
+        ? data.label.trim()
+        : typeof data.customTitle === "string" && data.customTitle.trim()
+        ? data.customTitle.trim()
+        : null;
+
+    const label =
+      authored ??
+      ((counts.get(node.type) ?? 0) > 1 ? `${spec.label} ${index}` : spec.label);
+
+    out.push({ node, spec, label });
+  }
+
+  return out;
+}
+
+function InputField({
+  node,
+  spec,
+  label,
+  disabled,
+  onChange,
+}: {
+  node: WorkflowNode;
+  spec: InputSpec;
+  label: string;
+  disabled: boolean;
+  onChange: (data: Record<string, unknown>) => void;
+}) {
+  const data = node.data as Record<string, unknown>;
+  const current = data[spec.field];
+  const optional = data.isOptional === true;
+
+  if (spec.kind === "text") {
+    return (
+      <label className="block">
+        <FieldLabel label={label} optional={optional} />
+        <textarea
+          defaultValue={typeof current === "string" ? current : ""}
+          disabled={disabled}
+          rows={3}
+          onChange={(event) => onChange({ [spec.field]: event.target.value })}
+          className="mt-1 w-full rounded border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-600 focus:border-neutral-600 focus:outline-none disabled:opacity-50"
+          placeholder="Describe what you want…"
+        />
+      </label>
+    );
+  }
+
+  const filename = typeof data[spec.filenameField ?? ""] === "string"
+    ? (data[spec.filenameField ?? ""] as string)
+    : null;
+
+  return (
+    <div>
+      <FieldLabel label={label} optional={optional} />
+      <div className="mt-1 flex items-center gap-3">
+        <input
+          type="file"
+          accept={spec.accept}
+          disabled={disabled}
+          onChange={async (event) => {
+            const file = event.target.files?.[0];
+            if (!file) return;
+            const value = await readAsDataUrl(file);
+            onChange({
+              [spec.field]: value,
+              ...(spec.filenameField ? { [spec.filenameField]: file.name } : {}),
+              // A freshly uploaded file replaces whatever the author stored, so
+              // the external reference to their copy has to go with it — left
+              // behind, it would win on the next load and silently undo this.
+              ...refFieldsFor(spec.field),
+            });
+          }}
+          className="min-w-0 flex-1 text-xs text-neutral-400 file:mr-3 file:rounded file:border file:border-neutral-700 file:bg-neutral-900 file:px-2.5 file:py-1 file:text-xs file:text-neutral-200 disabled:opacity-50"
+        />
+        <Preview kind={spec.kind} value={current} filename={filename} />
+      </div>
+    </div>
+  );
+}
+
+function FieldLabel({ label, optional }: { label: string; optional: boolean }) {
+  return (
+    <span className="text-xs text-neutral-400">
+      {label}
+      {optional && <span className="ml-1 text-neutral-600">(optional)</span>}
+    </span>
+  );
+}
+
+/**
+ * Clear the external reference that shadows a replaced file.
+ *
+ * A saved workflow stores media as `<field>Ref` pointing into storage, with the
+ * inline value stripped. Setting only the inline value would leave the ref in
+ * place to be re-hydrated later — so the user's upload appears to take, then
+ * does not.
+ */
+function refFieldsFor(field: string): Record<string, undefined> {
+  return { [`${field}Ref`]: undefined };
+}
+
+function Preview({
+  kind,
+  value,
+  filename,
+}: {
+  kind: string;
+  value: unknown;
+  filename: string | null;
+}) {
+  if (typeof value !== "string" || !value) return null;
+
+  if (kind === "image") {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={value}
+        alt=""
+        className="h-12 w-12 shrink-0 rounded border border-neutral-800 object-cover"
+      />
+    );
+  }
+
+  // Audio, video and GLB have no cheap thumbnail, so the filename is the
+  // confirmation that something is loaded.
+  return (
+    <span className="shrink-0 truncate text-[11px] text-neutral-500" title={filename ?? ""}>
+      {filename ?? "loaded"}
+    </span>
+  );
+}
+
+// ─── outputs ───────────────────────────────────────────────────────────────
+
+type OutputItem = {
+  nodeId: string;
+  field: string;
+  kind: OutputKind;
+  value: string;
+};
+
+/**
+ * What this run produced.
+ *
+ * Explicit output nodes win, because an author who placed one has said which
+ * result is the point. When a workflow has none, the generation nodes' own
+ * outputs are shown instead rather than an empty panel — a workflow that made
+ * something and shows nothing reads as a failure.
+ */
+export function collectOutputs(nodes: WorkflowNode[]): OutputItem[] {
+  const items: OutputItem[] = [];
+
+  for (const node of nodes) {
+    if (!node.type) continue;
+    const spec = RUNNER_OUTPUTS[node.type];
+    if (!spec) continue;
+
+    const data = node.data as Record<string, unknown>;
+
+    for (const { field, kind } of spec.single ?? []) {
+      push(items, node.id, field, kind, data[field]);
+    }
+    for (const { field, kind } of spec.many ?? []) {
+      for (const value of asArray(data[field])) {
+        push(items, node.id, field, kind, value);
+      }
+    }
+  }
+
+  if (items.length > 0) return items;
+
+  for (const node of nodes) {
+    const data = node.data as Record<string, unknown>;
+    for (const { field, kind } of GENERATION_OUTPUT_FIELDS) {
+      push(items, node.id, field, kind, data[field]);
+    }
+  }
+
+  return items;
+}
+
+function push(
+  items: OutputItem[],
+  nodeId: string,
+  field: string,
+  kind: OutputKind,
+  value: unknown
+) {
+  if (typeof value === "string" && value) {
+    items.push({ nodeId, field, kind, value });
+  }
+}
+
+function asArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((v): v is string => typeof v === "string")
+    : [];
+}
+
+function Output({ item }: { item: OutputItem }) {
+  if (item.kind === "text") {
+    return (
+      <p className="whitespace-pre-wrap rounded border border-neutral-800 bg-neutral-900/40 p-3 text-sm text-neutral-200">
+        {item.value}
+      </p>
+    );
+  }
+
+  if (item.kind === "video") {
+    return (
+      <video
+        src={item.value}
+        controls
+        className="w-full rounded border border-neutral-800"
+      />
+    );
+  }
+
+  if (item.kind === "audio") {
+    return <audio src={item.value} controls className="w-full" />;
+  }
+
+  if (item.kind === "model3d") {
+    // No viewer here on purpose: the canvas has a Three.js one, and pulling
+    // that whole dependency onto a page that mostly shows pictures is a poor
+    // trade. A download is the useful thing anyway — the model is the artefact.
+    return (
+      <a
+        href={item.value}
+        download
+        className="flex items-center justify-center rounded border border-dashed border-neutral-700 px-3 py-6 text-sm text-neutral-300 transition-colors hover:border-neutral-500 hover:text-neutral-100"
+      >
+        Download 3D model
+      </a>
+    );
+  }
+
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={item.value}
+      alt=""
+      className="w-full rounded border border-neutral-800"
+    />
+  );
+}
+
+// ─── chrome ────────────────────────────────────────────────────────────────
 
 function Shell({
   title,
@@ -246,156 +563,12 @@ function Shell({
   );
 }
 
-function InputField({
-  node,
-  disabled,
-  onChange,
-}: {
-  node: WorkflowNode;
-  disabled: boolean;
-  onChange: (data: Record<string, unknown>) => void;
-}) {
-  const data = node.data as Record<string, unknown>;
-  const label = (data.label as string) || defaultLabel(node.type);
-
-  if (node.type === "prompt") {
-    return (
-      <label className="block">
-        <span className="text-xs text-neutral-400">{label}</span>
-        <textarea
-          defaultValue={(data.prompt as string) ?? ""}
-          disabled={disabled}
-          rows={3}
-          onChange={(event) => onChange({ prompt: event.target.value })}
-          className="mt-1 w-full rounded border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-600 focus:border-neutral-600 focus:outline-none disabled:opacity-50"
-          placeholder="Describe what you want…"
-        />
-      </label>
-    );
-  }
-
-  // imageInput
-  const current = (data.image as string) ?? null;
+function Failed({ children }: { children: React.ReactNode }) {
   return (
-    <div>
-      <span className="text-xs text-neutral-400">{label}</span>
-      <div className="mt-1 flex items-center gap-3">
-        <input
-          type="file"
-          accept="image/*"
-          disabled={disabled}
-          onChange={async (event) => {
-            const file = event.target.files?.[0];
-            if (!file) return;
-            const image = await readAsDataUrl(file);
-            onChange({ image, filename: file.name });
-          }}
-          className="text-xs text-neutral-400 file:mr-3 file:rounded file:border file:border-neutral-700 file:bg-neutral-900 file:px-2.5 file:py-1 file:text-xs file:text-neutral-200 disabled:opacity-50"
-        />
-        {current && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={current}
-            alt=""
-            className="h-12 w-12 rounded border border-neutral-800 object-cover"
-          />
-        )}
-      </div>
-    </div>
+    <p className="rounded border border-red-900/60 bg-red-950/30 px-3 py-2 text-sm text-red-300">
+      {children}
+    </p>
   );
-}
-
-type OutputItem = {
-  nodeId: string;
-  kind: "image" | "video" | "audio" | "text";
-  value: string;
-};
-
-/**
- * What this run produced.
- *
- * Explicit output nodes win, because an author who placed one has said which
- * result is the point. When a workflow has none, the generation nodes' own
- * outputs are shown instead rather than an empty panel — a workflow that made
- * something and shows nothing reads as a failure.
- */
-function collectOutputs(nodes: WorkflowNode[]): OutputItem[] {
-  const items: OutputItem[] = [];
-
-  for (const node of nodes) {
-    const data = node.data as Record<string, unknown>;
-
-    if (node.type === "output") {
-      push(items, node.id, "image", data.image);
-      push(items, node.id, "video", data.video);
-      push(items, node.id, "audio", data.audio);
-    } else if (node.type === "outputGallery") {
-      for (const image of asArray(data.images)) push(items, node.id, "image", image);
-      for (const video of asArray(data.videos)) push(items, node.id, "video", video);
-    }
-  }
-
-  if (items.length > 0) return items;
-
-  for (const node of nodes) {
-    const data = node.data as Record<string, unknown>;
-    push(items, node.id, "image", data.outputImage);
-    push(items, node.id, "video", data.outputVideo);
-    push(items, node.id, "audio", data.outputAudio);
-    push(items, node.id, "text", data.outputText);
-  }
-
-  return items;
-}
-
-function push(
-  items: OutputItem[],
-  nodeId: string,
-  kind: OutputItem["kind"],
-  value: unknown
-) {
-  if (typeof value === "string" && value) items.push({ nodeId, kind, value });
-}
-
-function asArray(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
-}
-
-function Output({ item }: { item: OutputItem }) {
-  if (item.kind === "text") {
-    return (
-      <p className="whitespace-pre-wrap rounded border border-neutral-800 bg-neutral-900/40 p-3 text-sm text-neutral-200">
-        {item.value}
-      </p>
-    );
-  }
-
-  if (item.kind === "video") {
-    return (
-      <video
-        src={item.value}
-        controls
-        className="w-full rounded border border-neutral-800"
-      />
-    );
-  }
-
-  if (item.kind === "audio") {
-    return <audio src={item.value} controls className="w-full" />;
-  }
-
-  return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={item.value}
-      alt=""
-      className="w-full rounded border border-neutral-800"
-    />
-  );
-}
-
-function defaultLabel(type: string | undefined): string {
-  return type === "prompt" ? "Prompt" : "Image";
 }
 
 function readAsDataUrl(file: File): Promise<string> {

@@ -179,7 +179,8 @@ turn that into the buy-credits modal. Every gated response carries
    then `0012_fix_settlement.sql`, then `0013_workflow_history.sql`, then
    `0014_workflow_history_read.sql`, then `0015_model_latency.sql`, then
    `0016_close_abandoned_runs.sql`, then
-   `0017_published_workflows.sql`, in the Supabase SQL editor.
+   `0017_published_workflows.sql`, then `0018_published_media.sql`, in the
+   Supabase SQL editor.
 2. Add the three Razorpay vars above to `.env.local`.
 3. Razorpay dashboard → Settings → Webhooks → add
    `https://<domain>/api/credits/webhook` for `payment.captured`, using the
@@ -286,7 +287,7 @@ passes, so a handler cannot obtain it by forgetting to check.
    `0011_maintenance.sql`, then `0012_fix_settlement.sql`, then
    `0013_workflow_history.sql`, then `0014_workflow_history_read.sql`, then
    `0015_model_latency.sql`, then `0016_close_abandoned_runs.sql`, then
-   `0017_published_workflows.sql`.
+   `0017_published_workflows.sql`, then `0018_published_media.sql`.
 2. Sign in once with the account that should be admin (there must be an
    `auth.users` row to point at).
 3. `select public.set_admin('you@example.com');`
@@ -687,6 +688,28 @@ before the graph is loaded — not after — so no timer can fire in the gap, an
 the page mounts no save control. Two users running the same workflow therefore
 cannot overwrite each other's outputs into it.
 
+**Which fields appear comes from a table, not a switch.** `runnerFields.ts`
+maps node type to the data field its executor actually reads or writes. The
+first version handled `prompt` and `imageInput` and silently ignored the other
+26 types, so a workflow taking audio, video or a 3D model showed no field for
+it and ran with whatever the author last saved — indistinguishable from a
+broken workflow. `runnerFields.test.ts` walks the `NodeType` union against the
+table and fails on any type that is in neither the input, output nor the
+explicitly-ignored list, so a node added later arrives as a decision rather
+than an absence.
+
+Inputs are the five leaf types that hold content: `prompt`, `imageInput`,
+`audioInput`, `videoInput`, `glbViewer`. Outputs prefer an explicit `output`,
+`outputGallery`, `imageCompare` or `glbViewer` node, and fall back to the
+generation nodes' own `outputImage` / `outputVideo` / `outputAudio` /
+`output3dUrl` / `outputText` — the same typed mirrors `outputsToNodeData`
+writes for a Comfy app.
+
+**Replacing a file clears its `<field>Ref`.** Saved workflows store media as a
+storage reference with the inline value stripped; setting only the inline value
+would leave the ref to win on the next hydrate, so a user's upload appears to
+take and then does not.
+
 **Access is RLS, not an `isAdmin()` call.** The page reads `projects` through
 the caller's own client, and there are exactly two select policies: your own
 rows (0001) and published rows (0017). A workflow that is neither yours nor
@@ -742,6 +765,8 @@ discarding the user's work with no prompt.
 | Attribution entry point | `src/lib/credits/guard.ts` (`withCredits`) |
 | Ambient run id for executors | `src/store/execution/activeRun.ts` |
 | Publishing + catalogue SQL | `supabase/migrations/0017_published_workflows.sql` |
+| Published media storage policy | `supabase/migrations/0018_published_media.sql` |
+| Runner field table + coverage test | `src/components/workflows/runnerFields.ts` |
 | Page shell and server-read first paint | `src/app/workflows/` |
 | Run page (reuses `executeWorkflow`) | `src/components/workflows/WorkflowRunner.tsx` |
 | List, card, run drawer | `src/components/workflows/` |
@@ -760,7 +785,7 @@ discarding the user's work with no prompt.
 
 Run `0013_workflow_history.sql`, then `0014_workflow_history_read.sql`, then
 `0015_model_latency.sql`, then `0016_close_abandoned_runs.sql`, then
-`0017_published_workflows.sql`. `0012` must be applied first — everything here reads the numbers settlement writes, so
+`0017_published_workflows.sql`, then `0018_published_media.sql`. `0012` must be applied first — everything here reads the numbers settlement writes, so
 applying it on top of the broken function would build a history page that
 faithfully reports every workflow as having cost nothing.
 
