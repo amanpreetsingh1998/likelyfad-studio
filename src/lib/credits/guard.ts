@@ -151,10 +151,21 @@ export function withCredits(
     const response = await handler(request);
     const durationMs = Date.now() - startedAt;
 
-    // Read once, used twice: the billing decision and the generation log both
-    // need the parsed payload, and these bodies carry base64 media — parsing
-    // one of them a second time is not free.
-    const { succeeded, payload } = await inspectResponse(response);
+    // The body is read ONCE, into bytes, and everything downstream works from
+    // that — including the response actually returned to the caller.
+    //
+    // This used to inspect `response.clone()` and then hand `response.body`
+    // back untouched. That is the documented pattern and it fails in practice
+    // on a large payload: clone() tees the stream, and once one branch has
+    // been drained the other is disturbed, so constructing the reply threw
+    //
+    //   TypeError: Response body object should not be disturbed or locked
+    //
+    // on a 4 MB image — after the provider had been paid for it. Reading once
+    // costs nothing extra here, because parsing the body already buffered the
+    // whole thing.
+    const bytes = await readBody(response);
+    const { succeeded, payload } = inspectResponse(response, bytes);
 
     // Only a run that actually reached a provider is worth billing. A failed
     // one records nothing, so there is no refund path to get wrong.
@@ -186,7 +197,11 @@ export function withCredits(
     const headers = new Headers(response.headers);
     headers.set(BALANCE_HEADER, String(balance - pending));
     headers.set(CHARGED_HEADER, String(pending));
-    return new Response(response.body, {
+    // Re-stated from what is actually being sent. The original header describes
+    // the original body, and a mismatch here is a truncated response.
+    if (bytes) headers.set("Content-Length", String(bytes.byteLength));
+
+    return new Response(bytes, {
       status: response.status,
       statusText: response.statusText,
       headers,
@@ -195,37 +210,60 @@ export function withCredits(
 }
 
 /**
+ * Drain the response body once, as bytes.
+ *
+ * Bytes rather than text so what goes back to the caller is exactly what came
+ * out of the handler — decoding to a string and re-encoding would be a
+ * needless round trip through UTF-8 for payloads that are mostly base64.
+ *
+ * Null on failure, and on a body that was never there (204, HEAD). The caller
+ * treats null as "could not inspect", which bills the run — declining to bill
+ * on doubt would make every unreadable response free.
+ */
+async function readBody(response: Response): Promise<ArrayBuffer | null> {
+  if (!response.body) return null;
+  try {
+    return await response.arrayBuffer();
+  } catch (err) {
+    console.error(
+      "[credits] could not read the handler's response:",
+      err instanceof Error ? err.message : err
+    );
+    return null;
+  }
+}
+
+/**
  * Did this run reach a provider, and what did it say?
  *
  * A non-2xx did not. A 200 carrying `success: false` did not either — these
  * routes report provider failures that way rather than with a status code.
  *
- * Note this reads a CLONE: the caller still returns the original stream.
+ * Synchronous, over bytes already in hand: the body is read once by the
+ * caller, because reading it twice is what broke this.
  */
-async function inspectResponse(
-  response: Response
-): Promise<{ succeeded: boolean; payload: Record<string, unknown> | null }> {
-  if (!response.ok) {
-    // Still parsed, because the generation log wants the provider's error
-    // message and this is the only place it exists.
-    return { succeeded: false, payload: await parseBody(response) };
-  }
+function inspectResponse(
+  response: Response,
+  bytes: ArrayBuffer | null
+): { succeeded: boolean; payload: Record<string, unknown> | null } {
+  // Still parsed on a failure, because the generation log wants the provider's
+  // error message and this is the only place it exists.
+  const payload = parseBody(bytes);
 
-  const payload = await parseBody(response);
+  if (!response.ok) return { succeeded: false, payload };
 
-  // Not JSON, or a stream we could not re-read. A 2xx we cannot inspect is
-  // treated as a success — declining to bill on doubt would make every
-  // streaming response free.
+  // Not JSON, or a body we could not read. A 2xx we cannot inspect is treated
+  // as a success — declining to bill on doubt would make every streaming
+  // response free.
   if (!payload) return { succeeded: true, payload: null };
 
   return { succeeded: payload.success !== false, payload };
 }
 
-async function parseBody(
-  response: Response
-): Promise<Record<string, unknown> | null> {
+function parseBody(bytes: ArrayBuffer | null): Record<string, unknown> | null {
+  if (!bytes || bytes.byteLength === 0) return null;
   try {
-    const text = await response.clone().text();
+    const text = new TextDecoder().decode(bytes);
     if (!text) return null;
     const parsed = JSON.parse(text);
     return parsed && typeof parsed === "object" ? parsed : null;

@@ -141,6 +141,21 @@ A failed or cancelled workflow still pays for the nodes that already dispatched;
 that money is spent regardless. Settling twice is harmless — the second call
 finds nothing unsettled.
 
+**Settlement has now been broken twice, in the same way.**
+
+`0019` fixes the second: both settlement functions declare `returns table
+(charged, balance, ...)`, making `balance` an OUT parameter, and then wrote
+`set balance = balance - v_debit`. The right-hand `balance` is ambiguous
+against that parameter and plpgsql refuses to guess — but the statement sits
+behind `if v_debit > 0`, so it is only reached when there is something to
+debit. Every user who owed nothing settled cleanly; every user who owed
+something got `column reference "balance" is ambiguous`.
+
+That is why a probe reported 0012 healthy: it called the function for a user
+who owned nothing and watched it return. **Reaching a SQL function is not
+exercising it.** The path that matters here is the one only real money takes,
+and it had still never run.
+
 **Settlement was broken from 0004 until 0012, and nothing noticed.**
 `settle_pending_charges` opened with `FOR UPDATE` on an aggregate query, which
 Postgres rejects at plan time. plpgsql does not plan a function body until the
@@ -179,8 +194,8 @@ turn that into the buy-credits modal. Every gated response carries
    then `0012_fix_settlement.sql`, then `0013_workflow_history.sql`, then
    `0014_workflow_history_read.sql`, then `0015_model_latency.sql`, then
    `0016_close_abandoned_runs.sql`, then
-   `0017_published_workflows.sql`, then `0018_published_media.sql`, in the
-   Supabase SQL editor.
+   `0017_published_workflows.sql`, then `0018_published_media.sql`, then
+   `0019_fix_ambiguous_balance.sql`, in the Supabase SQL editor.
 2. Add the three Razorpay vars above to `.env.local`.
 3. Razorpay dashboard → Settings → Webhooks → add
    `https://<domain>/api/credits/webhook` for `payment.captured`, using the
@@ -287,7 +302,8 @@ passes, so a handler cannot obtain it by forgetting to check.
    `0011_maintenance.sql`, then `0012_fix_settlement.sql`, then
    `0013_workflow_history.sql`, then `0014_workflow_history_read.sql`, then
    `0015_model_latency.sql`, then `0016_close_abandoned_runs.sql`, then
-   `0017_published_workflows.sql`, then `0018_published_media.sql`.
+   `0017_published_workflows.sql`, then `0018_published_media.sql`, then
+   `0019_fix_ambiguous_balance.sql`.
 2. Sign in once with the account that should be admin (there must be an
    `auth.users` row to point at).
 3. `select public.set_admin('you@example.com');`
@@ -799,7 +815,8 @@ discarding the user's work with no prompt.
 
 Run `0013_workflow_history.sql`, then `0014_workflow_history_read.sql`, then
 `0015_model_latency.sql`, then `0016_close_abandoned_runs.sql`, then
-`0017_published_workflows.sql`, then `0018_published_media.sql`. `0012` must be applied first — everything here reads the numbers settlement writes, so
+`0017_published_workflows.sql`, then `0018_published_media.sql`, then
+`0019_fix_ambiguous_balance.sql`. `0012` must be applied first — everything here reads the numbers settlement writes, so
 applying it on top of the broken function would build a history page that
 faithfully reports every workflow as having cost nothing.
 
