@@ -166,7 +166,7 @@ describe("CostDialog", () => {
       expect(closeButton).toBeInTheDocument();
     });
 
-    it("should render Incurred Cost section", () => {
+    it("should render the spend section", () => {
       render(
         <CostDialog
           predictedCost={createGeminiOnlyCost()}
@@ -175,12 +175,12 @@ describe("CostDialog", () => {
         />
       );
 
-      expect(screen.getByText("Incurred Cost")).toBeInTheDocument();
+      expect(screen.getByText("Spent so far")).toBeInTheDocument();
     });
   });
 
-  describe("Gemini Cost Section", () => {
-    it("should render Gemini Cost section when Gemini models exist", () => {
+  describe("Provider Groups", () => {
+    it("should render the run estimate and group by provider", () => {
       render(
         <CostDialog
           predictedCost={createGeminiOnlyCost()}
@@ -189,10 +189,11 @@ describe("CostDialog", () => {
         />
       );
 
-      expect(screen.getByText("Gemini Cost")).toBeInTheDocument();
+      expect(screen.getByText("One full run")).toBeInTheDocument();
+      expect(screen.getByText("Gemini")).toBeInTheDocument();
     });
 
-    it("should display formatted Gemini cost total", () => {
+    it("should display the provider total alongside the run total", () => {
       render(
         <CostDialog
           predictedCost={createGeminiOnlyCost()}
@@ -201,7 +202,9 @@ describe("CostDialog", () => {
         />
       );
 
-      expect(screen.getByText("$0.46")).toBeInTheDocument();
+      // Gemini is the only provider here, so its group total equals the run
+      // total and the same figure is rendered twice, once in each place.
+      expect(screen.getAllByText("$0.46")).toHaveLength(2);
     });
 
     it("should render per-model cost rows with counts", () => {
@@ -256,7 +259,7 @@ describe("CostDialog", () => {
   });
 
   describe("External Providers Section", () => {
-    it("should render External Providers section when external models exist", () => {
+    it("should name each provider that appears in the breakdown", () => {
       render(
         <CostDialog
           predictedCost={createMultiProviderCost()}
@@ -265,10 +268,11 @@ describe("CostDialog", () => {
         />
       );
 
-      expect(screen.getByText("External Providers")).toBeInTheDocument();
+      expect(screen.getByText("fal.ai")).toBeInTheDocument();
+      expect(screen.getByText("Replicate")).toBeInTheDocument();
     });
 
-    it("should show node count in External Providers header", () => {
+    it("should show the node count in the run header", () => {
       render(
         <CostDialog
           predictedCost={createMultiProviderCost()}
@@ -277,11 +281,12 @@ describe("CostDialog", () => {
         />
       );
 
-      // 2 fal + 2 replicate = 4 nodes
-      expect(screen.getByText("4 nodes")).toBeInTheDocument();
+      expect(
+        screen.getByText(/7 nodes that spend API credits/)
+      ).toBeInTheDocument();
     });
 
-    it("should show singular node when only 1 external node", () => {
+    it("should say node, singular, for a one-node workflow", () => {
       render(
         <CostDialog
           predictedCost={{
@@ -303,7 +308,9 @@ describe("CostDialog", () => {
         />
       );
 
-      expect(screen.getByText("1 node")).toBeInTheDocument();
+      expect(
+        screen.getByText(/1 node that spend API credits/)
+      ).toBeInTheDocument();
     });
 
     it("should render provider icons for external providers", () => {
@@ -345,7 +352,7 @@ describe("CostDialog", () => {
       expect(screen.getByText(/2x Stability SDXL/)).toBeInTheDocument();
     });
 
-    it("should show View model links for external providers", () => {
+    it("should offer a price lookup link for unpriced models", () => {
       render(
         <CostDialog
           predictedCost={createMultiProviderCost()}
@@ -354,22 +361,36 @@ describe("CostDialog", () => {
         />
       );
 
-      const viewModelLinks = screen.getAllByRole("link", { name: /View model/i });
-      expect(viewModelLinks.length).toBeGreaterThanOrEqual(1);
+      const lookupLinks = screen.getAllByRole("link", {
+        name: /Look up this model/i,
+      });
+      expect(lookupLinks.length).toBeGreaterThanOrEqual(1);
     });
 
     it("should link to correct fal.ai model page", () => {
       render(
         <CostDialog
-          predictedCost={createMultiProviderCost()}
+          predictedCost={{
+            totalCost: 0,
+            breakdown: [{
+              provider: "fal",
+              modelId: "fal-ai/fast-sdxl",
+              modelName: "Fast SDXL",
+              count: 2,
+              unitCost: null,
+              unit: "image",
+              subtotal: null,
+            }],
+            nodeCount: 2,
+            unknownPricingCount: 2,
+          }}
           incurredCost={0}
           onClose={vi.fn()}
         />
       );
 
-      const links = screen.getAllByRole("link", { name: /View model/i });
-      const falLink = links.find(link => link.getAttribute("href")?.includes("fal.ai"));
-      expect(falLink).toHaveAttribute("href", "https://fal.ai/models/fal-ai/fast-sdxl");
+      const link = screen.getByRole("link", { name: /Look up this model/i });
+      expect(link).toHaveAttribute("href", "https://fal.ai/models/fal-ai/fast-sdxl");
     });
 
     it("should link to correct Replicate model page", () => {
@@ -381,7 +402,7 @@ describe("CostDialog", () => {
         />
       );
 
-      const links = screen.getAllByRole("link", { name: /View model/i });
+      const links = screen.getAllByRole("link", { name: /Look up this model/i });
       const replicateLink = links.find(link => link.getAttribute("href")?.includes("replicate.com"));
       expect(replicateLink).toHaveAttribute("href", "https://replicate.com/stability-ai/sdxl");
     });
@@ -408,11 +429,11 @@ describe("CostDialog", () => {
         />
       );
 
-      const link = screen.getByRole("link", { name: /View model/i });
+      const link = screen.getByRole("link", { name: /Look up this model/i });
       expect(link).toHaveAttribute("href", "https://replicate.com/stability-ai/sdxl");
     });
 
-    it("should show pricing varies message", () => {
+    it("should explain why some models have no price", () => {
       render(
         <CostDialog
           predictedCost={createMultiProviderCost()}
@@ -421,7 +442,9 @@ describe("CostDialog", () => {
         />
       );
 
-      expect(screen.getByText(/Pricing varies by model, hardware, and usage/)).toBeInTheDocument();
+      expect(
+        screen.getByText(/provider publishes no price/)
+      ).toBeInTheDocument();
     });
 
     it("should not show External Providers section when no external models", () => {
@@ -452,7 +475,9 @@ describe("CostDialog", () => {
         />
       );
 
-      expect(screen.getByText("No generation nodes in workflow")).toBeInTheDocument();
+      expect(
+        screen.getByText("No nodes in this workflow spend API credits")
+      ).toBeInTheDocument();
     });
   });
 
@@ -492,7 +517,9 @@ describe("CostDialog", () => {
         />
       );
 
-      expect(screen.getByText("Actual API spend from Gemini generations")).toBeInTheDocument();
+      expect(
+        screen.getByText(/Charged as each generation completes/)
+      ).toBeInTheDocument();
     });
   });
 
@@ -604,7 +631,7 @@ describe("CostDialog", () => {
   });
 
   describe("Pricing Note", () => {
-    it("should display Gemini pricing and external provider note", () => {
+    it("should display the estimate caveat", () => {
       render(
         <CostDialog
           predictedCost={createGeminiOnlyCost()}
@@ -613,8 +640,9 @@ describe("CostDialog", () => {
         />
       );
 
-      expect(screen.getByText(/Gemini pricing: \$0\.034-\$0\.24\/image/)).toBeInTheDocument();
-      expect(screen.getByText(/External providers not tracked/)).toBeInTheDocument();
+      expect(
+        screen.getByText(/Estimates assume one run per node/)
+      ).toBeInTheDocument();
     });
   });
 });

@@ -1,5 +1,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { NextRequest } from "next/server";
+import nodePath from "path";
+
+// Same Windows problem as /api/workflow: the route resolves paths through
+// node's `path`, so POSIX literals resolve to something else entirely and read
+// as traversal attempts. Resolve the fixtures the same way.
+const WORKFLOW_DIR = nodePath.resolve("/test/workflow");
+const NEW_WORKFLOW_DIR = nodePath.resolve("/test/new-workflow");
+
+// The validator's blocklist names only POSIX directories — see the note in
+// src/app/api/workflow/__tests__/route.test.ts.
+const itPosix = process.platform === "win32" ? it.skip : it;
 
 const mockStat = vi.fn();
 const mockMkdir = vi.fn();
@@ -45,7 +56,7 @@ describe("/api/workflow-images route", () => {
       mockWriteFile.mockResolvedValue(undefined);
 
       const request = createMockPostRequest({
-        workflowPath: "/test/workflow",
+        workflowPath: WORKFLOW_DIR,
         imageId: "img_123",
         folder: "inputs",
         imageData: "data:image/png;base64,aGVsbG8=",
@@ -56,8 +67,8 @@ describe("/api/workflow-images route", () => {
 
       expect(data.success).toBe(true);
       expect(data.imageId).toBe("img_123");
-      expect(data.filePath).toBe("/test/workflow/inputs/img_123.png");
-      expect(mockMkdir).toHaveBeenCalledWith("/test/workflow/inputs", { recursive: true });
+      expect(data.filePath).toBe(nodePath.join(WORKFLOW_DIR, "inputs", "img_123.png"));
+      expect(mockMkdir).toHaveBeenCalledWith(nodePath.join(WORKFLOW_DIR, "inputs"), { recursive: true });
       expect(mockWriteFile).toHaveBeenCalled();
     });
 
@@ -67,7 +78,7 @@ describe("/api/workflow-images route", () => {
       mockWriteFile.mockResolvedValue(undefined);
 
       const request = createMockPostRequest({
-        workflowPath: "/test/new-workflow",
+        workflowPath: NEW_WORKFLOW_DIR,
         imageId: "img_123",
         folder: "inputs",
         imageData: "data:image/png;base64,aGVsbG8=",
@@ -77,8 +88,8 @@ describe("/api/workflow-images route", () => {
       const data = await response.json();
 
       expect(data.success).toBe(true);
-      expect(mockMkdir).toHaveBeenCalledWith("/test/new-workflow", { recursive: true });
-      expect(mockMkdir).toHaveBeenCalledWith("/test/new-workflow/inputs", { recursive: true });
+      expect(mockMkdir).toHaveBeenCalledWith(NEW_WORKFLOW_DIR, { recursive: true });
+      expect(mockMkdir).toHaveBeenCalledWith(nodePath.join(NEW_WORKFLOW_DIR, "inputs"), { recursive: true });
     });
 
     it("should reject path traversal attempts", async () => {
@@ -113,7 +124,7 @@ describe("/api/workflow-images route", () => {
       expect(data.error).toBe("Path must be absolute");
     });
 
-    it("should reject dangerous system paths", async () => {
+    itPosix("should reject dangerous system paths", async () => {
       const request = createMockPostRequest({
         workflowPath: "/etc/workflows",
         imageId: "img_123",

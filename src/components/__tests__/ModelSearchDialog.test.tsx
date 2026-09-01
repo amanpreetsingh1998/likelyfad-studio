@@ -117,7 +117,16 @@ describe("ModelSearchDialog", () => {
     // Default mock fetch response
     mockFetch.mockResolvedValue({
       ok: true,
-      json: () => Promise.resolve({ success: true, models: sampleModels }),
+      json: () =>
+        Promise.resolve({
+          success: true,
+          models: sampleModels,
+          // The dialog renders a provider button only for providers the route
+          // reports here, so omitting it leaves nothing to filter by.
+          availableProviders: [
+            ...new Set(sampleModels.map((m) => m.provider)),
+          ],
+        }),
     });
 
     // Default store mock

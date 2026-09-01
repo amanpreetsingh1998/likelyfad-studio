@@ -1,5 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
+import nodePath from "path";
+
+/**
+ * The route walks directories with path.join(), which produces backslashes on
+ * Windows, while this harness keys its fake filesystem by POSIX strings. Every
+ * child lookup therefore missed and the walk returned nothing, so five tests
+ * asserted against an empty array on any Windows checkout.
+ *
+ * Normalising both sides keeps the fixtures readable as POSIX paths while
+ * matching whatever separator the route actually produces.
+ */
+const norm = (p: string) => nodePath.normalize(p);
 
 const mockReaddir = vi.fn();
 const mockStat = vi.fn();
@@ -59,8 +71,15 @@ function fileEntry(name: string) {
 type FsLayout = Record<string, (ReturnType<typeof dirEntry> | ReturnType<typeof fileEntry>)[] | string[]>;
 
 function setupFs(layout: FsLayout, files: Record<string, string> = {}) {
+  const layoutN: FsLayout = Object.fromEntries(
+    Object.entries(layout).map(([k, v]) => [norm(k), v])
+  );
+  const filesN: Record<string, string> = Object.fromEntries(
+    Object.entries(files).map(([k, v]) => [norm(k), v])
+  );
+
   mockReaddir.mockImplementation(async (dirPath: string, opts?: { withFileTypes?: boolean }) => {
-    const entries = layout[dirPath];
+    const entries = layoutN[norm(dirPath)];
     if (!entries) throw new Error(`ENOENT: no such directory '${dirPath}'`);
     // If called withFileTypes, return the dirent-like objects; otherwise return string[]
     if (opts?.withFileTypes) {
@@ -72,7 +91,7 @@ function setupFs(layout: FsLayout, files: Record<string, string> = {}) {
   });
 
   mockOpen.mockImplementation(async (filePath: string) => {
-    const content = files[filePath];
+    const content = filesN[norm(filePath)];
     if (content === undefined) throw new Error(`ENOENT: ${filePath}`);
     return makeBufReader(content);
   });
@@ -155,7 +174,7 @@ describe("/api/list-workflows route", () => {
       expect(data.success).toBe(true);
       expect(data.workflows).toHaveLength(1);
       expect(data.workflows[0].name).toBe("Cool Project");
-      expect(data.workflows[0].directoryPath).toBe("/home/user/projects/my-project");
+      expect(data.workflows[0].directoryPath).toBe(norm("/home/user/projects/my-project"));
       expect(data.workflows[0].relativePath).toBe("my-project");
       expect(data.workflows[0].lastModified).toBe(1700000000000);
     });
@@ -252,7 +271,7 @@ describe("/api/list-workflows route", () => {
       expect(names).toContain("Nested Project");
 
       const nested = data.workflows.find((w: { name: string }) => w.name === "Nested Project");
-      expect(nested.relativePath).toBe("category/nested-project");
+      expect(nested.relativePath).toBe(nodePath.join("category", "nested-project"));
 
       const top = data.workflows.find((w: { name: string }) => w.name === "Top Project");
       expect(top.relativePath).toBe("top-project");

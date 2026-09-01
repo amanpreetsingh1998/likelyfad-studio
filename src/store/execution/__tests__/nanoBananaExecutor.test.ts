@@ -103,6 +103,7 @@ describe("executeNanoBanana", () => {
     const node = makeNode();
     mockFetch.mockResolvedValueOnce({
       ok: true,
+      headers: new Headers(),
       json: () => Promise.resolve({ success: true, image: "data:image/png;base64,result" }),
     });
 
@@ -121,6 +122,7 @@ describe("executeNanoBanana", () => {
     const node = makeNode();
     mockFetch.mockResolvedValueOnce({
       ok: true,
+      headers: new Headers(),
       json: () => Promise.resolve({ success: true, image: "data:image/png;base64,result" }),
     });
 
@@ -140,6 +142,7 @@ describe("executeNanoBanana", () => {
     const node = makeNode();
     mockFetch.mockResolvedValueOnce({
       ok: true,
+      headers: new Headers(),
       json: () => Promise.resolve({ success: true, image: "data:image/png;base64,result" }),
     });
 
@@ -158,6 +161,7 @@ describe("executeNanoBanana", () => {
     const node = makeNode();
     mockFetch.mockResolvedValueOnce({
       ok: true,
+      headers: new Headers(),
       json: () => Promise.resolve({ success: true, image: "data:image/png;base64,result" }),
     });
 
@@ -176,6 +180,7 @@ describe("executeNanoBanana", () => {
     const node = makeNode();
     mockFetch.mockResolvedValueOnce({
       ok: true,
+      headers: new Headers(),
       json: () => Promise.resolve({ success: true, image: "data:image/png;base64,result" }),
     });
 
@@ -191,6 +196,7 @@ describe("executeNanoBanana", () => {
     });
     mockFetch.mockResolvedValueOnce({
       ok: true,
+      headers: new Headers(),
       json: () => Promise.resolve({ success: true, image: "data:image/png;base64,result" }),
     });
 
@@ -206,6 +212,7 @@ describe("executeNanoBanana", () => {
     const node = makeNode();
     mockFetch.mockResolvedValueOnce({
       ok: false,
+      headers: new Headers(),
       status: 500,
       statusText: "Internal Server Error",
       text: () => Promise.resolve('{"error": "Server exploded"}'),
@@ -225,6 +232,7 @@ describe("executeNanoBanana", () => {
     const node = makeNode();
     mockFetch.mockResolvedValueOnce({
       ok: true,
+      headers: new Headers(),
       json: () => Promise.resolve({ success: false, error: "Bad prompt" }),
     });
 
@@ -246,6 +254,7 @@ describe("executeNanoBanana", () => {
     });
     mockFetch.mockResolvedValueOnce({
       ok: true,
+      headers: new Headers(),
       json: () => Promise.resolve({ success: true, image: "data:image/png;base64,result" }),
     });
 
@@ -273,6 +282,7 @@ describe("executeNanoBanana", () => {
     });
     mockFetch.mockResolvedValueOnce({
       ok: true,
+      headers: new Headers(),
       json: () => Promise.resolve({ success: true, image: "data:image/png;base64,result" }),
     });
 
@@ -300,6 +310,7 @@ describe("executeNanoBanana", () => {
     // Enable regenerate mode: fallback to stored inputs
     mockFetch.mockResolvedValueOnce({
       ok: true,
+      headers: new Headers(),
       json: () => Promise.resolve({ success: true, image: "data:image/png;base64,result" }),
     });
 
@@ -327,6 +338,7 @@ describe("executeNanoBanana", () => {
 
     mockFetch.mockResolvedValueOnce({
       ok: true,
+      headers: new Headers(),
       json: () => Promise.resolve({ success: true, image: "data:image/png;base64,result" }),
     });
 
@@ -348,10 +360,12 @@ describe("executeNanoBanana", () => {
     mockFetch
       .mockResolvedValueOnce({
         ok: true,
+        headers: new Headers(),
         json: () => Promise.resolve({ success: false, error: "Primary boom" }),
       })
       .mockResolvedValueOnce({
         ok: true,
+        headers: new Headers(),
         json: () => Promise.resolve({ success: true, image: "data:image/png;base64,fallback" }),
       });
 

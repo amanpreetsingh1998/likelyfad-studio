@@ -81,6 +81,7 @@ describe("executeGenerateVideo", () => {
     const node = makeNode();
     mockFetch.mockResolvedValueOnce({
       ok: true,
+      headers: new Headers(),
       json: () => Promise.resolve({ success: true, video: "data:video/mp4;base64,output" }),
     });
     const ctx = makeCtx(node, {
@@ -111,6 +112,7 @@ describe("executeGenerateVideo", () => {
     const node = makeNode();
     mockFetch.mockResolvedValueOnce({
       ok: true,
+      headers: new Headers(),
       json: () => Promise.resolve({ success: true, video: "data:video/mp4;base64,output" }),
     });
 
@@ -128,6 +130,7 @@ describe("executeGenerateVideo", () => {
     const node = makeNode();
     mockFetch.mockResolvedValueOnce({
       ok: true,
+      headers: new Headers(),
       json: () => Promise.resolve({ success: true, video: "data:video/mp4;base64,output" }),
     });
 
@@ -143,6 +146,7 @@ describe("executeGenerateVideo", () => {
     const node = makeNode();
     mockFetch.mockResolvedValueOnce({
       ok: true,
+      headers: new Headers(),
       json: () => Promise.resolve({ success: true, video: "data:video/mp4;base64,output" }),
     });
 
@@ -161,6 +165,7 @@ describe("executeGenerateVideo", () => {
     const node = makeNode();
     mockFetch.mockResolvedValueOnce({
       ok: true,
+      headers: new Headers(),
       json: () => Promise.resolve({ success: true, videoUrl: "https://cdn.fal.media/video.mp4" }),
     });
 
@@ -178,6 +183,7 @@ describe("executeGenerateVideo", () => {
     const node = makeNode();
     mockFetch.mockResolvedValueOnce({
       ok: true,
+      headers: new Headers(),
       json: () => Promise.resolve({ success: true, image: "data:image/png;base64,preview" }),
     });
 
@@ -197,6 +203,7 @@ describe("executeGenerateVideo", () => {
     });
     mockFetch.mockResolvedValueOnce({
       ok: true,
+      headers: new Headers(),
       json: () => Promise.resolve({ success: true, video: "data:video/mp4;base64,out" }),
     });
 
@@ -212,6 +219,7 @@ describe("executeGenerateVideo", () => {
     const node = makeNode();
     mockFetch.mockResolvedValueOnce({
       ok: false,
+      headers: new Headers(),
       status: 500,
       statusText: "Internal Server Error",
       text: () => Promise.resolve('{"error": "Video gen failed"}'),
@@ -225,6 +233,7 @@ describe("executeGenerateVideo", () => {
     const node = makeNode();
     mockFetch.mockResolvedValueOnce({
       ok: true,
+      headers: new Headers(),
       json: () => Promise.resolve({ success: false, error: "Bad video" }),
     });
 
@@ -250,6 +259,7 @@ describe("executeGenerateVideo", () => {
     });
     mockFetch.mockResolvedValueOnce({
       ok: true,
+      headers: new Headers(),
       json: () => Promise.resolve({ success: true, video: "data:video/mp4;base64,out" }),
     });
 
@@ -270,6 +280,7 @@ describe("executeGenerateVideo", () => {
     const node = makeNode({ videoHistory: existingHistory });
     mockFetch.mockResolvedValueOnce({
       ok: true,
+      headers: new Headers(),
       json: () => Promise.resolve({ success: true, video: "data:video/mp4;base64,out" }),
     });
 
@@ -298,10 +309,12 @@ describe("executeGenerateVideo", () => {
     mockFetch
       .mockResolvedValueOnce({
         ok: true,
+        headers: new Headers(),
         json: () => Promise.resolve({ success: false, error: "Primary video boom" }),
       })
       .mockResolvedValueOnce({
         ok: true,
+        headers: new Headers(),
         json: () => Promise.resolve({ success: true, video: "data:video/mp4;base64,fallback" }),
       });
 

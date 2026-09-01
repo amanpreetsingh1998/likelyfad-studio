@@ -31,6 +31,23 @@ vi.mock("@/components/WorkflowBrowserModal", () => ({
   ),
 }));
 
+// The header's children read the session (the credits badge, the save-template
+// modal). These tests predate auth and are about the header's own controls, so
+// the provider is stubbed with a settled, signed-in session rather than each
+// test being wrapped in a real <AuthProvider>.
+vi.mock("@/components/auth/AuthProvider", () => ({
+  useAuth: () => ({
+    user: { id: "test-user", email: "test@example.com" },
+    loading: false,
+    signInWithGoogle: vi.fn(),
+    signInWithPassword: vi.fn(),
+    signUpWithPassword: vi.fn(),
+    sendPasswordReset: vi.fn(),
+    signOut: vi.fn(),
+  }),
+  AuthProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
+
 // Mock CostIndicator
 vi.mock("@/components/CostIndicator", () => ({
   CostIndicator: () => <div data-testid="cost-indicator">$0.00</div>,
@@ -58,6 +75,12 @@ const createDefaultState = (overrides = {}) => ({
   viewedCommentNodeIds: new Set<string>(),
   markCommentViewed: mockMarkCommentViewed,
   setNavigationTarget: mockSetNavigationTarget,
+  // Header subscribes to nodes and hands them to SaveTemplateModal, which
+  // derives provider tags and a cost estimate from them. Without these the
+  // modal throws "nodes is not iterable" during render and takes every test
+  // in this file down with it.
+  nodes: [],
+  edges: [],
   ...overrides,
 });
 
@@ -78,23 +101,26 @@ describe("Header", () => {
       expect(screen.getByText("Likelyfad Studio")).toBeInTheDocument();
     });
 
-    it("should render the banana icon", () => {
+    it("should render the app icon", () => {
       render(<Header />);
       const icon = screen.getByAltText("Likelyfad Studio");
       expect(icon).toBeInTheDocument();
-      expect(icon).toHaveAttribute("src", "/banana_icon.png");
+      expect(icon).toHaveAttribute("src", "/ls-icon.png");
     });
 
-    it("should render 'Made by Willie' link", () => {
+    it("should render the author link", () => {
       render(<Header />);
-      const link = screen.getByText("Made by Willie");
-      expect(link).toHaveAttribute("href", "https://x.com/ReflctWillie");
+      const link = screen.getByText("Made by Aman");
+      expect(link).toHaveAttribute("href", "https://x.com/amanxdesign");
     });
 
-    it("should render Discord support link", () => {
+    it("should render the Instagram link", () => {
       render(<Header />);
-      const link = screen.getByTitle("Support");
-      expect(link).toHaveAttribute("href", "https://discord.com/invite/89Nr6EKkTf");
+      const link = screen.getByTitle("Instagram");
+      expect(link).toHaveAttribute(
+        "href",
+        "https://www.instagram.com/amanxdesign"
+      );
     });
   });
 

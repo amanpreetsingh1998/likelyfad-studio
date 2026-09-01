@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { NextRequest } from "next/server";
+import nodePath from "path";
 import * as crypto from "crypto";
 
 // Mock fs/promises before importing the route
@@ -84,7 +85,9 @@ describe("/api/save-generation route", () => {
       expect(data.isDuplicate).toBe(false);
       expect(data.filename).toContain(expectedHash);
       expect(data.filename.endsWith(".png")).toBe(true);
-      expect(data.filePath).toContain("/test/generations/");
+      // Built with `path` so the separator matches the host — the route joins
+      // with path.join, which yields backslashes on Windows.
+      expect(data.filePath).toContain(nodePath.join("/test/generations") + nodePath.sep);
       expect(mockWriteFile).toHaveBeenCalled();
     });
 

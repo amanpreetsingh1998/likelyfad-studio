@@ -2,6 +2,34 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { CostIndicator } from "@/components/CostIndicator";
 import { WorkflowNode } from "@/types";
+import { calculatePredictedCost } from "@/utils/costCalculator";
+import { creditsForUsd } from "@/lib/credits/rates";
+
+/**
+ * What the indicator should show for a set of nodes.
+ *
+ * This file used to assert dollar strings ("$0.04"). The header was changed to
+ * bill and display credits, so every one of those assertions was checking a UI
+ * that no longer exists — and none of it was caught, because the file was one
+ * of those the ERR_REQUIRE_ESM worker crash silently dropped from the run.
+ *
+ * Derived rather than hard-coded, and deliberately so: each item is rounded up
+ * to a whole credit before multiplying, which is the rule the server bills by
+ * (CLAUDE.md, "How charging works"). Pinning literals here would mean a change
+ * to MARGIN or USD_INR_RATE breaks seventeen component tests that are not about
+ * pricing at all.
+ */
+function expectedCredits(nodes: WorkflowNode[]): string {
+  const { breakdown } = calculatePredictedCost(nodes, { customPrices: {} });
+  const credits = breakdown.reduce(
+    (sum, item) =>
+      item.subtotal === null || item.unitCost === null
+        ? sum
+        : sum + creditsForUsd(item.unitCost) * item.count,
+    0
+  );
+  return `${credits.toLocaleString()} cr`;
+}
 
 // Mock the workflow store
 const mockUseWorkflowStore = vi.fn();
@@ -72,7 +100,7 @@ describe("CostIndicator", () => {
 
       render(<CostIndicator />);
 
-      expect(screen.getByTitle("View cost details")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /cr/ })).toBeInTheDocument();
     });
 
     it("should render when incurredCost is greater than 0", () => {
@@ -82,7 +110,7 @@ describe("CostIndicator", () => {
 
       render(<CostIndicator />);
 
-      expect(screen.getByTitle("View cost details")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /cr/ })).toBeInTheDocument();
     });
   });
 
@@ -106,7 +134,7 @@ describe("CostIndicator", () => {
 
       render(<CostIndicator />);
 
-      expect(screen.getByText("$0.00")).toBeInTheDocument();
+      expect(screen.getByText(expectedCredits(nodes))).toBeInTheDocument();
     });
   });
 
@@ -131,7 +159,7 @@ describe("CostIndicator", () => {
       render(<CostIndicator />);
 
       // nano-banana costs $0.039/image
-      expect(screen.getByText("$0.04")).toBeInTheDocument();
+      expect(screen.getByText(expectedCredits(nodes))).toBeInTheDocument();
     });
 
     it("should format cost correctly for nano-banana-2-lite model", () => {
@@ -154,7 +182,7 @@ describe("CostIndicator", () => {
       render(<CostIndicator />);
 
       // nano-banana-2-lite costs $0.034/image (1K only)
-      expect(screen.getByText("$0.03")).toBeInTheDocument();
+      expect(screen.getByText(expectedCredits(nodes))).toBeInTheDocument();
     });
 
     it("should format cost correctly for nano-banana-pro model", () => {
@@ -177,7 +205,7 @@ describe("CostIndicator", () => {
       render(<CostIndicator />);
 
       // nano-banana-pro 1K costs $0.134/image
-      expect(screen.getByText("$0.13")).toBeInTheDocument();
+      expect(screen.getByText(expectedCredits(nodes))).toBeInTheDocument();
     });
 
     it("should format cost correctly for 4K resolution", () => {
@@ -200,7 +228,7 @@ describe("CostIndicator", () => {
       render(<CostIndicator />);
 
       // nano-banana-pro 4K costs $0.24/image
-      expect(screen.getByText("$0.24")).toBeInTheDocument();
+      expect(screen.getByText(expectedCredits(nodes))).toBeInTheDocument();
     });
 
     it("should sum costs for multiple generation nodes", () => {
@@ -232,7 +260,7 @@ describe("CostIndicator", () => {
       render(<CostIndicator />);
 
       // 2 * $0.039 = $0.078
-      expect(screen.getByText("$0.08")).toBeInTheDocument();
+      expect(screen.getByText(expectedCredits(nodes))).toBeInTheDocument();
     });
   });
 
@@ -256,7 +284,7 @@ describe("CostIndicator", () => {
 
       render(<CostIndicator />);
 
-      const button = screen.getByTitle("View cost details");
+      const button = screen.getByRole("button", { name: /cr/ });
       fireEvent.click(button);
 
       expect(screen.getByTestId("cost-dialog")).toBeInTheDocument();
@@ -282,7 +310,7 @@ describe("CostIndicator", () => {
       render(<CostIndicator />);
 
       // Open dialog
-      fireEvent.click(screen.getByTitle("View cost details"));
+      fireEvent.click(screen.getByRole("button", { name: /cr/ }));
       expect(screen.getByTestId("cost-dialog")).toBeInTheDocument();
 
       // Close dialog
@@ -309,7 +337,7 @@ describe("CostIndicator", () => {
 
       render(<CostIndicator />);
 
-      fireEvent.click(screen.getByTitle("View cost details"));
+      fireEvent.click(screen.getByRole("button", { name: /cr/ }));
 
       // nano-banana costs $0.039
       expect(screen.getByTestId("dialog-predicted-cost")).toHaveTextContent("$0.04");
@@ -334,7 +362,7 @@ describe("CostIndicator", () => {
 
       render(<CostIndicator />);
 
-      fireEvent.click(screen.getByTitle("View cost details"));
+      fireEvent.click(screen.getByRole("button", { name: /cr/ }));
 
       expect(screen.getByTestId("dialog-incurred-cost")).toHaveTextContent("$1.25");
     });
@@ -361,7 +389,7 @@ describe("CostIndicator", () => {
       const { rerender } = render(<CostIndicator />);
 
       // Initial cost: $0.039 = $0.04
-      expect(screen.getByText("$0.04")).toBeInTheDocument();
+      expect(screen.getByText(expectedCredits(initialNodes))).toBeInTheDocument();
 
       // Update to more nodes
       const updatedNodes: WorkflowNode[] = [
@@ -384,7 +412,7 @@ describe("CostIndicator", () => {
       rerender(<CostIndicator />);
 
       // Updated cost: $0.039 + $0.24 = $0.279 = $0.28
-      expect(screen.getByText("$0.28")).toBeInTheDocument();
+      expect(screen.getByText(expectedCredits(updatedNodes))).toBeInTheDocument();
     });
 
     it("should update when incurredCost changes", () => {
@@ -395,7 +423,7 @@ describe("CostIndicator", () => {
       const { rerender } = render(<CostIndicator />);
 
       // $0.00 predicted (no generation nodes), but should show due to incurredCost
-      expect(screen.getByText("$0.00")).toBeInTheDocument();
+      expect(screen.getByText("0 cr")).toBeInTheDocument();
 
       // Update incurredCost
       mockUseWorkflowStore.mockImplementation((selector) => {
@@ -405,7 +433,7 @@ describe("CostIndicator", () => {
       rerender(<CostIndicator />);
 
       // Still shows predicted cost $0.00 in the button
-      expect(screen.getByText("$0.00")).toBeInTheDocument();
+      expect(screen.getByText("0 cr")).toBeInTheDocument();
     });
   });
 
@@ -469,7 +497,7 @@ describe("CostIndicator", () => {
 
       // Only the nanoBanana node counts: $0.039 = $0.04 (no legacy 4-cell
       // splitGrid estimate of $0.156 added on top)
-      expect(screen.getByText("$0.04")).toBeInTheDocument();
+      expect(screen.getByText(expectedCredits(nodes))).toBeInTheDocument();
     });
   });
 
@@ -577,7 +605,7 @@ describe("CostIndicator", () => {
 
       render(<CostIndicator />);
 
-      expect(screen.getByTitle("View cost details")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /cr/ })).toBeInTheDocument();
     });
 
     it("should render when a nanoBanana node has no selectedModel (legacy Gemini)", () => {
@@ -599,7 +627,7 @@ describe("CostIndicator", () => {
 
       render(<CostIndicator />);
 
-      expect(screen.getByTitle("View cost details")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /cr/ })).toBeInTheDocument();
     });
 
     it("should not render when mix of Gemini and non-Gemini nodes exist", () => {

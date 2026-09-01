@@ -99,9 +99,9 @@ describe("ModelParameters", () => {
       render(<ModelParameters {...defaultProps} modelId="test/model" />);
 
       await waitFor(() => {
+        // Called through deduplicatedFetch, which passes no options object.
         expect(global.fetch).toHaveBeenCalledWith(
-          "/api/models/test%2Fmodel?provider=replicate",
-          expect.any(Object)
+          "/api/models/test%2Fmodel?provider=replicate"
         );
       });
     });

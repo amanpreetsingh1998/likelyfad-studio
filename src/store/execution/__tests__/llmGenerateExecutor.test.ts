@@ -86,6 +86,7 @@ describe("executeLlmGenerate", () => {
     const node = makeNode();
     mockFetch.mockResolvedValueOnce({
       ok: true,
+      headers: new Headers(),
       json: () => Promise.resolve({ success: true, text: "generated text" }),
     });
 
@@ -103,6 +104,7 @@ describe("executeLlmGenerate", () => {
     const node = makeNode();
     mockFetch.mockResolvedValueOnce({
       ok: true,
+      headers: new Headers(),
       json: () => Promise.resolve({ success: true, text: "result text" }),
     });
 
@@ -138,6 +140,7 @@ describe("executeLlmGenerate", () => {
     });
     mockFetch.mockResolvedValueOnce({
       ok: true,
+      headers: new Headers(),
       json: () => Promise.resolve({ success: true, text: "description" }),
     });
 
@@ -151,6 +154,7 @@ describe("executeLlmGenerate", () => {
     const node = makeNode();
     mockFetch.mockResolvedValueOnce({
       ok: true,
+      headers: new Headers(),
       json: () => Promise.resolve({ success: true, text: "result" }),
     });
 
@@ -165,6 +169,7 @@ describe("executeLlmGenerate", () => {
     const node = makeNode();
     mockFetch.mockResolvedValueOnce({
       ok: true,
+      headers: new Headers(),
       json: () => Promise.resolve({ success: true, text: "generated output" }),
     });
 
@@ -182,6 +187,7 @@ describe("executeLlmGenerate", () => {
     const node = makeNode();
     mockFetch.mockResolvedValueOnce({
       ok: false,
+      headers: new Headers(),
       status: 500,
       text: () => Promise.resolve('{"error": "LLM down"}'),
     });
@@ -194,6 +200,7 @@ describe("executeLlmGenerate", () => {
     const node = makeNode();
     mockFetch.mockResolvedValueOnce({
       ok: true,
+      headers: new Headers(),
       json: () => Promise.resolve({ success: false, error: "Token limit exceeded" }),
     });
 
@@ -218,6 +225,7 @@ describe("executeLlmGenerate", () => {
     });
     mockFetch.mockResolvedValueOnce({
       ok: true,
+      headers: new Headers(),
       json: () => Promise.resolve({ success: true, text: "result" }),
     });
 
@@ -241,10 +249,12 @@ describe("executeLlmGenerate", () => {
     mockFetch
       .mockResolvedValueOnce({
         ok: true,
+        headers: new Headers(),
         json: () => Promise.resolve({ success: false, error: "Primary LLM boom" }),
       })
       .mockResolvedValueOnce({
         ok: true,
+        headers: new Headers(),
         json: () => Promise.resolve({ success: true, text: "fallback output" }),
       });
 
@@ -286,10 +296,12 @@ describe("executeLlmGenerate", () => {
     mockFetch
       .mockResolvedValueOnce({
         ok: true,
+        headers: new Headers(),
         json: () => Promise.resolve({ success: false, error: "Claude down" }),
       })
       .mockResolvedValueOnce({
         ok: true,
+        headers: new Headers(),
         json: () => Promise.resolve({ success: true, text: "gemini result" }),
       });
 

@@ -12,6 +12,20 @@ import { act } from "@testing-library/react";
 import { useWorkflowStore } from "../workflowStore";
 import type { WorkflowNode, WorkflowEdge } from "@/types";
 
+/**
+ * The generation calls a mocked fetch received.
+ *
+ * executeWorkflow settles credits by posting to /api/credits/settle when it
+ * exits, so a bare toHaveBeenCalledTimes() on fetch counts one more than the
+ * number of nodes that ran.
+ */
+function generationCalls(mock: { mock: { calls: unknown[][] } }): unknown[][] {
+  return mock.mock.calls.filter(
+    ([url]) => typeof url === "string" && url.includes("/api/generate")
+  );
+}
+
+
 // Mock the Toast hook
 vi.mock("@/components/Toast", () => ({
   useToast: {
@@ -843,6 +857,7 @@ describe("workflowStore integration tests", () => {
       // Mock fetch for API calls
       vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
         ok: true,
+        headers: new Headers(),
         json: () => Promise.resolve({ success: true, image: "data:image/png;base64,generated" }),
         text: () => Promise.resolve(""),
       }));
@@ -1249,6 +1264,7 @@ describe("workflowStore integration tests", () => {
       // Mock fetch for successful API responses
       vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
         ok: true,
+        headers: new Headers(),
         json: () => Promise.resolve({ success: true, image: "data:image/png;base64,generatedImage" }),
         text: () => Promise.resolve(""),
       }));
@@ -1633,6 +1649,7 @@ describe("workflowStore integration tests", () => {
       it("should set node error status on HTTP error response", async () => {
         vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
           ok: false,
+          headers: new Headers(),
           status: 500,
           statusText: "Internal Server Error",
           text: () => Promise.resolve("Server error"),
@@ -1723,11 +1740,17 @@ describe("workflowStore integration tests", () => {
       it("should set isRunning to true during execution", async () => {
         let isRunningDuringExecution = false;
 
-        vi.stubGlobal("fetch", vi.fn().mockImplementation(async () => {
-          // Check isRunning while fetch is in progress
-          isRunningDuringExecution = useWorkflowStore.getState().isRunning;
+        vi.stubGlobal("fetch", vi.fn().mockImplementation(async (url: string) => {
+          // Check isRunning while a *generation* is in progress. executeWorkflow
+          // also posts to /api/credits/settle on its way out, and that fetch
+          // lands after isRunning is already false — sampling it too would
+          // overwrite the answer this test is asking for.
+          if (typeof url === "string" && url.includes("/api/generate")) {
+            isRunningDuringExecution = useWorkflowStore.getState().isRunning;
+          }
           return {
             ok: true,
+            headers: new Headers(),
             json: () => Promise.resolve({ success: true, image: "data:image/png;base64,test" }),
             text: () => Promise.resolve(""),
           };
@@ -1759,6 +1782,7 @@ describe("workflowStore integration tests", () => {
       it("should set isRunning to false after completion", async () => {
         vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
           ok: true,
+          headers: new Headers(),
           json: () => Promise.resolve({ success: true, image: "data:image/png;base64,test" }),
           text: () => Promise.resolve(""),
         }));
@@ -1788,6 +1812,7 @@ describe("workflowStore integration tests", () => {
       it("should set currentNodeIds to empty after completion", async () => {
         vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
           ok: true,
+          headers: new Headers(),
           json: () => Promise.resolve({ success: true, image: "data:image/png;base64,test" }),
           text: () => Promise.resolve(""),
         }));
@@ -1819,6 +1844,7 @@ describe("workflowStore integration tests", () => {
       it("should start execution from specified nodeId", async () => {
         vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
           ok: true,
+          headers: new Headers(),
           json: () => Promise.resolve({ success: true, image: "data:image/png;base64,test" }),
           text: () => Promise.resolve(""),
         }));
@@ -1854,6 +1880,7 @@ describe("workflowStore integration tests", () => {
       it("should resume from pausedAtNodeId", async () => {
         vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
           ok: true,
+          headers: new Headers(),
           json: () => Promise.resolve({ success: true, image: "data:image/png;base64,test" }),
           text: () => Promise.resolve(""),
         }));
@@ -2314,6 +2341,7 @@ describe("workflowStore integration tests", () => {
     beforeEach(() => {
       mockFetch = vi.fn().mockResolvedValue({
         ok: true,
+        headers: new Headers(),
         json: () => Promise.resolve({ success: true, image: "data:image/png;base64,generated" }),
         text: () => Promise.resolve(""),
       });
@@ -2346,8 +2374,10 @@ describe("workflowStore integration tests", () => {
       const p2 = store.executeWorkflow();
       await Promise.all([p1, p2]);
 
-      // Only one execution should have reached fetch (one nanoBanana node)
-      expect(mockFetch).toHaveBeenCalledTimes(1);
+      // Only one execution should have reached a provider (one nanoBanana node).
+      // Counted by URL rather than by total fetches: executeWorkflow also posts
+      // to /api/credits/settle, which is not a node execution.
+      expect(generationCalls(mockFetch)).toHaveLength(1);
     });
 
     it("should set isRunning synchronously before any await", async () => {
@@ -2434,8 +2464,9 @@ describe("workflowStore integration tests", () => {
       const store = useWorkflowStore.getState();
       await store.executeWorkflow();
 
-      // Exactly 3 fetch calls — one per nanoBanana node
-      expect(mockFetch).toHaveBeenCalledTimes(3);
+      // Exactly 3 generation calls — one per nanoBanana node. See above for why
+      // this counts URLs instead of total fetches.
+      expect(generationCalls(mockFetch)).toHaveLength(3);
     });
   });
 

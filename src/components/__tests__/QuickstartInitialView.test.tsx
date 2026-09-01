@@ -27,7 +27,9 @@ describe("QuickstartInitialView", () => {
         />
       );
 
-      expect(screen.getByText("Likelyfad Studio")).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: "Likelyfad Studio" })
+      ).toBeInTheDocument();
       expect(screen.getAllByAltText("").length).toBeGreaterThan(0); // Logo images
     });
 
@@ -203,8 +205,10 @@ describe("QuickstartInitialView", () => {
         />
       );
 
-      const twitterLink = screen.getByText("Willie").closest("a");
-      expect(twitterLink).toHaveAttribute("href", "https://x.com/ReflctWillie");
+      const twitterLink = screen
+        .getAllByRole("link")
+        .find((a) => a.getAttribute("href")?.includes("x.com"));
+      expect(twitterLink).toHaveAttribute("href", "https://x.com/amanxdesign");
       expect(twitterLink).toHaveAttribute("target", "_blank");
       expect(twitterLink).toHaveAttribute("rel", "noopener noreferrer");
     });

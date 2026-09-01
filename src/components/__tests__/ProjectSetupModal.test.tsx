@@ -159,10 +159,8 @@ describe("ProjectSetupModal", () => {
       );
 
       const nameInput = screen.getByPlaceholderText("my-project") as HTMLInputElement;
-      const directoryInput = screen.getByPlaceholderText("/Users/username/projects/my-project") as HTMLInputElement;
 
       expect(nameInput.value).toBe("");
-      expect(directoryInput.value).toBe("");
     });
 
     it("should render Create button in new mode", () => {
@@ -178,7 +176,7 @@ describe("ProjectSetupModal", () => {
       expect(screen.getByText("Create")).toBeInTheDocument();
     });
 
-    it("should render project name and directory inputs", () => {
+    it("should render the project name input", () => {
       render(
         <ProjectSetupModal
           isOpen={true}
@@ -189,20 +187,6 @@ describe("ProjectSetupModal", () => {
       );
 
       expect(screen.getByText("Project Name")).toBeInTheDocument();
-      expect(screen.getByText("Project Directory")).toBeInTheDocument();
-    });
-
-    it("should render Browse button for directory selection", () => {
-      render(
-        <ProjectSetupModal
-          isOpen={true}
-          onClose={vi.fn()}
-          onSave={vi.fn()}
-          mode="new"
-        />
-      );
-
-      expect(screen.getByText("Browse")).toBeInTheDocument();
     });
 
     it("should render embed images checkbox", () => {
@@ -239,10 +223,8 @@ describe("ProjectSetupModal", () => {
       );
 
       const nameInput = screen.getByPlaceholderText("my-project") as HTMLInputElement;
-      const directoryInput = screen.getByPlaceholderText("/Users/username/projects/my-project") as HTMLInputElement;
 
       expect(nameInput.value).toBe("My Existing Project");
-      expect(directoryInput.value).toBe("/path/to/project");
     });
 
     it("should render Save button in settings mode", () => {
@@ -279,10 +261,6 @@ describe("ProjectSetupModal", () => {
         />
       );
 
-      // Fill directory but not name
-      const directoryInput = screen.getByPlaceholderText("/Users/username/projects/my-project");
-      fireEvent.change(directoryInput, { target: { value: "/path/to/project" } });
-
       // Click Create
       fireEvent.click(screen.getByText("Create"));
 
@@ -292,158 +270,6 @@ describe("ProjectSetupModal", () => {
       expect(onSave).not.toHaveBeenCalled();
     });
 
-    it("should show error when project directory is empty", async () => {
-      const onSave = vi.fn();
-
-      render(
-        <ProjectSetupModal
-          isOpen={true}
-          onClose={vi.fn()}
-          onSave={onSave}
-          mode="new"
-        />
-      );
-
-      // Fill name but not directory
-      const nameInput = screen.getByPlaceholderText("my-project");
-      fireEvent.change(nameInput, { target: { value: "My Project" } });
-
-      // Click Create
-      fireEvent.click(screen.getByText("Create"));
-
-      await waitFor(() => {
-        expect(screen.getByText("Project directory is required")).toBeInTheDocument();
-      });
-      expect(onSave).not.toHaveBeenCalled();
-    });
-
-    it("should allow save when directory does not exist yet", async () => {
-      mockFetch.mockImplementation((url: string) => {
-        if (url === "/api/env-status") {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ gemini: false, openai: false, replicate: false, fal: false }),
-          });
-        }
-        if (url.startsWith("/api/workflow")) {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ exists: false }),
-          });
-        }
-        return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) });
-      });
-
-      const onSave = vi.fn();
-
-      render(
-        <ProjectSetupModal
-          isOpen={true}
-          onClose={vi.fn()}
-          onSave={onSave}
-          mode="new"
-        />
-      );
-
-      // Fill both fields
-      fireEvent.change(screen.getByPlaceholderText("my-project"), {
-        target: { value: "My Project" },
-      });
-      fireEvent.change(screen.getByPlaceholderText("/Users/username/projects/my-project"), {
-        target: { value: "/nonexistent/path" },
-      });
-
-      // Click Create
-      fireEvent.click(screen.getByText("Create"));
-
-      await waitFor(() => {
-        expect(onSave).toHaveBeenCalledWith(
-          "mock-workflow-id",
-          "My Project",
-          "/nonexistent/path/My Project"
-        );
-      });
-    });
-
-    it("should show error when path is not absolute", async () => {
-      const onSave = vi.fn();
-
-      render(
-        <ProjectSetupModal
-          isOpen={true}
-          onClose={vi.fn()}
-          onSave={onSave}
-          mode="new"
-        />
-      );
-
-      // Fill name and a hostname-prefixed relative path
-      fireEvent.change(screen.getByPlaceholderText("my-project"), {
-        target: { value: "My Project" },
-      });
-      fireEvent.change(screen.getByPlaceholderText("/Users/username/projects/my-project"), {
-        target: { value: "AT-ALGKG9VR/Users/guy/Desktop/AI Project" },
-      });
-
-      // Click Create
-      fireEvent.click(screen.getByText("Create"));
-
-      await waitFor(() => {
-        expect(
-          screen.getByText("Project directory must be an absolute path (starting with /, a drive letter, or a UNC path)")
-        ).toBeInTheDocument();
-      });
-      expect(onSave).not.toHaveBeenCalled();
-      // Validation should fail client-side without making a fetch to /api/workflow
-      expect(mockFetch).not.toHaveBeenCalledWith(
-        expect.stringContaining("/api/workflow")
-      );
-    });
-
-    it("should show error when path is not a directory", async () => {
-      mockFetch.mockImplementation((url: string) => {
-        if (url === "/api/env-status") {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ gemini: false, openai: false, replicate: false, fal: false }),
-          });
-        }
-        if (url.startsWith("/api/workflow")) {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ exists: true, isDirectory: false }),
-          });
-        }
-        return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) });
-      });
-
-      const onSave = vi.fn();
-
-      render(
-        <ProjectSetupModal
-          isOpen={true}
-          onClose={vi.fn()}
-          onSave={onSave}
-          mode="new"
-        />
-      );
-
-      // Fill both fields
-      fireEvent.change(screen.getByPlaceholderText("my-project"), {
-        target: { value: "My Project" },
-      });
-      fireEvent.change(screen.getByPlaceholderText("/Users/username/projects/my-project"), {
-        target: { value: "/path/to/file.txt" },
-      });
-
-      // Click Create
-      fireEvent.click(screen.getByText("Create"));
-
-      await waitFor(() => {
-        expect(screen.getByText("Project path is not a directory")).toBeInTheDocument();
-      });
-      expect(onSave).not.toHaveBeenCalled();
-    });
   });
 
   describe("Save Behavior", () => {
@@ -475,12 +301,9 @@ describe("ProjectSetupModal", () => {
         />
       );
 
-      // Fill both fields
+      // Fill the project name
       fireEvent.change(screen.getByPlaceholderText("my-project"), {
         target: { value: "My New Project" },
-      });
-      fireEvent.change(screen.getByPlaceholderText("/Users/username/projects/my-project"), {
-        target: { value: "/path/to/project" },
       });
 
       // Click Create
@@ -490,54 +313,10 @@ describe("ProjectSetupModal", () => {
         expect(onSave).toHaveBeenCalledWith(
           "mock-workflow-id",
           "My New Project",
-          "/path/to/project/My New Project"
+          // With the directory field gone, a new project is a cloud project and
+        // carries the "cloud:<projectId>" sentinel as its save path.
+        "cloud:mock-workflow-id"
         );
-      });
-    });
-
-    it("should show 'Validating...' while validating directory", async () => {
-      let resolveValidation: ((value: unknown) => void) | undefined;
-      mockFetch.mockImplementation((url: string) => {
-        if (url === "/api/env-status") {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ gemini: false, openai: false, replicate: false, fal: false }),
-          });
-        }
-        if (url.startsWith("/api/workflow")) {
-          return new Promise((resolve) => {
-            resolveValidation = resolve;
-          });
-        }
-        return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) });
-      });
-
-      render(
-        <ProjectSetupModal
-          isOpen={true}
-          onClose={vi.fn()}
-          onSave={vi.fn()}
-          mode="new"
-        />
-      );
-
-      // Fill both fields
-      fireEvent.change(screen.getByPlaceholderText("my-project"), {
-        target: { value: "My Project" },
-      });
-      fireEvent.change(screen.getByPlaceholderText("/Users/username/projects/my-project"), {
-        target: { value: "/path/to/project" },
-      });
-
-      // Click Create
-      fireEvent.click(screen.getByText("Create"));
-
-      expect(screen.getByText("Validating...")).toBeInTheDocument();
-
-      // Resolve the validation
-      resolveValidation!({
-        ok: true,
-        json: () => Promise.resolve({ exists: true, isDirectory: true }),
       });
     });
 
@@ -571,9 +350,6 @@ describe("ProjectSetupModal", () => {
       fireEvent.change(screen.getByPlaceholderText("my-project"), {
         target: { value: "My Project" },
       });
-      fireEvent.change(screen.getByPlaceholderText("/Users/username/projects/my-project"), {
-        target: { value: "/path/to/project" },
-      });
 
       // Toggle the embed switch (click it to enable embed/disable external)
       const embedSwitch = screen.getByRole("switch", { name: /embed images as base64/i });
@@ -584,243 +360,6 @@ describe("ProjectSetupModal", () => {
 
       await waitFor(() => {
         expect(mockSetUseExternalImageStorage).toHaveBeenCalledWith(false);
-      });
-    });
-  });
-
-  describe("Browse Button", () => {
-    it("should call browse-directory API when Browse is clicked", async () => {
-      mockFetch.mockImplementation((url: string) => {
-        if (url === "/api/env-status") {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ gemini: false, openai: false, replicate: false, fal: false }),
-          });
-        }
-        if (url === "/api/browse-directory") {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ success: true, path: "/selected/path" }),
-          });
-        }
-        return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) });
-      });
-
-      render(
-        <ProjectSetupModal
-          isOpen={true}
-          onClose={vi.fn()}
-          onSave={vi.fn()}
-          mode="new"
-        />
-      );
-
-      fireEvent.click(screen.getByText("Browse"));
-
-      await waitFor(() => {
-        expect(mockFetch).toHaveBeenCalledWith("/api/browse-directory");
-      });
-    });
-
-    it("should keep selected parent path in input after browse", async () => {
-      mockFetch.mockImplementation((url: string) => {
-        if (url === "/api/env-status") {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ gemini: false, openai: false, replicate: false, fal: false }),
-          });
-        }
-        if (url === "/api/browse-directory") {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ success: true, path: "/selected/path" }),
-          });
-        }
-        return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) });
-      });
-
-      render(
-        <ProjectSetupModal
-          isOpen={true}
-          onClose={vi.fn()}
-          onSave={vi.fn()}
-          mode="new"
-        />
-      );
-
-      fireEvent.click(screen.getByText("Browse"));
-
-      await waitFor(() => {
-        const directoryInput = screen.getByPlaceholderText("/Users/username/projects/my-project") as HTMLInputElement;
-        expect(directoryInput.value).toBe("/selected/path");
-      });
-    });
-
-    it("should keep selected path when project name is empty", async () => {
-      mockFetch.mockImplementation((url: string) => {
-        if (url === "/api/env-status") {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ gemini: false, openai: false, replicate: false, fal: false }),
-          });
-        }
-        if (url === "/api/browse-directory") {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ success: true, path: "/selected/path" }),
-          });
-        }
-        return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) });
-      });
-
-      render(
-        <ProjectSetupModal
-          isOpen={true}
-          onClose={vi.fn()}
-          onSave={vi.fn()}
-          mode="new"
-        />
-      );
-
-      fireEvent.click(screen.getByText("Browse"));
-
-      await waitFor(() => {
-        const directoryInput = screen.getByPlaceholderText("/Users/username/projects/my-project") as HTMLInputElement;
-        expect(directoryInput.value).toBe("/selected/path");
-      });
-    });
-
-    it("should show '...' while browsing", async () => {
-      let resolvePromise: ((value: unknown) => void) | undefined;
-      mockFetch.mockImplementation((url: string) => {
-        if (url === "/api/env-status") {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ gemini: false, openai: false, replicate: false, fal: false }),
-          });
-        }
-        if (url === "/api/browse-directory") {
-          return new Promise((resolve) => {
-            resolvePromise = resolve;
-          });
-        }
-        return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) });
-      });
-
-      render(
-        <ProjectSetupModal
-          isOpen={true}
-          onClose={vi.fn()}
-          onSave={vi.fn()}
-          mode="new"
-        />
-      );
-
-      fireEvent.click(screen.getByText("Browse"));
-
-      expect(screen.getByText("...")).toBeInTheDocument();
-
-      resolvePromise!({
-        ok: true,
-        json: () => Promise.resolve({ success: true, cancelled: true }),
-      });
-    });
-
-    it("should handle cancelled browse dialog", async () => {
-      mockFetch.mockImplementation((url: string) => {
-        if (url === "/api/env-status") {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ gemini: false, openai: false, replicate: false, fal: false }),
-          });
-        }
-        if (url === "/api/browse-directory") {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ success: true, cancelled: true }),
-          });
-        }
-        return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) });
-      });
-
-      render(
-        <ProjectSetupModal
-          isOpen={true}
-          onClose={vi.fn()}
-          onSave={vi.fn()}
-          mode="new"
-        />
-      );
-
-      // Pre-fill directory
-      const directoryInput = screen.getByPlaceholderText("/Users/username/projects/my-project") as HTMLInputElement;
-      fireEvent.change(directoryInput, { target: { value: "/original/path" } });
-
-      fireEvent.click(screen.getByText("Browse"));
-
-      await waitFor(() => {
-        // Should keep original value when cancelled
-        expect(directoryInput.value).toBe("/original/path");
-      });
-    });
-
-    it("should save using latest project name when renamed after browse", async () => {
-      mockFetch.mockImplementation((url: string) => {
-        if (url === "/api/env-status") {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ gemini: false, openai: false, replicate: false, fal: false }),
-          });
-        }
-        if (url === "/api/browse-directory") {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ success: true, path: "/selected/path" }),
-          });
-        }
-        if (url.startsWith("/api/workflow")) {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ exists: false, isDirectory: false }),
-          });
-        }
-        return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) });
-      });
-
-      const onSave = vi.fn();
-
-      render(
-        <ProjectSetupModal
-          isOpen={true}
-          onClose={vi.fn()}
-          onSave={onSave}
-          mode="new"
-        />
-      );
-
-      fireEvent.change(screen.getByPlaceholderText("my-project"), {
-        target: { value: "Foo" },
-      });
-
-      fireEvent.click(screen.getByText("Browse"));
-
-      await waitFor(() => {
-        const directoryInput = screen.getByPlaceholderText("/Users/username/projects/my-project") as HTMLInputElement;
-        expect(directoryInput.value).toBe("/selected/path");
-      });
-
-      fireEvent.change(screen.getByPlaceholderText("my-project"), {
-        target: { value: "Bar" },
-      });
-
-      fireEvent.click(screen.getByText("Create"));
-
-      await waitFor(() => {
-        expect(onSave).toHaveBeenCalledWith(
-          "mock-workflow-id",
-          "Bar",
-          "/selected/path/Bar"
-        );
       });
     });
   });
@@ -894,9 +433,6 @@ describe("ProjectSetupModal", () => {
       // Fill fields
       fireEvent.change(screen.getByPlaceholderText("my-project"), {
         target: { value: "My Project" },
-      });
-      fireEvent.change(screen.getByPlaceholderText("/Users/username/projects/my-project"), {
-        target: { value: "/path/to/project" },
       });
 
       const modalDiv = container.querySelector(".bg-neutral-800");

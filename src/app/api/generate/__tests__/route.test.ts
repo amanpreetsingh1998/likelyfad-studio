@@ -1907,10 +1907,17 @@ describe("/api/generate route", () => {
     beforeEach(() => {
       global.fetch = mockFetch;
       mockFetch.mockReset();
+      // The route refuses with 401 before reaching any OpenAI logic when this
+      // is unset. Stubbed rather than left to the ambient environment: without
+      // it these tests only pass on a machine that happens to have a real key
+      // in .env.local, which is both a false green and a false red depending
+      // on whose checkout runs them.
+      vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
     });
 
     afterEach(() => {
       global.fetch = originalFetch;
+      vi.unstubAllEnvs();
     });
 
     it("should generate image successfully via OpenAI text-to-image", async () => {
