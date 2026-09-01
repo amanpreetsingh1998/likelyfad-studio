@@ -29,7 +29,7 @@ vi.mock("@supabase/ssr", () => ({
   }),
 }));
 
-import { proxy } from "../proxy";
+import { proxy, config } from "../proxy";
 
 const ADMIN = "11111111-1111-1111-1111-111111111111";
 const USER = "22222222-2222-2222-2222-222222222222";
@@ -186,5 +186,59 @@ describe("without Supabase credentials", () => {
     delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
     expect(await locationFor("/")).toBeNull();
     expect(await locationFor("/admin")).toBeNull();
+  });
+});
+
+/**
+ * The matcher is not a performance detail — it is the fix for
+ *
+ *   Request body exceeded 10MB for /api/generate
+ *   POST /api/generate 400
+ *
+ * Next buffers the request body for any MATCHED request so middleware could
+ * read it, capped at 10 MB, and a truncated body reaches the route as
+ * unparseable JSON. /api/generate carries base64 images. Letting API requests
+ * through inside the middleware (isPublicPath) is not enough — by then the
+ * body has already been buffered and cut.
+ */
+describe("the matcher", () => {
+  const pattern = new RegExp(`^${config.matcher[0]}$`);
+  const matches = (path: string) => pattern.test(path);
+
+  it("does not match API routes at all", () => {
+    expect(matches("/api/generate")).toBe(false);
+    expect(matches("/api/llm")).toBe(false);
+    expect(matches("/api/workflows")).toBe(false);
+    expect(matches("/api/admin/stats")).toBe(false);
+    expect(matches("/api/credits/settle")).toBe(false);
+  });
+
+  // The gate lives here, so every page must still pass through it.
+  it("matches every page the gate is responsible for", () => {
+    expect(matches("/")).toBe(true);
+    expect(matches("/workflows")).toBe(true);
+    expect(matches("/workflows/wf_1_abc/run")).toBe(true);
+    expect(matches("/admin")).toBe(true);
+    expect(matches("/admin/users")).toBe(true);
+    expect(matches("/signin")).toBe(true);
+  });
+
+  // The OAuth callback writes session cookies through the middleware.
+  it("still matches the auth routes", () => {
+    expect(matches("/auth/callback")).toBe(true);
+    expect(matches("/auth/error")).toBe(true);
+  });
+
+  it("skips static assets and media", () => {
+    expect(matches("/_next/static/chunk.js")).toBe(false);
+    expect(matches("/favicon.ico")).toBe(false);
+    expect(matches("/icon.png")).toBe(false);
+    expect(matches("/clip.mp4")).toBe(false);
+    expect(matches("/model.glb")).toBe(false);
+  });
+
+  // A page whose name merely begins with "api" is not an API route.
+  it("does not confuse a page called /apiary for /api/", () => {
+    expect(matches("/apiary")).toBe(true);
   });
 });

@@ -233,6 +233,21 @@ that target, and it must never become admin-only. `src/__tests__/proxy.test.ts`
 asserts the loop cannot come back: for every refused path it checks both the
 target *and* that the target is itself reachable.
 
+**The proxy does not run on `/api/*` at all** — excluded in the matcher, not
+merely allowed through by `isPublicPath`. The difference is the request body:
+Next buffers it for any *matched* request so middleware could read it, capped
+at 10 MB, and a truncated body reaches the route as unparseable JSON.
+`/api/generate` carries base64 images and hit exactly that —
+`Request body exceeded 10MB` then a 400 on every workflow with a large enough
+input. Raising `middlewareClientMaxBodySize` would only move the ceiling. Not
+matching also removes a `getUser()` round trip (200–300ms) from every API call.
+
+The session refresh that gives up is replaced, not lost: `getAuthedContext()`
+builds its client through `createSupabaseServerClient()`, whose `setAll` writes
+the rotated cookies — that write is a no-op only in a Server Component, not in
+a route handler. `/auth/*` stays matched so the OAuth callback can still write
+cookies.
+
 Two gates, different jobs. Pages are refused with a **redirect**, because a
 visitor who is not the admin should never receive the page at all — no flash of
 a canvas before a client-side bounce, and nothing to reach by disabling

@@ -21,9 +21,11 @@ import { createServerClient } from "@supabase/ssr";
 /**
  * Paths that must stay reachable signed out, or there is no way back in.
  *
- * /api is deliberately here: those routes already answer with 401 through
- * getAuthedContext(), and redirecting them would hand a fetch() an HTML page
- * with a 200 instead of the error it knows how to handle.
+ * /api is still listed even though the matcher below no longer routes API
+ * requests here at all. It is kept deliberately: the two are separate
+ * statements of the same rule, and if the matcher is ever widened again this
+ * is what stops a fetch() receiving an HTML redirect with a 200 instead of the
+ * 401 it knows how to handle.
  */
 function isPublicPath(pathname: string): boolean {
   return (
@@ -140,9 +142,33 @@ export async function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     /*
-     * Everything except static assets and image files. Auth routes are
-     * deliberately included so the callback can write session cookies.
+     * Pages, not API routes.
+     *
+     * /api IS EXCLUDED HERE, not merely allowed through by isPublicPath.
+     * The difference is the request body: Next buffers it for any matched
+     * request so middleware *could* read it, capped at 10 MB, and a truncated
+     * body reaches the route as unparseable JSON. /api/generate carries base64
+     * images and blew straight past that —
+     *
+     *   Request body exceeded 10MB for /api/generate
+     *   POST /api/generate 400
+     *
+     * — a 400 on every workflow with a large enough input. Raising
+     * middlewareClientMaxBodySize would only move the ceiling; not matching
+     * the route at all removes it, and saves buffering every upload twice.
+     *
+     * It also removes a getUser() round trip from every single API call, which
+     * was 200-300ms of latency on requests that gate themselves anyway.
+     *
+     * WHAT THIS GIVES UP, AND WHY IT IS SAFE. The proxy also refreshes an
+     * expiring session. API routes now do that themselves: getAuthedContext()
+     * builds its client through createSupabaseServerClient(), whose setAll
+     * writes the rotated cookies — that write is only a no-op in a Server
+     * Component, not in a route handler. Every route that needs a session
+     * calls it; the ones that do not need no refresh.
+     *
+     * /auth/* stays matched so the OAuth callback can still write cookies.
      */
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|mp4|webm|glb)$).*)",
+    "/((?!api/|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|mp4|webm|glb)$).*)",
   ],
 };
