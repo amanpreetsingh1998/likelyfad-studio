@@ -33,12 +33,20 @@ export function HistoryCard({
   entry,
   onOpenRuns,
   onOpen,
+  canOpen = true,
 }: {
   entry: WorkflowHistoryEntry;
   /** Opens the run drawer. Disabled when there is nothing to show. */
   onOpenRuns: () => void;
   /** Loads this workflow onto the canvas. */
   onOpen: () => void;
+  /**
+   * Whether the canvas is reachable by this caller. The studio is admin-only,
+   * so the button is omitted rather than disabled for everyone else: a
+   * greyed-out control invites the question "why can't I", and the honest
+   * answer is that this surface simply is not theirs.
+   */
+  canOpen?: boolean;
 }) {
   const { lastSuccess, estimate } = entry;
   const hasRuns = entry.runCount > 0;
@@ -55,13 +63,15 @@ export function HistoryCard({
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={onOpen}
-          className="shrink-0 rounded border border-neutral-700 px-2.5 py-1 text-xs text-neutral-300 transition-colors hover:bg-neutral-800 hover:text-neutral-100"
-        >
-          Open
-        </button>
+        {canOpen && (
+          <button
+            type="button"
+            onClick={onOpen}
+            className="shrink-0 rounded border border-neutral-700 px-2.5 py-1 text-xs text-neutral-300 transition-colors hover:bg-neutral-800 hover:text-neutral-100"
+          >
+            Open
+          </button>
+        )}
       </header>
 
       <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 border-t border-neutral-800/70 px-4 py-3 sm:grid-cols-4">

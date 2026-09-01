@@ -44,9 +44,17 @@ const SORTS = [
 export function HistoryList({
   initial,
   initialSearch,
+  canOpenStudio,
 }: {
   initial: WorkflowHistoryPage;
   initialSearch: string;
+  /**
+   * Whether this caller may reach the studio at all. The canvas is admin-only,
+   * so for everyone else the card's Open button would navigate straight into a
+   * redirect back to this page — which reads as a broken link rather than a
+   * closed door. Decided on the server; the page gate is what enforces it.
+   */
+  canOpenStudio: boolean;
 }) {
   const router = useRouter();
 
@@ -172,9 +180,16 @@ export function HistoryList({
       {!page.failed && showing === 0 && !search.trim() && (
         <div className="py-12 text-center">
           <p className="text-sm text-neutral-400">You have no saved workflows yet.</p>
+          {/*
+            Advice only where it can be followed. Telling someone to build a
+            workflow on a canvas they are not allowed to open is worse than
+            saying nothing — it reads as a broken permission rather than an
+            empty account.
+          */}
           <p className="mt-1 text-xs text-neutral-600">
-            Build one on the canvas and save it — it will appear here with what
-            it costs to run.
+            {canOpenStudio
+              ? "Build one on the canvas and save it — it will appear here with what it costs to run."
+              : "Workflows saved to your account will appear here with what they cost to run."}
           </p>
         </div>
       )}
@@ -187,6 +202,7 @@ export function HistoryList({
             <HistoryCard
               key={entry.projectId}
               entry={entry}
+              canOpen={canOpenStudio}
               onOpen={() => openWorkflow(entry.projectId)}
               onOpenRuns={() =>
                 setDrawer({ id: entry.projectId, title: entry.title })

@@ -19,6 +19,7 @@
 import type { Metadata } from "next";
 import { getAuthedContext } from "@/lib/supabase/server";
 import { listWorkflowHistory } from "@/lib/workflows/history";
+import { isAdmin } from "@/lib/admin/guard";
 import { HistoryList } from "@/components/workflows/HistoryList";
 
 export const metadata: Metadata = {
@@ -42,7 +43,15 @@ export default async function WorkflowsPage({
   if (!auth) return null;
 
   const { q } = await searchParams;
-  const initial = await listWorkflowHistory(auth.supabase, { q, limit: 20 });
+
+  // The studio is admin-only, so "Open" is only offered to whoever can
+  // actually reach it. Read here rather than in the card: the answer is the
+  // same for every row, and asking per card would be one lookup per workflow
+  // on screen.
+  const [initial, canOpenStudio] = await Promise.all([
+    listWorkflowHistory(auth.supabase, { q, limit: 20 }),
+    isAdmin(auth.user.id),
+  ]);
 
   return (
     <>
@@ -69,7 +78,11 @@ export default async function WorkflowsPage({
         workflow you have run before may show no runs until the next one.
       </p>
 
-      <HistoryList initial={initial} initialSearch={q ?? ""} />
+      <HistoryList
+        initial={initial}
+        initialSearch={q ?? ""}
+        canOpenStudio={canOpenStudio}
+      />
     </>
   );
 }

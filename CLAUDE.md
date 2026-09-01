@@ -192,15 +192,43 @@ constraint violation. There is no UI that grants admin — seeding is a manual
 `select set_admin('you@example.com')` in the SQL editor, because a UI that can
 promote an admin is a UI that can be tricked into promoting one.
 
-### Two gates, different jobs
+### Who can see what
 
-| Surface | Gate | Refusal |
-|---------|------|---------|
-| `/admin/*` pages | `src/proxy.ts` | redirect to `/` |
-| `/api/admin/*` routes | `requireAdmin()` in `src/lib/admin/guard.ts` | 401 signed out, **404** signed in |
+| Surface | Who | Gate |
+|---------|-----|------|
+| `/signin`, `/auth/*` | anyone | — |
+| `/workflows` | any signed-in user | `src/proxy.ts` (sign-in wall) |
+| `/` — the studio | **admin only** | `src/proxy.ts` (`isAdminPath`) |
+| `/admin/*` | **admin only** | `src/proxy.ts` (`isAdminPath`) |
+| `/api/admin/*` | admin only | `requireAdmin()` in `src/lib/admin/guard.ts` |
+| every other `/api/*` | per-route | `getAuthedContext()` / `withCredits()` |
 
-404 rather than 403 for a non-admin: there is no benefit in confirming the
-surface exists to someone who just probed for it.
+**Building and running workflows is an admin capability.** The studio is gated
+exactly like the dashboard, so a signed-in non-admin has one page:
+`/workflows`, their own history.
+
+**The refusal target is `/workflows`, not `/`.** This matters more than it
+looks: `/` is itself admin-only, so redirecting a refused non-admin there would
+bounce straight back and loop forever — and a browser reports a redirect loop
+as a broken site rather than a closed door. `NON_ADMIN_HOME` in `proxy.ts` is
+that target, and it must never become admin-only. `src/__tests__/proxy.test.ts`
+asserts the loop cannot come back: for every refused path it checks both the
+target *and* that the target is itself reachable.
+
+Two gates, different jobs. Pages are refused with a **redirect**, because a
+visitor who is not the admin should never receive the page at all — no flash of
+a canvas before a client-side bounce, and nothing to reach by disabling
+JavaScript. Routes are refused with a **status**: 401 signed out, **404** signed
+in. 404 rather than 403 because there is no benefit in confirming the surface
+exists to someone who just probed for it. `/api/*` is excluded from the page
+gate throughout — a redirect would hand `fetch()` an HTML page with a 200
+instead of the error it knows how to handle.
+
+Both gates **fail closed**: an unseeded `admins` table, a missing migration, a
+revoked grant or an unreadable row is a refusal, not an admission. Both compare
+`row.user_id === session.user.id` explicitly rather than treating "a row came
+back" as a pass — the RLS policy is what makes those equivalent, and the
+comparison is what would be load-bearing if the policy were wrong.
 
 The proxy asks through the **caller's own session** — `admins_select_self` in
 `0005_admin.sql` limits that read to their own row — so no service-role key is
@@ -226,7 +254,8 @@ passes, so a handler cannot obtain it by forgetting to check.
 |---------|----------|
 | `admins` table, RLS, `set_admin()` | `supabase/migrations/0005_admin.sql` |
 | `isAdmin()` / `requireAdmin()` | `src/lib/admin/guard.ts` |
-| Page gate | `src/proxy.ts` (`isAdminPath`) |
+| Page gate (studio + dashboard) | `src/proxy.ts` (`isAdminPath`) |
+| Page gate tests | `src/__tests__/proxy.test.ts` |
 | Shell, nav, pages | `src/app/admin/`, `src/components/admin/` |
 | Gate smoke test route | `src/app/api/admin/me/route.ts` |
 | Stats SQL functions | `supabase/migrations/0007_admin_stats.sql` |

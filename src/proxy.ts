@@ -34,18 +34,40 @@ function isPublicPath(pathname: string): boolean {
 }
 
 /**
- * The admin surface, gated here for the same reason the studio is: a visitor
- * who is not the admin never receives the page at all, so there is no flash of
- * a dashboard before a client-side redirect and nothing to reach by disabling
- * JavaScript.
+ * Where a signed-in non-admin belongs.
  *
- * This runs one indexed lookup on a single-row table, and only for /admin
- * paths — /api/admin/* is excluded because those routes gate themselves
- * through requireAdmin(), and a redirect would hand fetch() an HTML page with
- * a 200 instead of the error it knows how to handle.
+ * This is the landing page for everyone who is not the admin, and it is also
+ * the target every admin-only redirect below points at — which is why it must
+ * never itself be admin-only. Sending a non-admin from an admin page to
+ * another admin page is an infinite redirect, and the browser reports that as
+ * a broken site rather than a denied one.
+ */
+const NON_ADMIN_HOME = "/workflows";
+
+/**
+ * Pages only the admin may see.
+ *
+ * Two surfaces, one rule. The dashboard under /admin has always been here.
+ * **The studio at / is now here too**: building and running workflows is an
+ * admin-only capability, and a signed-in non-admin gets the history page
+ * instead.
+ *
+ * Gated at the edge rather than in the page for the same reason the sign-in
+ * wall is: a visitor who is not the admin never receives the page at all, so
+ * there is no flash of a canvas before a client-side redirect and nothing to
+ * reach by disabling JavaScript.
+ *
+ * This costs one indexed lookup on a single-row table, and only on these
+ * paths. /api/* is excluded throughout — those routes gate themselves, and a
+ * redirect would hand fetch() an HTML page with a 200 instead of the error it
+ * knows how to handle.
  */
 function isAdminPath(pathname: string): boolean {
-  return pathname === "/admin" || pathname.startsWith("/admin/");
+  return (
+    pathname === "/" ||
+    pathname === "/admin" ||
+    pathname.startsWith("/admin/")
+  );
 }
 
 export async function proxy(request: NextRequest) {
@@ -101,10 +123,14 @@ export async function proxy(request: NextRequest) {
       .eq("id", 1)
       .maybeSingle();
 
-    // Redirected to the studio, not shown a denial. Someone who guessed the
-    // URL learns only that it is not theirs.
+    // Redirected to their own home, not shown a denial. Someone who guessed
+    // the URL learns only that it is not theirs.
+    //
+    // The target is NON_ADMIN_HOME rather than "/" because the studio is now
+    // admin-only too: redirecting there would bounce straight back here and
+    // loop forever.
     if (admin?.user_id !== data.user.id) {
-      return NextResponse.redirect(new URL("/", request.url));
+      return NextResponse.redirect(new URL(NON_ADMIN_HOME, request.url));
     }
   }
 
