@@ -69,6 +69,15 @@ export type ModerationRow = {
   media_type: string | null;
   /** So a moderator knows what they are about to load before they load it. */
   media_bytes: number | null;
+  /**
+   * The provider's own link to the output.
+   *
+   * A FALLBACK, not evidence. It points at infrastructure we do not control
+   * and it expires; the stored copy is the archive. Present with no media_url
+   * means the copy was attempted and failed — which is the case a moderator
+   * most needs told apart from "this run produced nothing".
+   */
+  media_source_url: string | null;
 };
 
 export type ModerationCounts = {
@@ -192,6 +201,7 @@ export async function getModerationFeed(
       Omit<ModerationRow, "thumb_url" | "media_url"> & {
         thumb_path: string | null;
         media_path: string | null;
+        media_source_url: string | null;
       }
     >;
 

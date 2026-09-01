@@ -131,7 +131,33 @@ async function storeMedia(
     return null;
   }
 
+  // Logged on SUCCESS too, deliberately. Every failure path now names itself,
+  // so a run that produces no line at all from this module means the module is
+  // not running — which is a different problem from a copy that was attempted
+  // and declined, and the two were previously indistinguishable.
+  console.log(
+    `[moderation] archived ${media.contentType} ` +
+      `(${(media.body.length / (1024 * 1024)).toFixed(2)}MB) as ${path}`
+  );
+
   return { path, type: media.contentType, bytes: media.body.length };
+}
+
+/**
+ * The provider's own link, kept as a fallback when our copy did not happen.
+ *
+ * Only ever an http(s) URL — an inline data URL is the output itself and would
+ * put the whole payload in a text column for no benefit.
+ *
+ * This is a courtesy, not evidence: it points at infrastructure we do not
+ * control and it will expire. The admin surface must label which of the two it
+ * is showing, or a link that 404s next week reads as lost evidence rather than
+ * as a provider link doing what provider links do.
+ */
+function sourceUrlOf(output: string | null | undefined): string | null {
+  if (typeof output !== "string") return null;
+  if (!output.startsWith("http://") && !output.startsWith("https://")) return null;
+  return output.length > 2000 ? null : output;
 }
 
 /**
@@ -193,6 +219,12 @@ export async function recordGenerationEvent(
       updates.media_type = media.type;
       updates.media_bytes = media.bytes;
     }
+
+    // Written whether or not the copy succeeded. A row with a source URL and
+    // no media_path says the archive was attempted and failed, and names what
+    // it tried — which is also the only thing an admin can open in that case.
+    const sourceUrl = sourceUrlOf(input.output);
+    if (sourceUrl) updates.media_source_url = sourceUrl;
 
     if (Object.keys(updates).length > 0) {
       await getServiceClient().from(TABLE).update(updates).eq("id", eventId);
@@ -263,6 +295,7 @@ export async function completeGenerationEvent(params: {
         media_path: media?.path ?? null,
         media_type: media?.type ?? null,
         media_bytes: media?.bytes ?? null,
+        media_source_url: sourceUrlOf(params.output),
         completed_at: new Date().toISOString(),
       })
       .eq("id", eventId);

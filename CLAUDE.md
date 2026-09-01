@@ -195,8 +195,8 @@ turn that into the buy-credits modal. Every gated response carries
    `0014_workflow_history_read.sql`, then `0015_model_latency.sql`, then
    `0016_close_abandoned_runs.sql`, then
    `0017_published_workflows.sql`, then `0018_published_media.sql`, then
-   `0019_fix_ambiguous_balance.sql`, then `0020_moderation_full_media.sql`, in
-   the Supabase SQL editor.
+   `0019_fix_ambiguous_balance.sql`, then `0020_moderation_full_media.sql`, then
+   `0021_media_source_url.sql`, in the Supabase SQL editor.
 2. Add the three Razorpay vars above to `.env.local`.
 3. Razorpay dashboard → Settings → Webhooks → add
    `https://<domain>/api/credits/webhook` for `payment.captured`, using the
@@ -319,7 +319,8 @@ passes, so a handler cannot obtain it by forgetting to check.
    `0013_workflow_history.sql`, then `0014_workflow_history_read.sql`, then
    `0015_model_latency.sql`, then `0016_close_abandoned_runs.sql`, then
    `0017_published_workflows.sql`, then `0018_published_media.sql`, then
-   `0019_fix_ambiguous_balance.sql`, then `0020_moderation_full_media.sql`.
+   `0019_fix_ambiguous_balance.sql`, then `0020_moderation_full_media.sql`, then
+   `0021_media_source_url.sql`.
 2. Sign in once with the account that should be admin (there must be an
    `auth.users` row to point at).
 3. `select public.set_admin('you@example.com');`
@@ -388,6 +389,25 @@ per-object ceiling (`MAX_MEDIA_BYTES`, 50 MB) bounds one run, and retention
 deletes the media with its row — which is why `prune_generation_events` had to
 return both keys in the same migration. Returning only the thumbnail would
 orphan every full-resolution object forever, since the row naming it is gone.
+
+**The provider's own URL is kept as a fallback** (`0021`). The copy can fail
+for reasons that are nobody's fault and invisible afterwards — the CDN link
+expired between the run and the copy, the object was over the ceiling, the
+download timed out. Without the source URL, all of those render identically to
+"this run produced nothing", which is a very different fact about a user. A row
+with a source URL and no `media_path` says the archive was attempted and
+failed, and names what it tried.
+
+It is a courtesy, not evidence: it points at infrastructure we do not control
+and it expires, so **the viewer labels which of the two it is showing**. A
+takedown withholds it in SQL along with the stored keys — otherwise the feed
+could reconstitute content an admin had removed.
+
+**Every abandonment in `media.ts` logs its reason, and success logs too.** Three
+of four failure paths used to `return null` silently, so a video that was never
+archived looked exactly like a run that produced nothing. A run that now emits
+no line at all from that module means the module is not running — a different
+problem, and previously indistinguishable.
 
 **Removal deletes both objects.** Taking down only the thumbnail would leave
 the larger, more damaging copy in the bucket for anyone who could still sign

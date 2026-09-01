@@ -131,6 +131,8 @@ describe("recordGenerationEvent", () => {
     // The prompt, model and user are what moderation turns on. Losing the
     // picture must not lose the record.
     mockMakeThumbnail.mockResolvedValue(null);
+    // And the archive copy fails too — an expired provider link.
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 403 } as Response));
 
     const id = await recordGenerationEvent({
       userId: USER,
@@ -141,8 +143,45 @@ describe("recordGenerationEvent", () => {
     });
 
     expect(id).toBe(EVENT);
-    expect(uploaded).toBeNull();
+    expect(uploads).toEqual([]);
+    // Nothing was stored, but the row still learns where the output WAS. That
+    // distinction — "we tried and could not" versus "this run made nothing" —
+    // is the one a moderator has to be able to draw.
+    expect(updated).toMatchObject({
+      media_source_url: "https://cdn.example/clip.mp4",
+    });
+    expect(updated?.media_path).toBeUndefined();
+    vi.unstubAllGlobals();
+  });
+
+  it("records nothing extra when there was no output at all", async () => {
+    mockMakeThumbnail.mockResolvedValue(null);
+
+    await recordGenerationEvent({
+      userId: USER,
+      kind: "llm",
+      prompt: "a dog",
+      status: "succeeded",
+    });
+
+    // No thumbnail, no archive, no source — so no second write to make.
+    expect(uploads).toEqual([]);
     expect(updated).toBeNull();
+  });
+
+  it("does not put an inline data URL in the source column", async () => {
+    // The output itself, not a link to it. Storing it would put the whole
+    // payload in a text column for no benefit.
+    mockMakeThumbnail.mockResolvedValue(null);
+
+    await recordGenerationEvent({
+      userId: USER,
+      kind: "image",
+      status: "succeeded",
+      output: "data:image/png;base64,QQ==",
+    });
+
+    expect(updated?.media_source_url).toBeUndefined();
   });
 
   it("stores the thumbnail under the event id, with no user prefix", async () => {

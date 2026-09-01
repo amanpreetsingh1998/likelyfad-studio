@@ -30,8 +30,14 @@
  */
 export const MAX_MEDIA_BYTES = 50 * 1024 * 1024;
 
-/** Bounded, because this runs after the user already has their response. */
-const FETCH_TIMEOUT_MS = 20_000;
+/**
+ * Bounded, because this runs after the user already has their response — but
+ * generous, because the thing most worth keeping is video and video is the
+ * slowest thing to pull. 20s was not enough headroom for a multi-megabyte clip
+ * off a cold CDN edge, and a timeout here is silent: the run looks fine and
+ * the evidence simply is not there.
+ */
+const FETCH_TIMEOUT_MS = 60_000;
 
 export type FetchedMedia = {
   body: Buffer;
@@ -98,34 +104,46 @@ export async function fetchMedia(
   try {
     if (output.startsWith("data:")) {
       const match = output.match(/^data:([^;]+);base64,(.+)$/);
-      if (!match) return null;
+      if (!match) return skip("output is a data URL we could not parse");
 
       const body = Buffer.from(match[2], "base64");
-      if (body.length === 0 || body.length > MAX_MEDIA_BYTES) return null;
+      if (body.length === 0) return skip("inline output decoded to nothing");
+      if (body.length > MAX_MEDIA_BYTES) {
+        return skip(`inline output is ${mb(body.length)}, over the ${mb(MAX_MEDIA_BYTES)} ceiling`);
+      }
 
       const contentType = match[1];
       return { body, contentType, extension: extensionFor(contentType) };
     }
 
     if (!output.startsWith("http://") && !output.startsWith("https://")) {
-      return null;
+      return skip("output is neither a data URL nor an http(s) link");
     }
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
     try {
       const response = await fetch(output, { signal: controller.signal });
-      if (!response.ok) return null;
+      if (!response.ok) {
+        // Overwhelmingly the expired-link case: providers hand out short-lived
+        // CDN URLs and this runs after the response has already gone out.
+        return skip(`provider returned ${response.status} for ${hostOf(output)}`);
+      }
 
       // Checked before downloading where the provider declares it, so a huge
       // object is refused rather than pulled and then discarded.
       const declaredLength = Number(response.headers.get("content-length"));
       if (Number.isFinite(declaredLength) && declaredLength > MAX_MEDIA_BYTES) {
-        return null;
+        return skip(
+          `provider declares ${mb(declaredLength)}, over the ${mb(MAX_MEDIA_BYTES)} ceiling`
+        );
       }
 
       const body = Buffer.from(await response.arrayBuffer());
-      if (body.length === 0 || body.length > MAX_MEDIA_BYTES) return null;
+      if (body.length === 0) return skip("provider returned an empty body");
+      if (body.length > MAX_MEDIA_BYTES) {
+        return skip(`downloaded ${mb(body.length)}, over the ${mb(MAX_MEDIA_BYTES)} ceiling`);
+      }
 
       const contentType =
         response.headers.get("content-type")?.split(";")[0].trim() ||
@@ -137,11 +155,36 @@ export async function fetchMedia(
       clearTimeout(timer);
     }
   } catch (err) {
-    // AbortError on the timeout, or a provider link that has already expired.
-    console.warn(
-      "[moderation] could not fetch output media:",
-      err instanceof Error ? err.message : err
+    const message = err instanceof Error ? err.message : String(err);
+    return skip(
+      message.includes("abort")
+        ? `download exceeded ${FETCH_TIMEOUT_MS / 1000}s`
+        : `download failed: ${message}`
     );
-    return null;
+  }
+}
+
+/**
+ * Abandon, loudly.
+ *
+ * Every one of these used to be a bare `return null`, which is how a video
+ * that was never archived looked identical to a run that produced nothing.
+ * The record here IS the product for a moderator, so declining to keep it is
+ * worth a line in the log naming the reason.
+ */
+function skip(reason: string): null {
+  console.warn(`[moderation] output not archived — ${reason}`);
+  return null;
+}
+
+function mb(bytes: number): string {
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+}
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return "the provider";
   }
 }

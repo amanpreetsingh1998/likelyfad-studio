@@ -91,33 +91,42 @@ export function MediaViewer({
  * how a webm audio track ends up inside an image tag showing a broken icon.
  */
 function Media({ row }: { row: ModerationRow }) {
-  if (!row.media_url) return <Unavailable row={row} />;
+  // Our archived copy first. Falling back to the provider's link only when
+  // there is no copy, and saying so — a link that 404s next week must read as
+  // a provider link expiring, not as evidence we lost.
+  const src = row.media_url ?? row.media_source_url;
+  if (!src) return <Unavailable row={row} />;
 
-  const type = (row.media_type ?? "").toLowerCase();
+  const fromProvider = !row.media_url;
+  const type = (row.media_type ?? guessTypeFromKind(row.output_kind ?? row.kind)).toLowerCase();
 
   if (type.startsWith("video/")) {
     return (
-      <video
-        src={row.media_url}
-        controls
-        autoPlay={false}
-        className="max-h-[70vh] w-auto max-w-full rounded"
-      />
+      <Wrap fromProvider={fromProvider}>
+        <video
+          src={src}
+          controls
+          autoPlay={false}
+          className="max-h-[70vh] w-auto max-w-full rounded"
+        />
+      </Wrap>
     );
   }
 
   if (type.startsWith("audio/")) {
-    return <audio src={row.media_url} controls className="w-full max-w-xl" />;
+    return <Wrap fromProvider={fromProvider}><audio src={src} controls className="w-full max-w-xl" /></Wrap>;
   }
 
   if (type.startsWith("image/")) {
     return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={row.media_url}
-        alt=""
-        className="max-h-[70vh] w-auto max-w-full rounded object-contain"
-      />
+      <Wrap fromProvider={fromProvider}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={src}
+          alt=""
+          className="max-h-[70vh] w-auto max-w-full rounded object-contain"
+        />
+      </Wrap>
     );
   }
 
@@ -126,7 +135,7 @@ function Media({ row }: { row: ModerationRow }) {
   // is a blank box that reads as a fault.
   return (
     <a
-      href={row.media_url}
+      href={src}
       download
       className="rounded border border-dashed border-neutral-700 px-6 py-10 text-sm text-neutral-300 transition-colors hover:border-neutral-500 hover:text-neutral-100"
     >
@@ -168,6 +177,38 @@ function Unavailable({ row }: { row: ModerationRow }) {
       <p className="text-sm text-neutral-400">{reason}</p>
     </div>
   );
+}
+
+/**
+ * A banner when what is on screen came from the provider rather than our
+ * archive. Unlabelled, the two look identical — and only one of them will
+ * still be there next week.
+ */
+function Wrap({
+  fromProvider,
+  children,
+}: {
+  fromProvider: boolean;
+  children: React.ReactNode;
+}) {
+  if (!fromProvider) return <>{children}</>;
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <p className="rounded border border-amber-900/60 bg-amber-950/30 px-2.5 py-1 text-[11px] text-amber-300">
+        Shown from the provider — we could not archive a copy of this one, so
+        this link will stop working when they expire it.
+      </p>
+      {children}
+    </div>
+  );
+}
+
+/** For a provider link, where we never stored a MIME type of our own. */
+function guessTypeFromKind(kind: string): string {
+  if (kind === "video") return "video/mp4";
+  if (kind === "audio") return "audio/mpeg";
+  if (kind === "3d") return "model/gltf-binary";
+  return "image/png";
 }
 
 function formatBytes(bytes: number): string {

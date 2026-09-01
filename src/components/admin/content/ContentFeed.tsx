@@ -353,10 +353,12 @@ function GenerationCard({
         <button
           type="button"
           onClick={onOpen}
-          disabled={!row.media_url && !row.thumb_url}
+          disabled={!row.media_url && !row.media_source_url && !row.thumb_url}
           title={
             row.media_url
               ? "Open the full output"
+              : row.media_source_url
+              ? "Open — shown from the provider, we could not archive a copy"
               : row.thumb_url
               ? "Open — only a thumbnail was kept for this run"
               : "Nothing was stored for this run"
@@ -367,7 +369,7 @@ function GenerationCard({
             <img src={row.thumb_url} alt="" className="h-full w-full object-cover" />
           ) : row.content_removed_at ? (
             "Removed"
-          ) : row.media_url ? (
+          ) : row.media_url || row.media_source_url ? (
             <span className="px-1 text-neutral-400">
               {row.output_kind ?? row.kind}
               <span className="mt-0.5 block text-neutral-600">view</span>

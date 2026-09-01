@@ -34,6 +34,7 @@ function row(overrides: Partial<ModerationRow> = {}): ModerationRow {
     media_url: "https://signed.test/full.png",
     media_type: "image/png",
     media_bytes: 4 * 1024 * 1024,
+    media_source_url: null,
     ...overrides,
   } as ModerationRow;
 }
@@ -139,5 +140,61 @@ describe("the dialog", () => {
   it("keeps the prompt beside the picture, which is half the judgement", () => {
     open({ prompt: "a red chair" });
     expect(screen.getByText("a red chair")).toBeTruthy();
+  });
+});
+
+/**
+ * When our copy did not happen, the provider's own link is better than an
+ * empty box — but it must be labelled, because it points at infrastructure we
+ * do not control and it will expire.
+ */
+describe("falling back to the provider's link", () => {
+  it("shows the output from the provider when there is no archived copy", () => {
+    const { container } = open({
+      media_url: null,
+      media_source_url: "https://v3b.fal.media/files/clip.mp4",
+      media_type: null,
+      kind: "video",
+      output_kind: "video",
+    });
+    expect(container.querySelector("video[src*='fal.media']")).toBeTruthy();
+  });
+
+  it("says plainly that it is not our copy", () => {
+    open({
+      media_url: null,
+      media_source_url: "https://v3b.fal.media/files/clip.mp4",
+      kind: "video",
+      output_kind: "video",
+    });
+    expect(screen.getByText(/could not archive a copy/i)).toBeTruthy();
+  });
+
+  it("does not label our own archived copy", () => {
+    open();
+    expect(screen.queryByText(/could not archive a copy/i)).toBeNull();
+  });
+
+  // No stored MIME type on the fallback path, so the run kind decides.
+  it("picks the element from the run kind when no type was stored", () => {
+    const { container } = open({
+      media_url: null,
+      media_source_url: "https://cdn.test/thing",
+      media_type: null,
+      kind: "audio",
+      output_kind: "audio",
+    });
+    expect(container.querySelector("audio")).toBeTruthy();
+  });
+
+  // A takedown withholds the source URL in SQL, so this asserts the UI half.
+  it("shows nothing for a removed row even if a source URL somehow survives", () => {
+    open({
+      media_url: null,
+      media_source_url: null,
+      thumb_url: null,
+      content_removed_at: "2026-08-29T00:00:00Z",
+    });
+    expect(screen.getByText(/removed by an admin/i)).toBeTruthy();
   });
 });
