@@ -230,6 +230,103 @@ export async function listWorkflowRuns(
   };
 }
 
+export type UserRunEntry = {
+  id: string;
+  /** The workflow this run belonged to. Null for a canvas never saved. */
+  projectId: string | null;
+  /**
+   * Snapshot at run time, so a renamed workflow does not retitle its history.
+   * Null only when a run predates the snapshot and its workflow is gone.
+   */
+  projectName: string | null;
+  /**
+   * Whether there is still a live workflow to open. A run outlives the
+   * workflow it ran — `project_id` is `on delete set null` — so a set
+   * `projectId` is not on its own a promise that the link goes anywhere.
+   */
+  projectExists: boolean;
+  status: string;
+  startedAt: string;
+  finishedAt: string | null;
+  durationMs: number | null;
+  creditsCharged: number | null;
+  shortfall: number | null;
+  nodeCount: number | null;
+  models: string[];
+  eventsTotal: number;
+  eventsFailed: number;
+};
+
+export type UserRunPage = {
+  runs: UserRunEntry[];
+  total: number;
+  /** Credits charged across the whole filtered set, not this page. */
+  totalCredits: number;
+  failed: string | null;
+};
+
+export type UserRunQuery = {
+  limit?: number;
+  offset?: number;
+  status?: string | null;
+  q?: string | null;
+};
+
+/**
+ * Every run the caller has made, newest first, across every workflow.
+ *
+ * The companion to `listWorkflowHistory`, and deliberately not derivable from
+ * it: a run whose workflow was deleted, or which ran on a canvas that was
+ * never saved, has no workflow to be listed under and appears only here. That
+ * money is as real as any other, so there has to be somewhere it can be seen.
+ *
+ * `totalCredits` comes off the row rather than being summed here, for the same
+ * reason every other figure on these pages does: summing the page would give a
+ * number that describes the pagination while looking like a number that
+ * describes the account.
+ */
+export async function listUserRunHistory(
+  supabase: SupabaseClient,
+  query: UserRunQuery = {}
+): Promise<UserRunPage> {
+  const { data, error } = await supabase.rpc("user_run_history", {
+    p_limit: clampLimit(query.limit),
+    p_offset: Math.max(0, Math.floor(query.offset ?? 0)),
+    p_status: query.status ?? null,
+    p_q: query.q ?? null,
+  });
+
+  if (error) {
+    console.error("[workflows] run feed read failed:", error.message);
+    return { runs: [], total: 0, totalCredits: 0, failed: error.message };
+  }
+
+  const rows = (data ?? []) as Record<string, unknown>[];
+  return {
+    runs: rows.map((row) => ({
+      id: String(row.id),
+      projectId: asString(row.project_id),
+      projectName: asString(row.project_name),
+      // Defaults to "no workflow to open", so a row we could not resolve
+      // offers no link rather than a broken one.
+      projectExists: row.project_exists === true,
+      status: asString(row.status) ?? "unknown",
+      startedAt: asString(row.started_at) ?? "",
+      finishedAt: asString(row.finished_at),
+      durationMs: asNumber(row.duration_ms),
+      creditsCharged: asNumber(row.credits_charged),
+      shortfall: asNumber(row.shortfall),
+      nodeCount: asNumber(row.node_count),
+      models: asStringArray(row.models),
+      eventsTotal: Number(row.events_total ?? 0),
+      eventsFailed: Number(row.events_failed ?? 0),
+    })),
+    total: rows.length > 0 ? Number(rows[0].total_count ?? 0) : 0,
+    totalCredits: rows.length > 0 ? Number(rows[0].total_credits ?? 0) : 0,
+    failed: null,
+  };
+}
+
 function clampLimit(value: number | undefined, fallback = 25): number {
   if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
   return Math.min(MAX_LIMIT, Math.max(1, Math.floor(value)));

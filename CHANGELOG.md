@@ -54,6 +54,16 @@ with real money, and there is an admin dashboard over the top of it.
   charges the browser abandoned, and applies retention to the generation log.
   Both jobs existed as SQL for months and had never once run, because nothing
   here runs on a timer.
+- **Runs tab** (`/workflows?tab=runs`) — Every execution the account has made,
+  newest first, with what it cost, how long it took and which models it used.
+  Not a rearrangement of the workflow list: that page is keyed by workflow, so
+  a run belonging to none of them could not appear on it — and two ordinary
+  things produce exactly that. A canvas that was never saved has no workflow
+  row, and deleting a workflow deliberately keeps its runs so the ledger still
+  explains money already spent. Both spent real credits and neither was
+  visible anywhere before this. A run whose workflow is gone keeps the name it
+  had when it ran, and is marked as deleted rather than offered as a link that
+  goes nowhere.
 
 ### Fixed
 

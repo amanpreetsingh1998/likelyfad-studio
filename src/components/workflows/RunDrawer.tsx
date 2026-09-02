@@ -18,6 +18,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { WorkflowRunEntry } from "@/lib/workflows/history";
+import { RunStatusChip } from "./RunStatusChip";
 import {
   formatDateTime,
   formatNumber,
@@ -177,7 +178,7 @@ function RunRow({ run }: { run: WorkflowRunEntry }) {
       </td>
 
       <td className="py-2.5 pr-3">
-        <StatusChip status={run.status} />
+        <RunStatusChip status={run.status} />
       </td>
 
       <td className="py-2.5 pr-3 text-right tabular-nums text-neutral-200">
@@ -232,42 +233,6 @@ function RunRow({ run }: { run: WorkflowRunEntry }) {
         )}
       </td>
     </tr>
-  );
-}
-
-/**
- * `abandoned` is deliberately distinguished from `cancelled`.
- *
- * Cancelled is a decision the user made. Abandoned is a tab that closed and
- * was later swept — we never found out how the run ended. Collapsing them into
- * one chip would tell a user they stopped something they did not.
- */
-function StatusChip({ status }: { status: string }) {
-  const style =
-    status === "completed"
-      ? "border-emerald-900/60 bg-emerald-950/40 text-emerald-300"
-      : status === "running"
-      ? "border-sky-900/60 bg-sky-950/40 text-sky-300"
-      : status === "failed"
-      ? "border-red-900/60 bg-red-950/40 text-red-300"
-      : "border-neutral-700 bg-neutral-800/60 text-neutral-400";
-
-  const title =
-    status === "abandoned"
-      ? "The browser never reported how this run ended — usually a closed tab. It was closed out by the maintenance sweep, and its charges were still settled."
-      : status === "cancelled"
-      ? "Stopped from the canvas. Nodes that had already reached a provider were still charged."
-      : undefined;
-
-  return (
-    <span
-      title={title}
-      className={`rounded-full border px-2 py-0.5 text-[11px] ${style} ${
-        title ? "cursor-help" : ""
-      }`}
-    >
-      {status}
-    </span>
   );
 }
 

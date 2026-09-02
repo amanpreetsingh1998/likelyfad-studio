@@ -840,6 +840,58 @@ param is stripped before the load, not after:** leaving it in the address bar
 means a refresh silently reloads the saved copy over whatever is on the canvas,
 discarding the user's work with no prompt.
 
+### The Runs tab
+
+`/workflows?tab=runs` is every execution the account has made, newest first,
+across every workflow. `user_run_history` (0022) reads it.
+
+**It is not derivable from the workflow list, and that is why it exists.** The
+workflow tab is keyed by workflow, so a run belonging to no workflow cannot
+appear on it — and two ordinary things produce exactly that:
+
+- a canvas that has never been saved has no `projects` row, so its runs are
+  recorded with a **null `project_id`**;
+- deleting a workflow **nulls that column rather than cascading**, deliberately
+  (0013 §2), so the ledger keeps explaining money already spent.
+
+Both spent real credits, and before this tab neither was visible anywhere. A
+run with no workflow renders as "Unsaved workflow"; one whose workflow is gone
+keeps its snapshot name and is marked `(deleted)`.
+
+- **`project_exists` is a separate question from `project_id` being set**, and
+  a row that fails it gets no link. A dead link on the very row documenting a
+  deletion is worse than no link — the position `target_exists` already takes
+  in the audit log.
+- **The snapshot name wins over the live one.** `project_name` is captured when
+  the run opens, so renaming a workflow does not silently retitle every run
+  that happened before it. The live name is the fallback, not the default.
+- **The totals describe the filtered set, not the page.** They are window
+  functions in SQL for that reason. Summing the twenty-five rows on screen
+  gives a number that describes the pagination while looking like a number that
+  describes the account.
+- **No sort control.** A feed of moments has one useful order. "Most expensive"
+  and "longest" are questions about a workflow, and the tab next door already
+  answers them sorted — which is the only scale at which those comparisons mean
+  anything.
+- **The status filter is capped, not whitelisted**, matching the audit log: an
+  unrecognised status filters to it and returns nothing rather than widening to
+  everything.
+- **An unsettled run shows no charge, not a zero.** Null is "we do not have
+  that figure yet"; zero is a claim that the run was free.
+
+**The tabs are links, not client state.** The page first-paints with real
+numbers rather than a skeleton, and a tab held in React state throws that away
+for whichever tab is not the default — opening Runs would always cost a fetch
+and a loading state, which is the shape this page was written to avoid. It also
+makes a tab addressable: `?tab=runs` can be linked, bookmarked and refreshed
+into. **Only the active tab is read**, since the other one's query aggregates
+over every run the account has.
+
+`RunStatusChip` is shared with the drawer rather than copied. The
+`cancelled` / `abandoned` distinction is not decoration — a decision someone
+made versus a tab that closed — and a second copy is a second place for it to
+be quietly collapsed into "it did not finish".
+
 ### Files
 
 | Purpose | Location |
@@ -856,10 +908,12 @@ discarding the user's work with no prompt.
 | Ambient run id for executors | `src/store/execution/activeRun.ts` |
 | Publishing + catalogue SQL | `supabase/migrations/0017_published_workflows.sql` |
 | Published media storage policy | `supabase/migrations/0018_published_media.sql` |
+| The account's run feed (SQL) | `supabase/migrations/0022_user_run_history.sql` |
 | Runner field table + coverage test | `src/components/workflows/runnerFields.ts` |
 | Page shell and server-read first paint | `src/app/workflows/` |
 | Run page (reuses `executeWorkflow`) | `src/components/workflows/WorkflowRunner.tsx` |
 | List, card, run drawer | `src/components/workflows/` |
+| Runs tab, tab nav, shared status chip | `src/components/workflows/RunsList.tsx`, `WorkflowTabs.tsx`, `RunStatusChip.tsx` |
 
 ### Routes
 
@@ -867,6 +921,7 @@ discarding the user's work with no prompt.
 |-------|---------|
 | `GET /api/workflows` | The caller's history, one page |
 | `POST /api/workflows/runs` | Open a run; returns a server-minted id |
+| `GET /api/workflows/runs` | Every run the caller has made, across all workflows |
 | `GET /api/workflows/[id]/runs` | One workflow's runs. **Ownership-checked**, 404 otherwise |
 | `POST /api/workflows/[id]/estimate` | Reprice from the **stored** graph; takes no graph |
 | `POST /api/workflows/[id]/publish` | Share a workflow with every signed-in user, or withdraw it. **Owner only** |
@@ -876,7 +931,7 @@ discarding the user's work with no prompt.
 Run `0013_workflow_history.sql`, then `0014_workflow_history_read.sql`, then
 `0015_model_latency.sql`, then `0016_close_abandoned_runs.sql`, then
 `0017_published_workflows.sql`, then `0018_published_media.sql`, then
-`0019_fix_ambiguous_balance.sql`. `0012` must be applied first — everything here reads the numbers settlement writes, so
+`0019_fix_ambiguous_balance.sql`, then `0022_user_run_history.sql`. `0012` must be applied first — everything here reads the numbers settlement writes, so
 applying it on top of the broken function would build a history page that
 faithfully reports every workflow as having cost nothing.
 
@@ -1343,6 +1398,7 @@ the complete list.
 |-------|---------|---------|
 | `GET /api/workflows` | default | The caller's workflow history, one page |
 | `POST /api/workflows/runs` | default | Open a run; returns a server-minted id |
+| `GET /api/workflows/runs` | default | Every run the caller has made, one page |
 | `GET /api/workflows/[id]/runs` | default | One workflow's runs. **Ownership-checked**, 404 otherwise |
 | `POST /api/workflows/[id]/estimate` | default | Reprice from the **stored** graph; takes no graph |
 | `POST /api/workflows/[id]/publish` | default | Publish/withdraw. **Owner-checked** in route and SQL |
