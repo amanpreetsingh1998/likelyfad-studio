@@ -36,10 +36,21 @@ export async function GET(
     return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   }
 
-  // Does the caller own this workflow? RLS scopes the read, so a row coming
-  // back at all is the answer — but a soft-deleted workflow still counts as
-  // theirs, because its run history is exactly what a deleted workflow's
-  // spending needs to stay explainable.
+  // Can the caller SEE this workflow? Not the same question as owning it, and
+  // the comment here used to say otherwise. RLS scopes the read, and since
+  // 0017 that means own rows OR published ones, so a row coming back proves
+  // visibility and nothing more.
+  //
+  // That is the right gate for this route even so, and it is worth saying why
+  // rather than leaving it to look like an oversight: the runs themselves are
+  // scoped inside `workflow_run_history` with `r.user_id = auth.uid()`, so a
+  // non-owner opening a published workflow sees its title and their OWN runs
+  // of it — which is exactly what the run page is for. Nothing here widens
+  // because the visibility check did.
+  //
+  // A soft-deleted workflow still counts as visible to its owner, because its
+  // run history is exactly what a deleted workflow's spending needs to stay
+  // explainable.
   const { data: project, error } = await auth.supabase
     .from("projects")
     .select("id, name")
