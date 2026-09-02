@@ -2335,6 +2335,109 @@ describe("workflowStore integration tests", () => {
     });
   });
 
+  describe("Every path that spends money settles it", () => {
+    // The bug this pins: only executeWorkflow ever closed a run. "Run
+    // selected" and the regenerate button dispatched to the same providers,
+    // were charged by the same gate, and then billed nothing — the pending
+    // rows they wrote sat unsettled until a maintenance sweep that only runs
+    // if somebody wired up a scheduler. On screen the badge went down (the
+    // response header reports balance minus pending) and the next reload put
+    // the credits back, because the ledger had never moved.
+    let mockFetch: ReturnType<typeof vi.fn>;
+
+    const settlementCalls = () =>
+      mockFetch.mock.calls.filter(
+        ([url]) => typeof url === "string" && url.includes("/api/credits/settle")
+      );
+
+    beforeEach(() => {
+      mockFetch = vi.fn().mockImplementation(async (url: string) => ({
+        ok: true,
+        status: 200,
+        headers: new Headers(),
+        json: () =>
+          Promise.resolve(
+            typeof url === "string" && url.includes("/api/workflows/runs")
+              ? { runId: "run-under-test" }
+              : { success: true, image: "data:image/png;base64,generated" }
+          ),
+        text: () => Promise.resolve(""),
+      }));
+      vi.stubGlobal("fetch", mockFetch);
+
+      useWorkflowStore.setState({
+        nodes: [
+          createTestNode("prompt-1", "prompt", { prompt: "test" }),
+          createTestNode("nanoBanana-1", "nanoBanana", {
+            aspectRatio: "1:1",
+            resolution: "1K",
+            model: "nano-banana",
+            inputImages: [],
+          }),
+        ],
+        edges: [createTestEdge("prompt-1", "nanoBanana-1", "text", "text")],
+      });
+    });
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it("settles a full workflow run", async () => {
+      await useWorkflowStore.getState().executeWorkflow();
+      expect(settlementCalls()).toHaveLength(1);
+    });
+
+    it("settles a single-node regeneration", async () => {
+      await useWorkflowStore.getState().regenerateNode("nanoBanana-1");
+      expect(settlementCalls()).toHaveLength(1);
+    });
+
+    it("settles a Run-selected execution", async () => {
+      await useWorkflowStore.getState().executeSelectedNodes(["nanoBanana-1"]);
+      expect(settlementCalls()).toHaveLength(1);
+    });
+
+    it("settles a regeneration that failed, because the provider was still paid", async () => {
+      mockFetch.mockImplementation(async (url: string) =>
+        typeof url === "string" && url.includes("/api/generate")
+          ? {
+              ok: false,
+              status: 500,
+              headers: new Headers(),
+              json: () => Promise.resolve({ success: false, error: "provider exploded" }),
+              text: () => Promise.resolve(""),
+            }
+          : {
+              ok: true,
+              status: 200,
+              headers: new Headers(),
+              json: () => Promise.resolve({ runId: "run-under-test" }),
+              text: () => Promise.resolve(""),
+            }
+      );
+
+      await useWorkflowStore.getState().regenerateNode("nanoBanana-1");
+
+      // A run that failed still closes. Leaving it open is what left 26 rows
+      // stuck at 'running' in the real database.
+      expect(settlementCalls()).toHaveLength(1);
+      expect(JSON.parse(settlementCalls()[0][1].body).status).not.toBe("completed");
+    });
+
+    it("tags the charge with the run the server minted", async () => {
+      await useWorkflowStore.getState().regenerateNode("nanoBanana-1");
+
+      const generate = mockFetch.mock.calls.find(
+        ([url]) => typeof url === "string" && url.includes("/api/generate")
+      );
+      // The id is a grouping key the server issued — never one the client
+      // chose, and never a price.
+      expect(JSON.parse(generate![1].body).runId).toBe("run-under-test");
+      expect(JSON.parse(settlementCalls()[0][1].body).runId).toBe("run-under-test");
+    });
+  });
+
   describe("Race condition prevention", () => {
     let mockFetch: ReturnType<typeof vi.fn>;
 
@@ -2429,7 +2532,10 @@ describe("workflowStore integration tests", () => {
       const p2 = store.regenerateNode("nanoBanana-1");
       await Promise.all([p1, p2]);
 
-      expect(mockFetch).toHaveBeenCalledTimes(1);
+      // Counted by URL, not by total fetches: a regeneration now opens a run
+      // and settles it, so it makes three requests for one provider call.
+      // Those two are the fix for it never having been billed at all.
+      expect(generationCalls(mockFetch)).toHaveLength(1);
     });
 
     it("should execute each node exactly once with multiple disconnected nodes", async () => {

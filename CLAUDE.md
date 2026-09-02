@@ -103,11 +103,15 @@ through — `falUnusableIds()` lists the backlog.
 | Packs + run costs derived from rates | `src/lib/credits/pricing.ts` |
 | Balance / pending / settle / grant | `src/lib/credits/server.ts` |
 | Route wrapper: auth → afford → record | `src/lib/credits/guard.ts` |
+| Settlement that actually debits (SQL) | `supabase/migrations/0023_settlement_actually_debits.sql` |
+| Open/close the run a charge is billed under | `src/store/execution/billableRun.ts` |
 | Razorpay orders + signature verification | `src/lib/credits/razorpay.ts` |
 | Ledger schema, RLS, SQL functions | `supabase/migrations/0003_credits.sql` |
 | Pending charges + settlement | `supabase/migrations/0004_workflow_settlement.sql` |
-| Balance store + `settleRun()` | `src/store/creditStore.ts` |
+| Balance store + `settleRun()` + replay queue | `src/store/creditStore.ts` |
 | Header badge / buy modal | `src/components/credits/` |
+| Settlement regressions (store) | `src/store/__tests__/creditSettlement.test.ts` |
+| Every path settles (call sites) | `src/store/__tests__/workflowStore.integration.test.ts` |
 
 ### Routes
 
@@ -141,9 +145,33 @@ A failed or cancelled workflow still pays for the nodes that already dispatched;
 that money is spent regardless. Settling twice is harmless — the second call
 finds nothing unsettled.
 
-**Settlement has now been broken twice, in the same way.**
+**Settlement has now been broken three times, in the same way.**
 
-`0019` fixes the second: both settlement functions declare `returns table
+`0023` fixes the third, which is the same fault as the second — the fix in
+`0019` was not in effect, and what is worth keeping is not which migration got
+skipped but how long that went unnoticed. Read against the live database on
+2026-09-03: **no `spend` transaction had ever been written**, 26 runs sat at
+`running`, and the only settled `pending_charges` rows were 0012's write-off.
+A month of real generations, every one of them unbilled.
+
+The tell was the one run that *did* close: it was cancelled half a second after
+it opened, so it owed nothing and took the early return. Everything that owed
+something died at the debit and **rolled back its own status update**, which is
+why the evidence looked like "the client never called settle" rather than "the
+function raised".
+
+`0023` removes the shape instead of respelling it — the debit now goes through
+a table alias (`update public.user_credits uc set balance = uc.balance - ...`),
+which cannot collide with an OUT parameter, and both functions declare
+`#variable_conflict use_column` so a future bare `balance` resolves instead of
+raising. **Its self-test calls the real functions on the path that debits**,
+against a borrowed funded account, and restores the balance afterwards. 0019
+shipped a self-test too and it passed while the bug was live, because it
+exercised a hand-copied `UPDATE` rather than the function containing it — and a
+copy has no OUT parameter to be ambiguous against. A test that reconstructs the
+code under test cannot fail the way the code does.
+
+`0019` fixed the second: both settlement functions declare `returns table
 (charged, balance, ...)`, making `balance` an OUT parameter, and then wrote
 `set balance = balance - v_debit`. The right-hand `balance` is ambiguous
 against that parameter and plpgsql refuses to guess — but the statement sits
@@ -176,17 +204,45 @@ around settlement is mocked, so the whole credit system was green against a
 function that never once ran. Anything that only exists as SQL needs to be
 exercised against a real database before it is believed.
 
-**The closed-tab leak is swept, not fixed at the source.** A tab closed
-mid-run still never settles itself, so those rows sit unbilled until
-`POST /api/cron/maintenance` picks them up — see "Scheduled maintenance"
-below. The note that used to sit here said this needed "no new logic, only a
-scheduler". That was half right: `settle_pending_charges` does take just a
-user id, but a sweep has to know *which* users are owed, and enumerating them
-is `sweep_stale_pending_charges` in `0011_maintenance.sql`.
+**Every path that spends money now settles it — there used to be three and
+only one did.** `executeWorkflow` opened a run and billed it. `regenerateNode`
+(the regenerate button on a generation node, the most-used action in the app)
+and `executeSelectedNodes` ("Run selected") dispatched to the same providers
+through the same gate, wrote the same `pending_charges` rows, and billed
+nothing at all. All three now go through `openBillableRun` /
+`closeBillableRun`, and all three settle **from a `finally` block** — the two
+new ones return early from a dozen places, and a settle written at the bottom
+of the function would be skipped by every one of them.
+
+**Settlement failures are no longer swallowed.** `settleRun` used to return on
+`!response.ok`, which is the single reason a broken database function went a
+month without anyone noticing: every run looked settled, and the balance simply
+reappeared on the next reload. It now logs loudly, retries a 5xx, sets
+`settleError` (the header badge shows **unbilled** in red), and parks the run
+in `localStorage` for the next page load to replay.
+
+**The closed-tab leak is now fixed at the source, not only swept.** A `pagehide`
+listener in `billableRun.ts` settles the active run with `sendBeacon`, and
+anything that beacon cannot deliver joins the same replay queue. The
+maintenance sweep stays as the backstop for a machine that never came back —
+see "Scheduled maintenance" below — and its two jobs were **reordered**: runs
+are swept before charges, because the user-wide charge sweep would otherwise
+swallow an abandoned run's charges into one undifferentiated ledger line and
+leave the run row reading `credits_charged` zero.
 
 A refused step returns **402** with `code: "insufficient_credits"`; the executors
 turn that into the buy-credits modal. Every gated response carries
 `X-Credits-Balance` and `X-Credits-Pending`.
+
+**Two numbers, and never one.** `X-Credits-Balance` is the *spendable* figure —
+ledger minus unsettled charges — while `GET /api/credits` used to answer with
+the *ledger* figure alone. Neither was wrong and they answered different
+questions, so a run counted the badge down and a reload put the number back:
+indistinguishable from "credits are not being charged", and reported as exactly
+that. `GET /api/credits` now returns `balance`, `pending` and `available`; the
+store holds `balance` and `pending` separately; and **`availableCredits()` is
+the only thing any surface renders**. If you find yourself writing an available
+figure into `balance`, that is the bug coming back.
 
 ### Setup
 
@@ -196,7 +252,10 @@ turn that into the buy-credits modal. Every gated response carries
    `0016_close_abandoned_runs.sql`, then
    `0017_published_workflows.sql`, then `0018_published_media.sql`, then
    `0019_fix_ambiguous_balance.sql`, then `0020_moderation_full_media.sql`, then
-   `0021_media_source_url.sql`, in the Supabase SQL editor.
+   `0021_media_source_url.sql`, then `0022_user_run_history.sql`, then
+   `0023_settlement_actually_debits.sql`, in the Supabase SQL editor.
+   **`0023` is the one that makes a credit actually get debited** — it aborts
+   rather than installing if its own self-test cannot complete a debit.
 2. Add the three Razorpay vars above to `.env.local`.
 3. Razorpay dashboard → Settings → Webhooks → add
    `https://<domain>/api/credits/webhook` for `payment.captured`, using the
@@ -320,7 +379,8 @@ passes, so a handler cannot obtain it by forgetting to check.
    `0015_model_latency.sql`, then `0016_close_abandoned_runs.sql`, then
    `0017_published_workflows.sql`, then `0018_published_media.sql`, then
    `0019_fix_ambiguous_balance.sql`, then `0020_moderation_full_media.sql`, then
-   `0021_media_source_url.sql`.
+   `0021_media_source_url.sql`, then `0022_user_run_history.sql`, then
+   `0023_settlement_actually_debits.sql`.
 2. Sign in once with the account that should be admin (there must be an
    `auth.users` row to point at).
 3. `select public.set_admin('you@example.com');`
@@ -959,7 +1019,8 @@ a missing row or an empty graph.
 Run `0013_workflow_history.sql`, then `0014_workflow_history_read.sql`, then
 `0015_model_latency.sql`, then `0016_close_abandoned_runs.sql`, then
 `0017_published_workflows.sql`, then `0018_published_media.sql`, then
-`0019_fix_ambiguous_balance.sql`, then `0022_user_run_history.sql`. `0012` must be applied first — everything here reads the numbers settlement writes, so
+`0019_fix_ambiguous_balance.sql`, then `0022_user_run_history.sql`, then
+`0023_settlement_actually_debits.sql`. `0012` must be applied first — everything here reads the numbers settlement writes, so
 applying it on top of the broken function would build a history page that
 faithfully reports every workflow as having cost nothing.
 

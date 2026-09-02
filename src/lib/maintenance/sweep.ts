@@ -307,13 +307,32 @@ export async function sweepAbandonedRuns(
  * Each reports its own failure and none aborts the others: a broken prune must
  * not stop settlement from running for a week, which is exactly what a single
  * shared failure path would cause.
+ *
+ * RUNS ARE SWEPT BEFORE CHARGES, AND THE ORDER IS LOAD BEARING.
+ *
+ * It used to be the other way round, on the reasoning that the charge sweep
+ * has usually already billed the money so the run sweep only closes the row.
+ * That reasoning assumes the client settled and merely failed to close — true
+ * for a dropped connection, false for every run the client never settled at
+ * all.
+ *
+ * For those, the old order was actively destructive: `sweep_stale_pending_
+ * charges` settles user-wide, so it swallowed a run's charges into one
+ * undifferentiated ledger line, and the run sweep then closed the row with
+ * `credits_charged` zero. The money was billed and the attribution was
+ * destroyed — the history page would show a run that cost nothing beside a
+ * ledger line that could not say what it paid for.
+ *
+ * Sweeping runs first bills each one against its own row. The user-wide pass
+ * then finds only what is genuinely orphaned: charges from a regeneration
+ * predating run attribution, or from a run that could not be opened.
  */
 export async function runMaintenance(
   service: SupabaseClient,
   opts: { minutes?: number; limit?: number; days?: number } = {}
 ): Promise<MaintenanceResult> {
-  const settle = await sweepPendingCharges(service, opts);
   const runs = await sweepAbandonedRuns(service, opts);
+  const settle = await sweepPendingCharges(service, opts);
   const prune = await pruneGenerationEvents(service, opts);
   return { settle, runs, prune };
 }

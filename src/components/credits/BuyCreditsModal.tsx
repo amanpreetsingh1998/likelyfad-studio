@@ -13,7 +13,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { useCreditStore } from "@/store/creditStore";
+import { availableCredits, useCreditStore } from "@/store/creditStore";
 import { formatPackPrice, type CreditPack } from "@/lib/credits/pricing";
 import { CREDIT_VALUE_INR } from "@/lib/credits/rates";
 
@@ -53,7 +53,9 @@ export function BuyCreditsModal() {
   const open = useCreditStore((s) => s.buyModalOpen);
   const close = useCreditStore((s) => s.closeBuyModal);
   const packs = useCreditStore((s) => s.packs);
-  const balance = useCreditStore((s) => s.balance);
+  // The spendable figure, not the ledger one — the modal opens to answer
+  // "can I run this", and unsettled charges are already spoken for.
+  const balance = useCreditStore(availableCredits);
   const shortfall = useCreditStore((s) => s.shortfall);
   const purchaseEnabled = useCreditStore((s) => s.purchaseEnabled);
   const refresh = useCreditStore((s) => s.refresh);

@@ -32,9 +32,7 @@ import { externalizeWorkflowMedia, hydrateWorkflowMedia } from "@/utils/mediaSto
 // === LIKELYFAD CUSTOM START === (cloud persistence)
 import { ensureProjectRow, saveProject } from "@/lib/likelyfad/cloud-storage";
 import { isSignedIn, requireAuth } from "./authGateStore";
-import { settleRun } from "@/store/creditStore";
-import { setActiveRunId } from "@/store/execution/activeRun";
-import { startWorkflowRun } from "@/lib/workflows/startRun";
+import { openBillableRun, closeBillableRun } from "@/store/execution/billableRun";
 // === LIKELYFAD CUSTOM END ===
 import { EditOperation, applyEditOperations as executeEditOps } from "@/lib/chat/editOperations";
 import { findNearestFreePosition } from "@/utils/spatialLayout";
@@ -1642,16 +1640,25 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
     // its charges settle through the user-wide path exactly as they did before
     // history existed; only the history entry is lost. A feature for reading
     // the past must never stop someone working in the present.
-    const runId = await startWorkflowRun({
+    const runId = await openBillableRun({
       projectId: get().workflowId,
       projectName: get().workflowName,
       nodeCount: nodes.length,
     });
-    setActiveRunId(runId);
+    // Settled once, from the finally block below. Both exit paths used to
+    // settle for themselves, which left this stretch — between isRunning going
+    // true and the try opening — able to strand a run forever if anything in
+    // it threw.
+    let runStatus: "completed" | "failed" | "cancelled" = "completed";
     // === LIKELYFAD CUSTOM END ===
 
-    // Start logging session
-    await logger.startSession();
+    // Start logging session. A logging fault must not stop the workflow, and
+    // must not leave isRunning stuck true with a run row open behind it.
+    try {
+      await logger.startSession();
+    } catch (err) {
+      console.error("[workflow] could not start a log session:", err);
+    }
 
     logger.info('workflow.start', 'Workflow execution started', {
       nodeCount: nodes.length,
@@ -2006,19 +2013,8 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
       set({ isRunning: false, currentNodeIds: [], skippedNodeIds: new Set(), _abortController: null });
 
       // === LIKELYFAD CUSTOM START === (credits)
-      // Bill the whole run in one debit. The server already recorded what each
-      // node cost as it ran; this only says the workflow is over.
-      //
-      // The ambient run id is cleared FIRST, and the local copy is what gets
-      // settled. settleRun is fire-and-forget, so leaving the module value set
-      // would let a node regenerated from the canvas moments later attach its
-      // charge to a run that has already been billed — money the sweep would
-      // have to find, against a workflow that never spent it.
-      setActiveRunId(null);
-      void settleRun(
-        abortController.signal.aborted ? "cancelled" : "completed",
-        runId
-      );
+      // Record the outcome; the finally block below is what bills it.
+      runStatus = abortController.signal.aborted ? "cancelled" : "completed";
       // === LIKELYFAD CUSTOM END ===
 
       saveLogSession();
@@ -2044,17 +2040,25 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
       // reached a provider — that money is spent either way. Settling also
       // closes the run row, so a workflow that threw does not sit 'running'
       // waiting for the maintenance sweep to call it abandoned.
-      setActiveRunId(null);
-      void settleRun(
+      runStatus =
         error instanceof DOMException && error.name === "AbortError"
           ? "cancelled"
-          : "failed",
-        runId
-      );
+          : "failed";
       // === LIKELYFAD CUSTOM END ===
 
       saveLogSession();
       await logger.endSession();
+    } finally {
+      // === LIKELYFAD CUSTOM START === (credits)
+      // Bill the whole run in one debit. The server already recorded what each
+      // node cost as it ran; this only says the workflow is over.
+      //
+      // A failed or cancelled run still pays for the nodes that already
+      // reached a provider — that money is spent either way. Settling also
+      // closes the run row, so a workflow that threw does not sit 'running'
+      // waiting for the maintenance sweep to call it abandoned.
+      closeBillableRun(runId, runStatus);
+      // === LIKELYFAD CUSTOM END ===
     }
   },
 
@@ -2180,11 +2184,33 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
     const abortController = new AbortController();
     set({ isRunning: true, currentNodeIds: [nodeId], _abortController: abortController });
 
+    // === LIKELYFAD CUSTOM START === (credits)
+    // Regenerating a node calls a provider and is charged for it, so it needs
+    // a run to be billed under. Without one it recorded a pending charge that
+    // nothing ever settled: the badge went down, the ledger did not move, and
+    // the next reload handed the credits back. Opened after isRunning is set,
+    // for the same reason executeWorkflow does — an await before the guard's
+    // state is committed is a window for a second click to run everything
+    // twice.
+    const runId = await openBillableRun({
+      projectId: get().workflowId,
+      projectName: get().workflowName,
+      nodeCount: 1,
+    });
+    // === LIKELYFAD CUSTOM END ===
+
     await logger.startSession();
     logger.info('node.execution', 'Regenerating node', {
       nodeId,
       nodeType: node.type,
     });
+
+    // Settled from a finally block, not from each exit. This function returns
+    // early from a dozen places (every node type that finishes its own
+    // cleanup), and a settle written at the bottom would be skipped by all of
+    // them — which is how a whole execution path came to spend money without
+    // ever billing it.
+    let runStatus: "completed" | "failed" | "cancelled" = "completed";
 
     try {
       const executionCtx = get()._buildExecutionContext(node, abortController.signal);
@@ -2284,6 +2310,10 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
       saveLogSession();
       await logger.endSession();
     } catch (error) {
+      runStatus =
+        error instanceof DOMException && error.name === "AbortError"
+          ? "cancelled"
+          : "failed";
       logger.error('node.error', 'Node regeneration failed', {
         nodeId,
       }, error instanceof Error ? error : undefined);
@@ -2295,6 +2325,13 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
 
       saveLogSession();
       await logger.endSession();
+    } finally {
+      // === LIKELYFAD CUSTOM START === (credits)
+      // A failed or cancelled regeneration still pays for the call that
+      // already reached a provider — that money is spent either way. Settling
+      // also closes the run row, so it does not sit 'running' forever.
+      closeBillableRun(runId, runStatus);
+      // === LIKELYFAD CUSTOM END ===
     }
   },
 
@@ -2333,6 +2370,20 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
     // Create AbortController for this execution run
     const abortController = new AbortController();
     set({ isRunning: true, currentNodeIds: nodeIds, _abortController: abortController });
+
+    // === LIKELYFAD CUSTOM START === (credits)
+    // "Run selected" dispatches to the same providers as a full run and is
+    // charged identically, so it needs a run to be billed under. It previously
+    // had none: every charge it recorded sat unsettled until the maintenance
+    // sweep noticed, which is to say indefinitely on any deployment without a
+    // scheduler wired up.
+    const runId = await openBillableRun({
+      projectId: get().workflowId,
+      projectName: get().workflowName,
+      nodeCount: nodesToExecute.length,
+    });
+    let runStatus: "completed" | "failed" | "cancelled" = "completed";
+    // === LIKELYFAD CUSTOM END ===
 
     await logger.startSession();
     logger.info('node.execution', 'Executing selected nodes', {
@@ -2528,8 +2579,10 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
       await logger.endSession();
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') {
+        runStatus = "cancelled";
         logger.info('node.execution', 'Selected nodes execution cancelled by user');
       } else {
+        runStatus = "failed";
         logger.error('node.error', 'Selected nodes execution failed', {}, error instanceof Error ? error : undefined);
         useToast.getState().show(
           `Execution failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
@@ -2540,6 +2593,17 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
 
       saveLogSession();
       await logger.endSession();
+    } finally {
+      // === LIKELYFAD CUSTOM START === (credits)
+      // In a finally block for the same reason as regenerateNode: every exit
+      // must bill, including the ones that return early.
+      closeBillableRun(
+        runId,
+        abortController.signal.aborted && runStatus === "completed"
+          ? "cancelled"
+          : runStatus
+      );
+      // === LIKELYFAD CUSTOM END ===
     }
   },
 
