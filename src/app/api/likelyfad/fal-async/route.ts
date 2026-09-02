@@ -27,13 +27,27 @@ import type { GenerationInput, ModelCapability } from "@/lib/providers/types";
 import { requireAuth } from "@/lib/auth/guard";
 import { getBalance, getPendingTotal, recordPendingCharge } from "@/lib/credits/server";
 import { creditCostForRun, hasKnownPrice, runKindForMediaType } from "@/lib/credits/pricing";
-import { BALANCE_HEADER, CHARGED_HEADER } from "@/lib/credits/guard";
+import { BALANCE_HEADER, CHARGED_HEADER, resolveRunId } from "@/lib/credits/guard";
+import {
+  recordGenerationEvent,
+  completeGenerationEvent,
+  promptFromBody,
+} from "@/lib/moderation/events";
+import { deferAfterResponse } from "@/lib/moderation/defer";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 interface SubmitBody {
   action: "submit";
+  /**
+   * Which workflow execution this belongs to. A grouping key and nothing else,
+   * verified against the caller before use — exactly as withCredits() treats
+   * the same field. Without it the charge is untagged, and an untagged charge
+   * can only ever be billed by the user-wide maintenance sweep, never by the
+   * per-run settle the client actually calls.
+   */
+  runId?: string;
   modelId: string;
   modelName: string;
   capabilities?: string[];
@@ -53,6 +67,12 @@ interface FetchResultBody {
   responseUrl: string;
   modelName: string;
   capabilities: string[];
+  /**
+   * The id `submit` handed back. Optional, and its absence costs only the
+   * moderation record's completion — the row stays `pending`, which is the
+   * honest state for a dispatch whose outcome nothing reported back.
+   */
+  falRequestId?: string;
 }
 
 type Body = SubmitBody | PollBody | FetchResultBody;
@@ -158,19 +178,74 @@ export async function POST(request: NextRequest) {
           },
           {
             status: 402,
-            headers: { [BALANCE_HEADER]: String(balance), [CHARGED_HEADER]: String(pending) },
+            // The SPENDABLE figure, not the ledger one. These two headers
+            // answer different questions and only one of them is what a
+            // client can act on; writing the ledger figure here is the
+            // "two numbers, and never one" bug, and it read as "credits are
+            // not being charged" the last time it shipped.
+            headers: {
+              [BALANCE_HEADER]: String(balance - pending),
+              [CHARGED_HEADER]: String(pending),
+            },
           }
         );
       }
 
+      // Verified before use. An absent, malformed or foreign id degrades to an
+      // untagged charge, which still settles — through the user-wide path,
+      // exactly as it did before runs existed.
+      const runId = await resolveRunId(auth.user.id, body.runId);
+
+      const startedAt = Date.now();
       const result = await submitToFalQueue(requestId, apiKey, genInput);
+      const durationMs = Date.now() - startedAt;
+
       if (!result.success) {
+        // A dispatch that never reached fal is charged for nothing, but it is
+        // still a prompt someone submitted, and that is what the moderation
+        // log is a record of.
+        deferAfterResponse(() =>
+          recordGenerationEvent({
+            userId: auth.user.id,
+            kind: cost.kind,
+            provider: "fal",
+            modelId: body.modelId,
+            prompt: promptFromBody(body as unknown as Record<string, unknown>),
+            creditsCharged: null,
+            durationMs,
+            status: "failed",
+            error: result.error ?? null,
+            runId,
+          })
+        );
         return NextResponse.json({ success: false, error: result.error }, { status: 500 });
       }
 
       // Recorded only now, for the same reason withCredits() defers it: a run
       // that never reached fal is not a run the user should pay for.
-      await recordPendingCharge(auth.user.id, charge, cost);
+      await recordPendingCharge(auth.user.id, charge, cost, runId);
+
+      // THE MODERATION LOG IS NOT OPTIONAL ON THIS PATH. This route is a
+      // hand-rolled parallel to withCredits(), and it was billing without
+      // writing an event — so every video, audio and 3D run through it was
+      // invisible to the moderation feed and to every usage panel, on exactly
+      // the media types that have no thumbnail and are judged on their prompt
+      // alone. Written as `pending`, keyed by the fal request id, and closed
+      // out by `fetch-result` below: the same lifecycle Kie's long tasks use.
+      deferAfterResponse(() =>
+        recordGenerationEvent({
+          userId: auth.user.id,
+          kind: cost.kind,
+          provider: "fal",
+          modelId: body.modelId,
+          prompt: promptFromBody(body as unknown as Record<string, unknown>),
+          creditsCharged: charge,
+          durationMs,
+          status: "pending",
+          taskId: result.falRequestId ?? null,
+          runId,
+        })
+      );
 
       return NextResponse.json({
         success: true,
@@ -205,16 +280,51 @@ export async function POST(request: NextRequest) {
         body.modelName,
         body.capabilities || []
       );
+      // Closes out the `pending` row `submit` wrote. Matched on
+      // (user_id, task_id) inside completeGenerationEvent — never the task id
+      // alone, which is guessable enough that matching on one by itself would
+      // let a caller attach output to somebody else's event.
+      //
+      // Nothing here is awaited into the response path and nothing here
+      // throws: by this point the generation has succeeded and the credits are
+      // committed, so a logging fault must not become the user's error.
+      const closeEvent = (
+        status: "succeeded" | "failed",
+        media?: { output?: string | null; outputKind?: string | null; error?: string | null }
+      ) => {
+        if (!body.falRequestId) return;
+        deferAfterResponse(() =>
+          completeGenerationEvent({
+            userId: auth.user.id,
+            taskId: body.falRequestId as string,
+            status,
+            output: media?.output ?? null,
+            outputKind: media?.outputKind ?? null,
+            error: media?.error ?? null,
+          })
+        );
+      };
+
       if (!result.success) {
+        closeEvent("failed", { error: result.error ?? null });
         return NextResponse.json({ success: false, error: result.error }, { status: 500 });
       }
       const output = result.outputs?.[0];
       if (!output) {
+        closeEvent("failed", { error: "No output in fal result" });
         return NextResponse.json(
           { success: false, error: "No output in fal result" },
           { status: 500 }
         );
       }
+
+      // The URL is preferred over the inline data for the archive copy: it is
+      // what media.ts can fetch and size-cap, and it is what survives as the
+      // labelled fallback when the copy itself fails.
+      closeEvent("succeeded", {
+        output: output.url ?? output.data ?? null,
+        outputKind: output.type,
+      });
 
       // Return shape mirrors /api/generate's buildMediaResponse so the
       // executor can handle the response identically.

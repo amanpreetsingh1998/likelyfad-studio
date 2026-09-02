@@ -334,7 +334,7 @@ function logGeneration(args: {
  * lookup that failed. The caller treats null as "record this charge untagged",
  * which is the pre-history behaviour and still bills correctly.
  */
-async function resolveRunId(
+export async function resolveRunId(
   userId: string,
   value: unknown
 ): Promise<string | null> {
