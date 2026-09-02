@@ -6,7 +6,7 @@
  * the half that matters.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import type { NextRequest } from "next/server";
 import { requireLocal } from "../guard";
 
@@ -23,6 +23,39 @@ beforeEach(() => {
 afterEach(() => {
   if (ORIGINAL === undefined) delete process.env.ENABLE_LOCAL_FILESYSTEM_ROUTES;
   else process.env.ENABLE_LOCAL_FILESYSTEM_ROUTES = ORIGINAL;
+});
+
+/**
+ * The flag is the whole boundary — arbitrary path access is the feature these
+ * routes exist for — so the case that matters is somebody copying a working
+ * .env onto a deployment. Production refuses regardless of the flag.
+ */
+describe("requireLocal — production", () => {
+  const ORIGINAL_ENV = process.env.NODE_ENV;
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    if (ORIGINAL_ENV === undefined) delete process.env.NODE_ENV;
+    else vi.stubEnv("NODE_ENV", ORIGINAL_ENV);
+  });
+
+  it("ignores the flag entirely in a production build", () => {
+    process.env.ENABLE_LOCAL_FILESYSTEM_ROUTES = "1";
+    vi.stubEnv("NODE_ENV", "production");
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const gate = requireLocal(request({ host: "localhost:3000" }));
+    expect(gate.ok).toBe(false);
+    if (!gate.ok) expect(gate.response.status).toBe(404);
+
+    error.mockRestore();
+  });
+
+  it("still honours the flag outside production, or the desktop case breaks", () => {
+    process.env.ENABLE_LOCAL_FILESYSTEM_ROUTES = "1";
+    vi.stubEnv("NODE_ENV", "development");
+    expect(requireLocal(request({ host: "localhost:3000" })).ok).toBe(true);
+  });
 });
 
 describe("requireLocal", () => {

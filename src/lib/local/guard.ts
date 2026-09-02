@@ -27,9 +27,52 @@ import type { NextRequest } from "next/server";
  * Opt-IN, not opt-out. An unset variable means off, so deploying without
  * setting anything is the safe outcome rather than the exposed one — the same
  * argument as CRON_SECRET refusing every request while it is missing.
+ *
+ * AND REFUSED OUTRIGHT IN PRODUCTION, whatever the flag says.
+ *
+ * The flag is the whole boundary here, because arbitrary path access is the
+ * feature (see the header) — so the failure mode is not a subtle one. It is:
+ * somebody copies a working .env from a laptop to a deployment, and the
+ * deployment gains arbitrary remote read and write of its own filesystem, with
+ * nothing but a spoofable Host header in the way. That is one careless file
+ * copy, and nothing about the running system would look wrong afterwards.
+ *
+ * There is no legitimate production use to weigh against it. These routes
+ * exist for the desktop case, and NODE_ENV is "development" there; the hosted
+ * deployment's parallel path is /api/likelyfad/*, which is authenticated and
+ * already what workflowStore's isCloudSave branch uses.
+ *
+ * `NEXT_PUBLIC_ALLOW_LOCAL_FS_IN_PRODUCTION` is deliberately NOT a thing. An
+ * escape hatch for this would be used exactly once, by the person the check
+ * was written for.
  */
 function enabled(): boolean {
-  return process.env.ENABLE_LOCAL_FILESYSTEM_ROUTES === "1";
+  if (process.env.ENABLE_LOCAL_FILESYSTEM_ROUTES !== "1") return false;
+
+  if (process.env.NODE_ENV === "production") {
+    warnOnce();
+    return false;
+  }
+
+  return true;
+}
+
+let warned = false;
+
+/**
+ * Said once, not per request. A misconfiguration that logs on every call gets
+ * filtered out of the log within a day, which is the opposite of what a line
+ * about an open filesystem is for.
+ */
+function warnOnce(): void {
+  if (warned) return;
+  warned = true;
+  console.error(
+    "[local] ENABLE_LOCAL_FILESYSTEM_ROUTES is set in a production build. " +
+      "Ignoring it: these routes give arbitrary filesystem access and are for " +
+      "local desktop use only. Unset it, and use /api/likelyfad/* for hosted " +
+      "persistence."
+  );
 }
 
 /**
