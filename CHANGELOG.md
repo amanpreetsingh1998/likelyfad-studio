@@ -54,6 +54,17 @@ with real money, and there is an admin dashboard over the top of it.
   charges the browser abandoned, and applies retention to the generation log.
   Both jobs existed as SQL for months and had never once run, because nothing
   here runs on a timer.
+- **Six B2B SaaS workflows, seeded into the account** — Feature Launch
+  Graphic, Product Screenshot Mockup, Blog Header (three formats), Customer
+  Story Card, Integration Diagram and Ad Creative Set. Real workflows in
+  `projects`, not quickstart templates: they appear on `/workflows`, open in
+  the studio, and can be published to every signed-in user. The studio's
+  existing presets all start from a photograph of an object, which a SaaS
+  company does not have — its product is a screen — so these generate from a
+  brief instead, most of them routing it through an LLM node first. The two
+  that take an image take the customer's own screenshot or headshot and ship
+  no sample, because the task there is getting their pixels through the model
+  unaltered.
 - **Runs tab** (`/workflows?tab=runs`) — Every execution the account has made,
   newest first, with what it cost, how long it took and which models it used.
   Not a rearrangement of the workflow list: that page is keyed by workflow, so

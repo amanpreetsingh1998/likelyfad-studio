@@ -17,7 +17,8 @@
     "supabase:claim": "node scripts/claim-default-data.mjs",
     "comfy:record": "node scripts/comfy-smoke.mjs record",
     "comfy:smoke": "node scripts/comfy-smoke.mjs run",
-    "fal:pricing": "node scripts/fal-record-pricing.mjs"
+    "fal:pricing": "node scripts/fal-record-pricing.mjs",
+    "seed:workflows": "node scripts/seed-b2b-workflows.mjs"
   },
   "dependencies": {
     "@ai-sdk/google": "^3.0.13",

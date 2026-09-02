@@ -892,10 +892,38 @@ over every run the account has.
 made versus a tab that closed — and a second copy is a second place for it to
 be quietly collapsed into "it did not finish".
 
+### Seeded workflows
+
+Six B2B SaaS workflows ship as **rows in `projects`**, not as quickstart
+templates. The difference is the whole point: a template is source compiled
+into the bundle and becomes nothing until a user picks it and saves, while a
+project is a row the account owns — it appears on `/workflows`, opens in the
+studio, and can be published to every signed-in user.
+
+`scripts/seed-b2b-workflows.mjs` is the source. `npm run seed:workflows`
+writes `supabase/seeds/b2b_workflows.sql` for the SQL editor; `--apply` writes
+the rows directly with the service key; `--verify` reads them back and fails on
+a missing row or an empty graph.
+
+- **Ownership is resolved from the `admins` table**, never hard-coded, so a
+  seed cannot land on a stale email or the wrong account. No seat seeded is an
+  exception, not a guess.
+- **Ids are fixed (`wf_seed_*`) and every write is conflict-ignoring.** A seed
+  that may be re-run must never overwrite edits someone made to a seeded
+  workflow on the canvas, which `merge-duplicates` would.
+- **`est_credits`, `est_duration_ms`, `est_partial` and `models` are left
+  null.** 0013 §1 is explicit that they are a server-derived cache never
+  accepted from a client — anything that can write `est_credits` can write its
+  own price — and this script is a client like any other. They fill in from
+  the stored graph on the first save or reprice; until then the cards show no
+  estimate, which is true rather than invented.
+
 ### Files
 
 | Purpose | Location |
 |---------|----------|
+| Seeded B2B workflows + SQL emitter | `scripts/seed-b2b-workflows.mjs` |
+| Generated seed SQL | `supabase/seeds/b2b_workflows.sql` |
 | Runs, attribution columns, `settle_workflow_run` | `supabase/migrations/0013_workflow_history.sql` |
 | History aggregates | `supabase/migrations/0014_workflow_history_read.sql` |
 | Per-model measured latency | `supabase/migrations/0015_model_latency.sql` |
