@@ -82,18 +82,29 @@ export type StartRunInput = {
  * exactly as it did before this feature existed. The only thing lost is the
  * history entry.
  *
- * The project id is stored as given but is NOT verified to exist. It carries
- * `on delete set null`, so a stale id simply lands null; and a workflow that
- * has never been saved to the cloud still deserves a run row, because the
- * money it spends is real either way.
+ * A workflow that has never been saved to the cloud still deserves a run row,
+ * because the money it spends is real either way — so an absent project id is
+ * normal, not a failure.
+ *
+ * THE PROJECT ID IS RESOLVED, NEVER STORED AS GIVEN. It arrives in a request
+ * body and this row is written through the service-role client, so an
+ * unchecked id is a foreign key the caller chose against a table RLS is not
+ * protecting. Storing one lets a caller file a run against a workflow that is
+ * not theirs, and the history feed then joins that row to `projects` to
+ * display it — which is a read of another account's workflow name and an
+ * existence oracle for any id. See `resolveProjectId` below. `finishRun` and
+ * `runBelongsTo` already hold this line; this is the same rule applied to the
+ * one write that was taking the client's word for it.
  */
 export async function startRun(input: StartRunInput): Promise<string | null> {
   try {
+    const projectId = await resolveProjectId(input.userId, input.projectId);
+
     const { data, error } = await getServiceClient()
       .from(TABLE)
       .insert({
         user_id: input.userId,
-        project_id: input.projectId ?? null,
+        project_id: projectId,
         project_name: clampName(input.projectName),
         node_count: normaliseCount(input.nodeCount),
         status: "running",
@@ -188,6 +199,56 @@ export async function runBelongsTo(
     return data.user_id === userId;
   } catch {
     return false;
+  }
+}
+
+/**
+ * May this user file a run against this workflow?
+ *
+ * Answers with the id to store, or null to store none — never an error. A
+ * refused id degrades the run to "Unsaved workflow", which is a shape the feed
+ * already renders and which costs the user nothing: the charges still settle,
+ * because a run's cost comes from its `pending_charges` rows and never from
+ * the workflow it names.
+ *
+ * TWO WAYS TO PASS, matching the two select policies on `projects` exactly —
+ * your own row (0001) and a published one (0017). A published workflow has to
+ * pass: the run page at /workflows/[id]/run is the only surface a non-admin
+ * has, and every run made there is against somebody else's workflow by
+ * design. Withholding the id would strand every one of those runs on the feed
+ * as "Unsaved workflow".
+ *
+ * Compared explicitly rather than expressed as a filter that returns rows.
+ * The service client bypasses RLS, so "a row came back" means only that the
+ * id exists — which is the exact assumption this function exists to remove.
+ * A soft-deleted workflow still passes for its owner, because owning it is
+ * what is being asked; whether it is still somewhere to navigate to is a
+ * separate question the feed answers for itself.
+ */
+async function resolveProjectId(
+  userId: string,
+  projectId: string | null | undefined
+): Promise<string | null> {
+  if (typeof projectId !== "string" || !projectId.trim()) return null;
+
+  try {
+    const { data, error } = await getServiceClient()
+      .from("projects")
+      .select("user_id, is_published, deleted_at")
+      .eq("id", projectId)
+      .maybeSingle();
+
+    // A missing row is the ordinary case for a canvas that was never saved,
+    // and a failed read is not a reason to trust an unverified id. Both store
+    // nothing.
+    if (error || !data) return null;
+
+    const owned = data.user_id === userId;
+    const published = data.is_published === true && !data.deleted_at;
+
+    return owned || published ? projectId : null;
+  } catch {
+    return null;
   }
 }
 

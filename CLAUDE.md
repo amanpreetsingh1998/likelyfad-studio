@@ -253,7 +253,8 @@ figure into `balance`, that is the bug coming back.
    `0017_published_workflows.sql`, then `0018_published_media.sql`, then
    `0019_fix_ambiguous_balance.sql`, then `0020_moderation_full_media.sql`, then
    `0021_media_source_url.sql`, then `0022_user_run_history.sql`, then
-   `0023_settlement_actually_debits.sql`, in the Supabase SQL editor.
+   `0023_settlement_actually_debits.sql`, then
+   `0024_run_history_scoped_project_join.sql`, in the Supabase SQL editor.
    **`0023` is the one that makes a credit actually get debited** — it aborts
    rather than installing if its own self-test cannot complete a debit.
 2. Add the three Razorpay vars above to `.env.local`.
@@ -380,7 +381,8 @@ passes, so a handler cannot obtain it by forgetting to check.
    `0017_published_workflows.sql`, then `0018_published_media.sql`, then
    `0019_fix_ambiguous_balance.sql`, then `0020_moderation_full_media.sql`, then
    `0021_media_source_url.sql`, then `0022_user_run_history.sql`, then
-   `0023_settlement_actually_debits.sql`.
+   `0023_settlement_actually_debits.sql`, then
+   `0024_run_history_scoped_project_join.sql`.
 2. Sign in once with the account that should be admin (there must be an
    `auth.users` row to point at).
 3. `select public.set_admin('you@example.com');`
@@ -918,6 +920,19 @@ Both spent real credits, and before this tab neither was visible anywhere. A
 run with no workflow renders as "Unsaved workflow"; one whose workflow is gone
 keeps its snapshot name and is marked `(deleted)`.
 
+- **A run's `project_id` is resolved before it is stored, never taken as
+  given.** It arrives in a request body and the row is written through the
+  service-role client, so RLS protects nothing here — an unchecked id is a
+  foreign key the caller chose. `startRun` accepts one only if the caller owns
+  the workflow or it is published, mirroring the two select policies on
+  `projects` exactly; anything else stores null and reads as "Unsaved
+  workflow". Published has to pass, because `/workflows/[id]/run` is the only
+  surface a non-admin has and every run made there names somebody else's
+  workflow. `user_run_history`'s join to `projects` carries the same two arms
+  (0024), so the feed will not title a row from a workflow the caller may not
+  see even if such a row somehow exists. Before both, a forged id read back
+  another account's private workflow name and answered whether any given id
+  existed — and the seeded ids (`wf_seed_*`) are fixed and in the repo.
 - **`project_exists` is a separate question from `project_id` being set**, and
   a row that fails it gets no link. A dead link on the very row documenting a
   deletion is worse than no link — the position `target_exists` already takes
@@ -997,6 +1012,7 @@ a missing row or an empty graph.
 | Publishing + catalogue SQL | `supabase/migrations/0017_published_workflows.sql` |
 | Published media storage policy | `supabase/migrations/0018_published_media.sql` |
 | The account's run feed (SQL) | `supabase/migrations/0022_user_run_history.sql` |
+| Run feed's workflow join, scoped | `supabase/migrations/0024_run_history_scoped_project_join.sql` |
 | Runner field table + coverage test | `src/components/workflows/runnerFields.ts` |
 | Page shell and server-read first paint | `src/app/workflows/` |
 | Run page (reuses `executeWorkflow`) | `src/components/workflows/WorkflowRunner.tsx` |
@@ -1020,7 +1036,8 @@ Run `0013_workflow_history.sql`, then `0014_workflow_history_read.sql`, then
 `0015_model_latency.sql`, then `0016_close_abandoned_runs.sql`, then
 `0017_published_workflows.sql`, then `0018_published_media.sql`, then
 `0019_fix_ambiguous_balance.sql`, then `0022_user_run_history.sql`, then
-`0023_settlement_actually_debits.sql`. `0012` must be applied first — everything here reads the numbers settlement writes, so
+`0023_settlement_actually_debits.sql`, then
+`0024_run_history_scoped_project_join.sql`. `0012` must be applied first — everything here reads the numbers settlement writes, so
 applying it on top of the broken function would build a history page that
 faithfully reports every workflow as having cost nothing.
 

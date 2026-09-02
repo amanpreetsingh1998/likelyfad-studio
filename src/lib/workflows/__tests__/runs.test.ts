@@ -31,11 +31,13 @@ let updated: Record<string, unknown> | null;
 let updateFilters: Record<string, unknown>;
 let insertResult: { data: unknown; error: unknown };
 let selectResult: { data: unknown; error: unknown };
+/** What the `projects` lookup in resolveProjectId sees. */
+let projectResult: { data: unknown; error: unknown };
 let updateResult: { error: unknown };
 
 function stubSupabase() {
   mockGetServiceClient.mockReturnValue({
-    from: () => ({
+    from: (table: string) => ({
       insert: (row: Record<string, unknown>) => {
         inserted = row;
         return { select: () => ({ single: async () => insertResult }) };
@@ -55,7 +57,8 @@ function stubSupabase() {
       select: () => {
         const chain = {
           eq: () => chain,
-          maybeSingle: async () => selectResult,
+          maybeSingle: async () =>
+            table === "projects" ? projectResult : selectResult,
         };
         return chain;
       },
@@ -71,6 +74,10 @@ beforeEach(() => {
   updateFilters = {};
   insertResult = { data: { id: RUN }, error: null };
   selectResult = { data: { user_id: USER }, error: null };
+  projectResult = {
+    data: { user_id: USER, is_published: false, deleted_at: null },
+    error: null,
+  };
   updateResult = { error: null };
   stubSupabase();
 });
@@ -127,6 +134,93 @@ describe("startRun", () => {
       throw new Error("SUPABASE_SERVICE_ROLE_KEY not configured");
     });
     expect(await startRun({ userId: USER })).toBeNull();
+  });
+});
+
+/**
+ * The project id arrives in a request body and this row is written through the
+ * service client, so RLS is protecting nothing here. An id the caller has no
+ * business naming must not reach the row: the run feed joins it back to
+ * `projects` to title the row, which turns a forged id into a read of another
+ * account's workflow name and an existence oracle for any id at all.
+ *
+ * Refusal is silent and costs nothing — the run still opens, still bills and
+ * still settles, and simply reads as an unsaved workflow.
+ */
+describe("startRun — project attribution", () => {
+  it("stores an id the caller owns", async () => {
+    await startRun({ userId: USER, projectId: "wf_1_abc" });
+    expect(inserted?.project_id).toBe("wf_1_abc");
+  });
+
+  // The leak this check exists to close.
+  it("refuses another user's private workflow, and still opens the run", async () => {
+    projectResult = {
+      data: { user_id: OTHER, is_published: false, deleted_at: null },
+      error: null,
+    };
+    expect(await startRun({ userId: USER, projectId: "wf_seed_1" })).toBe(RUN);
+    expect(inserted?.project_id).toBeNull();
+  });
+
+  // /workflows/[id]/run is the only surface a non-admin has, and every run
+  // made there is against a workflow somebody else owns. Refusing these would
+  // strand all of them on the feed as "Unsaved workflow".
+  it("accepts another user's PUBLISHED workflow", async () => {
+    projectResult = {
+      data: { user_id: OTHER, is_published: true, deleted_at: null },
+      error: null,
+    };
+    await startRun({ userId: USER, projectId: "wf_seed_1" });
+    expect(inserted?.project_id).toBe("wf_seed_1");
+  });
+
+  it("refuses a published workflow that has been soft-deleted", async () => {
+    projectResult = {
+      data: {
+        user_id: OTHER,
+        is_published: true,
+        deleted_at: "2026-01-01T00:00:00Z",
+      },
+      error: null,
+    };
+    await startRun({ userId: USER, projectId: "wf_seed_1" });
+    expect(inserted?.project_id).toBeNull();
+  });
+
+  // Owning it is the question being asked. Whether it is still somewhere to
+  // navigate to is the feed's own, answered by project_exists.
+  it("keeps the caller's own workflow even once soft-deleted", async () => {
+    projectResult = {
+      data: {
+        user_id: USER,
+        is_published: false,
+        deleted_at: "2026-01-01T00:00:00Z",
+      },
+      error: null,
+    };
+    await startRun({ userId: USER, projectId: "wf_1_abc" });
+    expect(inserted?.project_id).toBe("wf_1_abc");
+  });
+
+  it("stores nothing for an id that names no workflow", async () => {
+    projectResult = { data: null, error: null };
+    await startRun({ userId: USER, projectId: "wf_nope" });
+    expect(inserted?.project_id).toBeNull();
+  });
+
+  // A failed lookup is not a reason to trust an unverified id.
+  it("fails closed when the lookup errors", async () => {
+    projectResult = { data: null, error: { message: "timeout" } };
+    await startRun({ userId: USER, projectId: "wf_1_abc" });
+    expect(inserted?.project_id).toBeNull();
+  });
+
+  it("does not go looking when no id was supplied", async () => {
+    await startRun({ userId: USER });
+    expect(inserted?.project_id).toBeNull();
+    await startRun({ userId: USER, projectId: "   " });
+    expect(inserted?.project_id).toBeNull();
   });
 });
 
