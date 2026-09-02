@@ -13,6 +13,14 @@ npm run test     # Run all tests with Vitest (watch mode)
 npm run test:run # Run all tests once (CI mode)
 ```
 
+**Node 22.12 or newer.** `engines.node` says so and the test scripts now
+*enforce* it via `scripts/check-node.mjs`, refusing to run below the floor
+rather than running quietly wrong. Below it, jsdom 27's CJS→ESM chain can throw
+inside a vitest worker: the files never execute and the run still reports
+success. A green suite over tests that did not run is the worst failure mode
+this repo has — it is how a settlement function that raised on every call
+stayed green for a month. `.nvmrc` pins the intended version.
+
 ## Environment Setup
 
 Create `.env.local` in the root directory:
@@ -229,6 +237,16 @@ see "Scheduled maintenance" below — and its two jobs were **reordered**: runs
 are swept before charges, because the user-wide charge sweep would otherwise
 swallow an abandoned run's charges into one undifferentiated ledger line and
 leave the run row reading `credits_charged` zero.
+
+**The assistant is metered too, by hand.** `/api/chat` cannot go through
+`withCredits()` — the gate reads the handler's response to bytes before
+returning it, which is right for a JSON generation reply and fatal for a
+token-by-token stream into `useChat`. So it does the two halves itself in the
+same order the gate does: affordability checked before the model is called,
+and the charge recorded from `onFinish`, once the call has actually completed.
+The charge is deliberately untagged by run — the assistant edits a graph, it
+does not execute one — so it settles through the user-wide path. Before this it
+was authenticated but free.
 
 A refused step returns **402** with `code: "insufficient_credits"`; the executors
 turn that into the buy-credits modal. Every gated response carries
@@ -1450,10 +1468,10 @@ the complete list.
 | `/api/generate` | 5 min | Image/video/3D generation across all seven providers |
 | `/api/generate/poll` | default | Complete an async provider task. **Authenticated** — matches on `(user_id, task_id)`, never the task alone |
 | `/api/llm` | 1 min | Text generation (Google/OpenAI/Anthropic) |
-| `/api/models` | default | Model catalogue across providers |
-| `/api/models/[modelId]` | default | Parameter schema for one model |
-| `/api/providers/fal/models` | default | fal catalogue, cursor-followed and cached 5 min |
-| `/api/providers/replicate/models` | default | Replicate catalogue |
+| `/api/models` | default | Model catalogue across providers. **Authenticated** |
+| `/api/models/[modelId]` | default | Parameter schema for one model. **Authenticated** |
+| `/api/providers/fal/models` | default | fal catalogue, cursor-followed and cached 5 min. **Authenticated**; `search` filters in process, never upstream |
+| `/api/providers/replicate/models` | default | Replicate catalogue. **Authenticated** |
 
 **Workflows and media**
 
@@ -1485,12 +1503,12 @@ the complete list.
 
 | Route | Timeout | Purpose |
 |-------|---------|---------|
-| `/api/chat` | default | AI assistant that edits the graph via tool calls |
+| `/api/chat` | default | AI assistant that edits the graph via tool calls. **Metered** — by hand, not `withCredits()`, because it streams |
 | `/api/quickstart` | default | Instantiate a preset template |
 | `/api/quickstart/propose` | default | Propose a workflow from a prompt |
 | `/api/logs` | default | Session logging |
 | `/api/env-status` | default | Which provider keys are configured |
-| `/api/open-file`, `/api/open-directory`, `/api/browse-directory` | default | Local filesystem helpers; localhost-only, home-directory-scoped |
+| `/api/open-file`, `/api/open-directory`, `/api/browse-directory` | default | Local filesystem helpers; opt-in, localhost-only, **refused outright in a production build** |
 
 **Maintenance**
 
