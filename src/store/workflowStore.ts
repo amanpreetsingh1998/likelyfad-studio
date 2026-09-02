@@ -3025,8 +3025,21 @@ const workflowStoreImpl: StateCreator<WorkflowStore> = (set, get) => ({
       }
       // === LIKELYFAD CUSTOM END ===
 
-      // If external media storage is enabled, externalize media before saving
-      if (useExternalImageStorage) {
+      // Externalize media before saving.
+      //
+      // A CLOUD SAVE ALWAYS EXTERNALIZES, WHATEVER THE TOGGLE SAYS. The
+      // setting is a local-workspace preference — it decides whether media
+      // sits beside the workflow file on disk or inside it — and neither
+      // answer is harmful there. On the cloud path the two answers are not
+      // equivalent: with it off, every generated output is written as base64
+      // into projects.workflow_json, which is a row overwritten on every
+      // autosave and the exact state the moderation log had to be built to
+      // escape. It also grows a jsonb row without bound on a table every
+      // catalogue read touches.
+      //
+      // So the toggle is honoured for a local save and overridden for a cloud
+      // one, rather than being read as if it meant the same thing on both.
+      if (useExternalImageStorage || isCloudSave) {
         workflow = await externalizeWorkflowMedia(workflow, effectiveDirectory);
       }
 
