@@ -85,6 +85,18 @@ function createFalModelResponse(inputProperties: Record<string, unknown>, requir
 // Import the route after mocks are set up
 import { GET } from "../route";
 
+// The route gates on a session now (src/lib/auth/guard.ts): assembling this
+// catalogue spends the deployment's provider keys, so an anonymous caller has
+// no use for it and every use for the upstream traffic. These suites test what
+// the handler does once past the gate; the gate has its own test.
+vi.mock("@/lib/auth/guard", () => ({
+  requireAuth: async () => ({
+    ok: true,
+    auth: { user: { id: "test-user" }, supabase: {} },
+  }),
+}));
+
+
 describe("/api/models/[modelId] schema endpoint", () => {
   beforeEach(() => {
     vi.clearAllMocks();

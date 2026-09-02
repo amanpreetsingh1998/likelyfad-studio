@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/lib/auth/guard";
 import { ProviderModel, ModelCapability } from "@/lib/providers";
 
 const REPLICATE_API_BASE = "https://api.replicate.com/v1";
@@ -115,6 +116,13 @@ type ModelsResponse = ModelsSuccessResponse | ModelsErrorResponse;
 export async function GET(
   request: NextRequest
 ): Promise<NextResponse<ModelsResponse>> {
+  // Signed-in callers only. The catalogue is not secret, but assembling it
+  // spends the deployment's provider keys — and a key that gets rate-limited
+  // or suspended takes generation down for every user, not just the caller
+  // who triggered it. Every real caller here has the model picker open.
+  const gate = await requireAuth();
+  if (!gate.ok) return gate.response as NextResponse<ModelsResponse>;
+
   // Server-side key only. The old query-param path also put a credential in
   // the URL, where it lands in access logs.
   const apiKey = process.env.REPLICATE_API_KEY;

@@ -18,6 +18,18 @@ vi.mock("@/lib/providers/cache", () => ({
 
 import { GET } from "../route";
 
+// The route gates on a session now (src/lib/auth/guard.ts): assembling this
+// catalogue spends the deployment's provider keys, so an anonymous caller has
+// no use for it and every use for the upstream traffic. These suites test what
+// the handler does once past the gate; the gate has its own test.
+vi.mock("@/lib/auth/guard", () => ({
+  requireAuth: async () => ({
+    ok: true,
+    auth: { user: { id: "test-user" }, supabase: {} },
+  }),
+}));
+
+
 // Store original env and fetch
 const originalEnv = { ...process.env };
 const originalFetch = global.fetch;

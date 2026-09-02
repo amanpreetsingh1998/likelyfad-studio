@@ -1,18 +1,48 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ProviderModel, ModelCapability } from "@/lib/providers";
 import { getFalPrice, falUsdForRun } from "@/lib/credits/falPricing";
+import { requireAuth } from "@/lib/auth/guard";
 
 const FAL_API_BASE = "https://api.fal.ai/v1";
 
 /**
- * Cursor pages to follow. The whole catalogue is ~15 pages; capping keeps a
- * cold request bounded, and the cache below means the full walk happens once
- * every few minutes rather than on every keystroke in the model search.
+ * Cursor pages to follow. The whole catalogue is ~15 pages of ~100.
+ *
+ * Raised from 16 now that the walk is shared rather than per-search-term: it
+ * happens once every five minutes for the whole deployment, so the headroom
+ * costs nothing and a catalogue that grows past the old cap would otherwise
+ * silently truncate — which is the failure this route already shipped once,
+ * when it read only the first page and hid 90% of the models.
  */
-const MAX_PAGES = 16;
+const MAX_PAGES = 25;
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
-let cache: { at: number; key: string; payload: ModelsSuccessResponse } | null = null;
+/**
+ * THE CACHE IS NOT KEYED ON ANYTHING THE CALLER SENDS.
+ *
+ * It used to be a single slot keyed on the raw `search` string, and the walk
+ * below runs on a miss. So `?search=<random>` missed every time and forced up
+ * to a full cursor walk of authenticated upstream calls per HTTP request, on
+ * the server's own FAL_API_KEY. That is free amplification against a key whose
+ * rate-limiting or suspension takes generation down for every user of the
+ * deployment — the key is not billed for listing, but it is the same key
+ * /api/generate runs on.
+ *
+ * The search term is no longer forwarded at all. This route already walks the
+ * entire active catalogue and already filters it locally by category, so it
+ * has every model in hand and can match the term in process. One walk serves
+ * every caller and every search box, and the query string cannot cause a fetch.
+ */
+let cache: { at: number; payload: ModelsSuccessResponse } | null = null;
+
+/**
+ * The walk in flight, if there is one.
+ *
+ * Without this, N simultaneous cold requests each start their own cursor walk —
+ * the same amplification the cache key opened, reachable by timing instead of
+ * by varying a parameter. They now share one.
+ */
+let inFlight: Promise<ModelsSuccessResponse | ModelsErrorResponse> | null = null;
 
 /**
  * Categories we care about for image/video generation
@@ -135,19 +165,25 @@ type ModelsResponse = ModelsSuccessResponse | ModelsErrorResponse;
 /**
  * GET /api/providers/fal/models
  *
- * Fetches available models from fal.ai API.
- * API key is optional - fal.ai works without but with rate limits.
+ * The fal catalogue, normalised and priced. Signed-in callers only.
  *
- * Headers:
- *   - X-API-Key: API key for authentication (recommended)
- *   - Authorization: Alternative auth header
+ * The key is the server's, never the caller's — a client picks a model, not a
+ * credential, for the same reason it picks a model and not a price.
  *
  * Query params:
- *   - search: Optional search query to filter models
+ *   - search: filters the catalogue in process. It is not forwarded upstream.
  */
 export async function GET(
   request: NextRequest
 ): Promise<NextResponse<ModelsResponse>> {
+  // A CATALOGUE LISTING STILL NEEDS A SESSION. Nothing here is billed and
+  // nothing here is secret, so the instinct is that it can be public — but the
+  // walk below runs on the server's FAL_API_KEY, and every real caller is a
+  // signed-in user with the picker open. An anonymous caller has no use for
+  // this list and every use for the upstream traffic it generates.
+  const gate = await requireAuth();
+  if (!gate.ok) return gate.response as NextResponse<ModelsResponse>;
+
   // Server-side key only. Callers cannot supply one — see the note in
   // src/store/providerAvailabilityStore.ts.
   const apiKey = process.env.FAL_API_KEY;
@@ -162,13 +198,52 @@ export async function GET(
     );
   }
 
-  const searchQuery = request.nextUrl.searchParams.get("search");
-  const cacheKey = searchQuery ?? "";
-
-  if (cache && cache.key === cacheKey && Date.now() - cache.at < CACHE_TTL_MS) {
-    return NextResponse.json<ModelsSuccessResponse>(cache.payload);
+  const result = await loadCatalogue(apiKey);
+  if (!result.success) {
+    return NextResponse.json<ModelsErrorResponse>(result, { status: 502 });
   }
 
+  // Applied here, to a list already in memory, rather than forwarded upstream.
+  // See the note on `cache`: a caller-supplied term that reaches the network is
+  // a caller-supplied term that can be varied to force one walk per request.
+  const models = filterBySearch(
+    result.models,
+    request.nextUrl.searchParams.get("search")
+  );
+
+  return NextResponse.json<ModelsSuccessResponse>({ success: true, models });
+}
+
+/**
+ * The whole active catalogue, walked at most once per TTL per deployment.
+ *
+ * Callers share both the cache and the walk itself, so the upstream cost of
+ * this route is bounded by the clock rather than by how many requests arrive
+ * or what they ask for.
+ */
+async function loadCatalogue(
+  apiKey: string
+): Promise<ModelsSuccessResponse | ModelsErrorResponse> {
+  if (cache && Date.now() - cache.at < CACHE_TTL_MS) return cache.payload;
+  if (inFlight) return inFlight;
+
+  inFlight = walkCatalogue(apiKey)
+    .then((result) => {
+      // Only a success is cached. Caching a failure would hold the picker
+      // empty for five minutes over one bad upstream minute.
+      if (result.success) cache = { at: Date.now(), payload: result };
+      return result;
+    })
+    .finally(() => {
+      inFlight = null;
+    });
+
+  return inFlight;
+}
+
+async function walkCatalogue(
+  apiKey: string
+): Promise<ModelsSuccessResponse | ModelsErrorResponse> {
   try {
     const headers: HeadersInit = { Authorization: `Key ${apiKey}` };
 
@@ -176,9 +251,7 @@ export async function GET(
     // 1,400+; reading only the first page — which this route used to do —
     // hid roughly 90% of the models behind a `has_more` nobody checked.
     const collected: FalModel[] = [];
-    let url: string | null = `${FAL_API_BASE}/models?status=active${
-      searchQuery ? `&q=${encodeURIComponent(searchQuery)}` : ""
-    }`;
+    let url: string | null = `${FAL_API_BASE}/models?status=active`;
     let pages = 0;
 
     while (url && pages < MAX_PAGES) {
@@ -192,16 +265,13 @@ export async function GET(
         // those beats failing the whole picker over one bad page.
         if (collected.length > 0) break;
 
-        return NextResponse.json<ModelsErrorResponse>(
-          {
-            success: false,
-            error:
-              response.status === 401
-                ? "Invalid API key"
-                : `fal.ai API error: ${response.status}`,
-          },
-          { status: response.status }
-        );
+        return {
+          success: false,
+          error:
+            response.status === 401
+              ? "Invalid API key"
+              : `fal.ai API error: ${response.status}`,
+        };
       }
 
       const data: FalModelsResponse = await response.json();
@@ -212,26 +282,42 @@ export async function GET(
         data.has_more && data.next_cursor
           ? `${FAL_API_BASE}/models?status=active&cursor=${encodeURIComponent(
               data.next_cursor
-            )}${searchQuery ? `&q=${encodeURIComponent(searchQuery)}` : ""}`
+            )}`
           : null;
     }
 
-    const models = collected.filter(isRelevantModel).map(mapToProviderModel);
-
-    const payload: ModelsSuccessResponse = { success: true, models };
-    cache = { at: Date.now(), key: cacheKey, payload };
-
-    return NextResponse.json<ModelsSuccessResponse>(payload);
+    return {
+      success: true,
+      models: collected.filter(isRelevantModel).map(mapToProviderModel),
+    };
   } catch (error) {
-    return NextResponse.json<ModelsErrorResponse>(
-      {
-        success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to fetch models from fal.ai",
-      },
-      { status: 500 }
-    );
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to fetch models from fal.ai",
+    };
   }
+}
+
+/**
+ * Match a search box against the catalogue in process.
+ *
+ * Substring, not a pattern: the needle is typed into the model picker, so a
+ * stray character should look for itself rather than mean something — the same
+ * position `position()` takes over `ilike '%…%'` in the SQL readers.
+ */
+function filterBySearch(
+  models: ProviderModel[],
+  search: string | null
+): ProviderModel[] {
+  const needle = (search ?? "").trim().toLowerCase();
+  if (!needle) return models;
+
+  return models.filter((model) =>
+    [model.id, model.name, model.description].some(
+      (field) => typeof field === "string" && field.toLowerCase().includes(needle)
+    )
+  );
 }

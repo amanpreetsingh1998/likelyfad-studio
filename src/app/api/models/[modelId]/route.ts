@@ -23,6 +23,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/lib/auth/guard";
 import { ProviderType } from "@/types";
 import { ModelParameter, ModelInput } from "@/lib/providers/types";
 import {
@@ -1565,6 +1566,13 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ modelId: string }> }
 ): Promise<NextResponse<SchemaResponse>> {
+  // Signed-in callers only. The catalogue is not secret, but assembling it
+  // spends the deployment's provider keys — and a key that gets rate-limited
+  // or suspended takes generation down for every user, not just the caller
+  // who triggered it. Every real caller here has the model picker open.
+  const gate = await requireAuth();
+  if (!gate.ok) return gate.response as NextResponse<SchemaResponse>;
+
   // Await params before accessing properties
   const { modelId } = await params;
   const decodedModelId = decodeURIComponent(modelId);
