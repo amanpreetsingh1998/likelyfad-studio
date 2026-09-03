@@ -56,12 +56,25 @@ export function AdminNav() {
         ))}
       </nav>
 
-      <Link
-        href="/"
-        className="ml-auto text-sm text-neutral-400 hover:text-neutral-200 transition-colors"
-      >
-        Back to studio
-      </Link>
+      {/* Out of the dashboard, both ways. These are not TABS — they leave the
+          admin surface entirely, so they take no active state and sit apart
+          from the tab row rather than reading as a fifth and sixth section of
+          it. Workflows is the account's own history, which is a different
+          question from the account-wide figures on every tab to the left. */}
+      <div className="ml-auto flex items-center gap-4">
+        <Link
+          href="/workflows"
+          className="text-sm text-neutral-400 hover:text-neutral-200 transition-colors"
+        >
+          Workflows
+        </Link>
+        <Link
+          href="/"
+          className="text-sm text-neutral-400 hover:text-neutral-200 transition-colors"
+        >
+          Back to studio
+        </Link>
+      </div>
     </header>
   );
 }
