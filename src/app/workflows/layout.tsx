@@ -39,6 +39,23 @@ export default async function WorkflowsLayout({
     <div className="min-h-screen bg-neutral-950 text-neutral-100">
       <nav className="border-b border-neutral-800">
         <div className="mx-auto flex max-w-5xl items-center gap-4 px-6 py-3">
+          {/* The brand mark points at /workflows, not at "/". The studio is
+              admin-only, so a logo linking there would bounce a non-admin
+              straight back — the same reason NON_ADMIN_HOME exists in
+              proxy.ts. Admins still have the explicit "← Studio" link. */}
+          <Link
+            href="/workflows"
+            className="flex shrink-0 items-center gap-2 transition-opacity hover:opacity-80"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/ls-icon.png" alt="Likelyfad Studio" className="h-5 w-5" />
+            <span className="text-sm font-semibold tracking-tight text-neutral-100">
+              Likelyfad Studio
+            </span>
+          </Link>
+
+          <span className="text-sm text-neutral-600">/</span>
+
           {admin ? (
             <>
               <Link
